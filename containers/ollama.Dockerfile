@@ -20,7 +20,7 @@ COPY --from=upstream /cpu/ /usr/lib/ollama/
 ADD --checksum=sha256:5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226 https://raw.githubusercontent.com/ollama/ollama/v0.40.5/LICENSE /opt/funkyfarm-model/LICENSE-ollama
 COPY containers/ollama-model.json containers/ollama_bootstrap.py /opt/funkyfarm-model/
 ENV HOME=/tmp OLLAMA_MODELS=/models OLLAMA_HOST=0.0.0.0:11434 \
-    OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 \
+    OLLAMA_NO_CLOUD=1 OLLAMA_NOPRUNE=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 \
     OLLAMA_MAX_QUEUE=1 OLLAMA_CONTEXT_LENGTH=4096 OLLAMA_KEEP_ALIVE=60s \
     OLLAMA_DEBUG=false CUDA_VISIBLE_DEVICES=-1 PYTHONDONTWRITEBYTECODE=1
 LABEL org.opencontainers.image.title="FunkyFarm CPU-only Ollama derivative" \
