@@ -1,0 +1,109 @@
+name: FunkyFarmers CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      database:
+        image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+        env:
+          POSTGRES_DB: funkyfarmers_test
+          POSTGRES_USER: funkyfarmers_admin
+          # Disposable runner-only credentials. Production credentials are generated on the host.
+          POSTGRES_PASSWORD: disposable-ci-admin-password-only
+        ports: ["55439:5432"]
+        options: >-
+          --health-cmd "pg_isready -U funkyfarmers_admin -d funkyfarmers_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      FUNKYFARMERS_ADMIN_DATABASE_URL: postgresql://funkyfarmers_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarmers_test
+      FUNKYFARMERS_TEST_ADMIN_DATABASE_URL: postgresql://funkyfarmers_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarmers_test
+      FUNKYFARMERS_RUNTIME_PASSWORD: disposable-ci-runtime-password-only
+      FUNKYFARMERS_TEST_DATABASE_URL: postgresql://funkyfarmers_app:disposable-ci-runtime-password-only@127.0.0.1:55439/funkyfarmers_test
+      FUNKYFARMERS_REPORT_FONT: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install Linux document adapters and locked runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fonts-dejavu-core poppler-utils tesseract-ocr tesseract-ocr-eng
+          python -m pip install --requirement containers/api-requirements.lock
+          python -m pip install --no-deps --editable .
+          python -m pip install 'pytest>=8,<10' 'pytest-timeout>=2.3,<3'
+          python -m pip check
+      - name: Prepare only the disposable test database
+        run: python -m funkyfarmers.migrate
+      - name: Generate the disposable provider encryption key
+        run: |
+          python - <<'PY'
+          import base64, os, secrets
+          value = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')
+          print('::add-mask::' + value)
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('FUNKYFARMERS_CONNECTIONS_KEY=' + value + '\n')
+          PY
+      - name: Install web and browser journey dependencies
+        run: |
+          npm --prefix apps/web ci --ignore-scripts --no-audit --no-fund
+          npm --prefix tests/browser ci --ignore-scripts --no-audit --no-fund
+      - name: Install the Linux browser runtime
+        working-directory: tests/browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify real HTTP and PostgreSQL workflows
+        run: python -m pytest tests -q --tb=short --junitxml=runtime/release-workflows.xml
+      - name: Build the web application
+        working-directory: apps/web
+        run: npm run build
+      - name: Build the exact production image definitions
+        run: |
+          docker build --file containers/api.Dockerfile --tag funkyfarmers-api:ci .
+          docker build --file containers/web.Dockerfile --build-arg NGINX_CONFIG=containers/nginx.production.conf --tag funkyfarmers-web:ci .
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint python funkyfarmers-api:ci -c "import funkyfarmers.app, psycopg, reportlab; from pathlib import Path; assert Path('/app/packs').is_dir()"
+      - name: Verify the CPU-only local-model runtime without downloading weights
+        run: |
+          docker build --file containers/ollama.Dockerfile --tag funkyfarmers-ollama:ci .
+          size=$(docker image inspect funkyfarmers-ollama:ci --format '{{.Size}}')
+          test "$size" -lt 1073741824
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --entrypoint python3 funkyfarmers-ollama:ci -c '
+          import json, subprocess, time, urllib.request
+          server = subprocess.Popen(["/usr/bin/ollama", "serve"])
+          try:
+              for attempt in range(30):
+                  try:
+                      with urllib.request.urlopen("http://127.0.0.1:11434/api/version", timeout=1) as response:
+                          version = json.load(response)["version"]
+                      assert version == "0.40.5", version
+                      break
+                  except OSError:
+                      if server.poll() is not None:
+                          raise RuntimeError("CPU model server stopped before readiness")
+                      time.sleep(0.5)
+              else:
+                  raise RuntimeError("CPU model server did not become ready")
+          finally:
+              server.terminate()
+              server.wait(timeout=10)
+          '

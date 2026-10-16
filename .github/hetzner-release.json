@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "funkyfarmers",
+  "source": {
+    "repository": "mahmoudelfeelig/funkyfarmers",
+    "default_branch": "main",
+    "required_workflows": ["FunkyFarmers CI"]
+  },
+  "registry": {
+    "host": "registry.elfeel.me",
+    "image_namespace": "apps/funkyfarmers",
+    "release_repository": "releases/funkyfarmers"
+  },
+  "release": {
+    "strategy": "source-build",
+    "components": [
+      {"name": "api", "context": ".", "dockerfile": "containers/api.Dockerfile"},
+      {"name": "web", "context": ".", "dockerfile": "containers/web.Dockerfile", "build_args": {"NGINX_CONFIG": "containers/nginx.production.conf"}},
+      {"name": "ollama", "context": ".", "dockerfile": "containers/ollama.Dockerfile"}
+    ]
+  }
+}
