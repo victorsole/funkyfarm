@@ -121,6 +121,8 @@ test('owner reviews a response, exports PDF and starts an explicit correction', 
 test('adviser accepts a scoped grant, asks for evidence and loses access on revocation', async ({ page, browser }) => {
   await signIn(page, 'adviser');
   await page.goto('/app/adviser');
+  await expect(page.getByRole('heading', { name: 'Adviser desk', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.adviser.workspace_id);
   // A stale tab preference must not silently move the active page during refresh.
   const identity = await (await page.request.get('/api/v1/auth/session')).json();
   await page.evaluate(({ userId, workspaceId }) => sessionStorage.setItem('funkyfarm.workspace-selection.v1', JSON.stringify({ userId, workspaceId })), { userId: identity.user.id, workspaceId: fixture.accounts.peer.workspace_id });
