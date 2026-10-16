@@ -1,0 +1,54 @@
+name: FunkyFarmers
+options:
+  bundleIdPrefix: eu.funkyfarmers
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+targets:
+  FunkyFarmers:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared/IntakeInbox.swift
+      - path: ../web/public/assets/elephant-logo.png
+        buildPhase: resources
+      - path: ../../locales/interface.json
+        buildPhase: resources
+    info:
+      path: Configuration/App-Info.plist
+    entitlements:
+      path: Configuration/App.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarmers.native
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+    dependencies:
+      - target: FarmIntake
+        embed: true
+  FarmIntake:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - Shared/IntakeInbox.swift
+    info:
+      path: Configuration/Share-Info.plist
+    entitlements:
+      path: Configuration/Share.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarmers.native.intake
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  FunkyFarmers:
+    build:
+      targets:
+        FunkyFarmers: all
