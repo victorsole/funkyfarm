@@ -1,0 +1,17 @@
+name: funkyfarmers-local
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: funkyfarmers_admin
+      POSTGRES_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Run scripts/Local.ps1 setup}
+      POSTGRES_DB: funkyfarmers
+    ports: ["127.0.0.1:55439:5432"]
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funkyfarmers_admin -d funkyfarmers"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+volumes:
+  database:

@@ -1,0 +1,10 @@
+{
+  "resolved_at": "2026-10-16",
+  "method": "Docker official registry alias index, linux-amd64 image configuration version, and exact patch tag HEAD; alias and exact-tag index digests matched.",
+  "images": [
+    {"repository": "docker.io/library/python", "selector": "3.13-slim-bookworm", "tag": "3.13.16-slim-bookworm", "digest": "sha256:a1165e272e578941b84abc79e4ab38a0305cd12803a5c4247979ac7655f4d641", "source": "https://hub.docker.com/_/python"},
+    {"repository": "docker.io/library/node", "selector": "24-bookworm-slim", "tag": "24.22.0-bookworm-slim", "digest": "sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5", "source": "https://hub.docker.com/_/node"},
+    {"repository": "docker.io/library/nginx", "selector": "stable-alpine", "tag": "1.30.6-alpine", "digest": "sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5", "source": "https://hub.docker.com/_/nginx"},
+    {"repository": "docker.io/library/postgres", "selector": "17-bookworm", "tag": "17.11-bookworm", "digest": "sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826", "source": "https://hub.docker.com/_/postgres"}
+  ]
+}

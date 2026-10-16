@@ -1,0 +1,75 @@
+# Used only by recovery.py with a fresh funkyfarmers-recovery-* project name.
+services:
+  database:
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    environment:
+      POSTGRES_DB: funkyfarmers_recovery
+      POSTGRES_USER: funkyfarmers_migrator
+      POSTGRES_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Recovery requires a generated admin password}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [recovery]
+    healthcheck:
+      test: [CMD-SHELL, "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql --host=127.0.0.1 --username=\"$$POSTGRES_USER\" --dbname=\"$$POSTGRES_DB\" --no-password --tuples-only --command='SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  restore:
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    entrypoint: [/bin/sh, /tools/restore.sh]
+    environment:
+      PGHOST: database
+      PGUSER: funkyfarmers_migrator
+      PGDATABASE: funkyfarmers_recovery
+      PGPASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Recovery requires a generated admin password}
+      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Recovery requires a generated runtime password}
+    volumes:
+      - ${FUNKYFARMERS_BACKUP_DIRECTORY:?Choose a verified backup bundle}:/backup:ro
+      - originals:/restore-originals
+      - ./restore.sh:/tools/restore.sh:ro
+      - ./recovery-counts.sql:/tools/recovery-counts.sql:ro
+    depends_on:
+      database: {condition: service_healthy}
+    networks: [recovery]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m,mode=1777"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+  api:
+    image: funkyfarmers-api:local
+    environment:
+      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Recovery requires a generated runtime password}
+      FUNKYFARMERS_DATABASE_NAME: funkyfarmers_recovery
+      FUNKYFARMERS_ALLOWED_ORIGINS: http://localhost:5189,http://127.0.0.1:5189
+      FUNKYFARMERS_COOKIE_SECURE: "false"
+    volumes:
+      - originals:/var/lib/funkyfarmers/private-documents
+    depends_on:
+      restore: {condition: service_completed_successfully}
+    networks: [recovery]
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, python, /app/containers/healthcheck.py]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  database:
+  originals:
+
+networks:
+  recovery:
+    internal: true

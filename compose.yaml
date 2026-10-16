@@ -1,0 +1,126 @@
+name: funkyfarmers-local
+
+services:
+  database:
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    environment:
+      POSTGRES_DB: funkyfarmers
+      POSTGRES_USER: funkyfarmers_migrator
+      POSTGRES_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    ports:
+      - "127.0.0.1:${FUNKYFARMERS_DATABASE_PORT:-55439}:5432"
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [database]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql --host=127.0.0.1 --username=\"$$POSTGRES_USER\" --dbname=\"$$POSTGRES_DB\" --no-password --tuples-only --command='SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  migrate:
+    image: funkyfarmers-api:local
+    build:
+      context: .
+      dockerfile: containers/api.Dockerfile
+    command: [migrate]
+    environment:
+      FUNKYFARMERS_ADMIN_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
+      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Set FUNKYFARMERS_RUNTIME_PASSWORD}
+    depends_on:
+      database: {condition: service_healthy}
+    networks: [database]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+  api:
+    image: funkyfarmers-api:local
+    build:
+      context: .
+      dockerfile: containers/api.Dockerfile
+    environment:
+      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Set FUNKYFARMERS_RUNTIME_PASSWORD}
+      FUNKYFARMERS_ALLOWED_ORIGINS: http://localhost:${FUNKYFARMERS_WEB_PORT:-5189},http://127.0.0.1:${FUNKYFARMERS_WEB_PORT:-5189},http://localhost:${FUNKYFARMERS_API_PORT:-8139},http://127.0.0.1:${FUNKYFARMERS_API_PORT:-8139}
+      FUNKYFARMERS_COOKIE_SECURE: "false"
+      FUNKYFARMERS_CONNECTIONS_KEY: ${FUNKYFARMERS_CONNECTIONS_KEY:?Set a private provider encryption key}
+    ports:
+      - "127.0.0.1:${FUNKYFARMERS_API_PORT:-8139}:8139"
+    volumes:
+      - originals:/var/lib/funkyfarmers/private-documents
+    networks: [database, web]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, /app/containers/healthcheck.py]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  web:
+    image: funkyfarmers-web:local
+    build:
+      context: .
+      dockerfile: containers/web.Dockerfile
+    ports:
+      - "127.0.0.1:${FUNKYFARMERS_WEB_PORT:-5189}:8080"
+    depends_on:
+      api: {condition: service_healthy}
+    networks: [web]
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/ && wget -q -O /dev/null http://127.0.0.1:8080/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  backup:
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    profiles: [maintenance]
+    entrypoint: [/bin/sh, /tools/backup.sh]
+    environment:
+      PGHOST: database
+      PGUSER: funkyfarmers_migrator
+      PGDATABASE: funkyfarmers
+      PGPASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
+    volumes:
+      - originals:/originals:ro
+      - ${FUNKYFARMERS_BACKUP_DIRECTORY:-./runtime/backups}:/backup
+      - ./containers/backup.sh:/tools/backup.sh:ro
+      - ./containers/recovery-counts.sql:/tools/recovery-counts.sql:ro
+    networks: [database]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m,mode=1777"]
+    cap_drop: [ALL]
+    cap_add: [DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+volumes:
+  database:
+  originals:
+
+networks:
+  database:
+    internal: true
+  web:
