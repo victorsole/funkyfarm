@@ -4,11 +4,11 @@ This module observes publisher bytes, not the meaning or legal effect of a rule.
 It receives no farm, tenant, user, credential, or arbitrary endpoint parameters.
 """
 
+import asyncio
 from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,6 +16,10 @@ import httpx
 CATALOG_PATH = Path(__file__).resolve().parents[3] / "shared" / "obligations.json"
 MAX_SOURCES = 100
 MAX_BYTES = 512_000
+# Complete EUR-Lex texts/notices exceed the normal page budget. Keep that
+# exception publisher-specific; neither a user nor a redirect can raise it.
+EURLEX_MAX_BYTES = 2 * 1024 * 1024
+FETCH_DEADLINE_SECONDS = 12
 WORKFLOWS = frozenset({"annual", "cap", "inputs", "inspection", "sustainability"})
 # Expanding this list is a reviewed source/code change, never a browser setting.
 OFFICIAL_PATHS = {
@@ -93,18 +97,26 @@ def _header(value):
 
 
 def fetch_source(source, etag=None, last_modified=None):
-    """One bounded request. No redirects, credentials, proxies or retries."""
+    """Sync worker entry point; one request, no redirects/proxies or retries."""
     if not allowed_source_url(source.get("url")):
         return SourceObservation("blocked_source")
+    return asyncio.run(_fetch_source(source, etag, last_modified))
+
+
+async def _fetch_source(source, etag, last_modified):
     headers = {"Accept": "text/html, application/xhtml+xml, application/pdf, text/plain, application/xml, application/json", "Accept-Encoding": "identity", "User-Agent": "FunkyFarm/0.1 official-source-change-observer"}
     if _header(etag):
         headers["If-None-Match"] = _header(etag)
     if _header(last_modified):
         headers["If-Modified-Since"] = _header(last_modified)
+    budget = EURLEX_MAX_BYTES if urlsplit(source["url"]).hostname == "eur-lex.europa.eu" else MAX_BYTES
+    http_status = None
     try:
-        deadline = time.monotonic() + 12
-        with httpx.Client(timeout=httpx.Timeout(4, connect=4), follow_redirects=False, trust_env=False) as client:
-            with client.stream("GET", source["url"], headers=headers) as response:
+        # Cancel slow response reads even when a publisher keeps sending tiny
+        # chunks before the per-read timeout. OS DNS cleanup remains external.
+        async with asyncio.timeout(FETCH_DEADLINE_SECONDS), httpx.AsyncClient(timeout=httpx.Timeout(4, connect=4), follow_redirects=False, trust_env=False) as client:
+            async with client.stream("GET", source["url"], headers=headers) as response:
+                http_status = response.status_code
                 if response.status_code == 304:
                     return SourceObservation("not_modified", 304, etag=_header(response.headers.get("etag")) or _header(etag), last_modified=_header(response.headers.get("last-modified")) or _header(last_modified))
                 if response.status_code != 200:
@@ -114,13 +126,18 @@ def fetch_source(source, etag=None, last_modified=None):
                 media = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                 if media not in {"text/html", "application/xhtml+xml", "application/pdf", "text/plain", "application/xml", "text/xml", "application/json"}:
                     return SourceObservation("unsupported_content", 200)
-                content = bytearray()
-                for chunk in response.iter_raw(chunk_size=16384):
-                    if time.monotonic() > deadline:
-                        return SourceObservation("read_deadline", 200)
-                    content.extend(chunk)
-                    if len(content) > MAX_BYTES:
+                declared_length = response.headers.get("content-length")
+                if declared_length is not None:
+                    size = int(declared_length)
+                    if size < 0:
+                        return SourceObservation("invalid_response", 200)
+                    if size > budget:
                         return SourceObservation("response_too_large", 200)
+                content = bytearray()
+                async for chunk in response.aiter_raw():
+                    if len(content) + len(chunk) > budget:
+                        return SourceObservation("response_too_large", 200)
+                    content.extend(chunk)
                 if not content:
                     return SourceObservation("empty_response", 200)
                 # Common publisher anti-bot/interstitial pages are not legal source baselines.
@@ -128,5 +145,7 @@ def fetch_source(source, etag=None, last_modified=None):
                 if media in {"text/html", "application/xhtml+xml"} and any(marker in probe for marker in (b"checking your browser", b"verify you are human", b"<title>just a moment", b"<title>access denied", b"<title>captcha", b"request rejected")):
                     return SourceObservation("publisher_access_challenge", 200)
                 return SourceObservation("observed", 200, hashlib.sha256(content).hexdigest(), _header(response.headers.get("etag")), _header(response.headers.get("last-modified")))
+    except TimeoutError:
+        return SourceObservation("read_deadline", http_status)
     except (httpx.HTTPError, ValueError):
-        return SourceObservation("network_error")
+        return SourceObservation("network_error", http_status)

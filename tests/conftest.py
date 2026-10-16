@@ -89,19 +89,21 @@ def authored_regulatory():
               "title": "Authored publisher HTTP fixture, not a legal conclusion", "country": "SK", "region": None,
               "workflow_ids": ["inputs"], "source_type": "official_legislation", "source_edition": "authored-response",
               "catalog_checked_at": "2026-10-16", "rule_ids": [], "rules": []}
-    state = {"body": b"Authored initial publisher response", "calls": []}
+    state = {"body": b"Authored initial publisher response", "calls": [], "status": 200}
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             state["calls"].append({"path": self.path, "headers": dict(self.headers)})
             etag = '"' + hashlib.sha256(state["body"]).hexdigest() + '"'
             unchanged = self.headers.get("If-None-Match") == etag
-            self.send_response(304 if unchanged else 200)
-            self.send_header("ETag", etag)
+            status = state["status"] if state["status"] != 200 else 304 if unchanged else 200
+            self.send_response(status)
+            self.send_header("ETag", '"pending-not-a-source-validator"' if status == 202 else etag)
+            self.send_header("Last-Modified", "Sat, 17 Oct 2026 01:00:00 GMT" if status == 202 else "Fri, 16 Oct 2026 00:00:00 GMT")
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
-            if not unchanged:
-                self.wfile.write(state["body"])
+            if status != 304:
+                self.wfile.write(b"Publisher request pending; not a source body." if status == 202 else state["body"])
 
         def log_message(self, *_):
             pass
@@ -124,8 +126,14 @@ def authored_regulatory():
         assert result.returncode == 0, result.stderr[-4000:]
         return json.loads(result.stdout)
 
+    def retained_state():
+        with psycopg.connect(admin_url, connect_timeout=5, row_factory=psycopg.rows.dict_row) as connection:
+            row = connection.execute("SELECT content_hash,etag,last_modified,last_status,last_http_status,failure_count FROM funkyfarm.regulatory_source_state WHERE source_id=%s AND url=%s", (source["id"], source["url"])).fetchone()
+            assert row is not None
+            return row
+
     try:
-        yield {"source": source, "url": endpoint, "state": state, "poll": poll}
+        yield {"source": source, "url": endpoint, "state": state, "poll": poll, "retained_state": retained_state}
     finally:
         server.shutdown()
         server.server_close()

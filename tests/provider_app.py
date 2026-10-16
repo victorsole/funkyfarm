@@ -1,4 +1,4 @@
-"""Acceptance factory: replace only the external STAC network boundary.
+"""Acceptance factory: replace only external network transport boundaries.
 
 All API routing, authentication, PostgreSQL authorization, geometry validation,
 metadata interpretation and record review use the ordinary application code.
@@ -6,7 +6,6 @@ The local fixture proves the provider contract, not live Copernicus availability
 """
 
 import os
-import hashlib
 import json
 from urllib.parse import urlsplit
 
@@ -14,25 +13,24 @@ import httpx
 
 
 def configure_regulatory_provider():
-    from funkyfarm import regulatory
-    from funkyfarm.regulatory_sources import SourceObservation
-
     source = json.loads(os.environ["FUNKYFARM_TEST_REGULATORY_SOURCE"])
     endpoint = os.environ["FUNKYFARM_TEST_REGULATORY_URL"]
     if not source["id"].startswith("acceptance-") or urlsplit(endpoint).hostname != "127.0.0.1":
         raise RuntimeError("Authored regulatory fixture must use a generated ID and loopback transport.")
 
-    def retrieve(selected, etag=None, last_modified=None):
-        if selected["id"] != source["id"] or selected["url"] != source["url"]:
-            raise RuntimeError("The fixture may only observe its generated source.")
-        with httpx.Client(timeout=5, trust_env=False, follow_redirects=False) as client:
-            response = client.get(endpoint, headers={"If-None-Match": etag} if etag else {})
-            if response.status_code == 304:
-                return SourceObservation("not_modified", 304, etag=response.headers.get("etag"))
-            response.raise_for_status()
-            return SourceObservation("observed", 200, hashlib.sha256(response.content).hexdigest(), response.headers.get("etag"))
+    actual_transport = httpx.AsyncHTTPTransport.handle_async_request
 
-    regulatory.fetch_source = retrieve
+    async def loopback_transport(transport, request):
+        if str(request.url) != source["url"]:
+            raise RuntimeError("The fixture may only observe its generated official source URL.")
+        # Keep the official URL at AsyncClient, with its real allowlist checks,
+        # response policy, stream limits, validators, hashing and hard deadline.
+        # Only the socket destination changes; even Host remains official.
+        forwarded = httpx.Request(request.method, endpoint, headers=request.headers,
+                                  stream=request.stream, extensions=request.extensions)
+        return await actual_transport(transport, forwarded)
+
+    httpx.AsyncHTTPTransport.handle_async_request = loopback_transport
     return source
 
 

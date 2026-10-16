@@ -14,7 +14,31 @@ type Obligation = { id: string; title: string; workflow_id: string; applicabilit
 type ProfileQuestion = { key: string; fact_key: string; label: string; prompt: string; value_type: string; choices: Array<{ value: string; label: string }>; sources: Source[]; conflicting_fact_ids: string[]; proposal_ids: string[] };
 type Checks = { farm_id: string; farm_revision: number; year: number; rules_version: string; rules_updated_at: string; profile_questions: ProfileQuestion[]; obligations: Obligation[]; issues: Array<{ code: string; severity: string; message: string; href?: string }>; overall: string; limits: string[] };
 type Update = { id: string; title: string; url: string; country: string; region?: string; detected_at: string; effective_date: string | null; is_read: boolean; notice: string; source_edition?: string | null; required_action?: string; relevance?: string; rule_ids?: string[] };
-type Updates = { items: Update[]; total: number; unread_count: number; preferences: { revision: number; enabled: boolean; families: string[]; read_event_ids: string[] }; monitor: { enabled: boolean; source_count: number; checked_count: number; baseline_count?: number; pending_count: number; error_count: number; last_checked_at: string | null; meaning?: string }; source_checks?: Array<{ source_id: string; title: string; url: string; status: string; baseline_exists: boolean; last_checked_at: string | null }>; notice: string };
+type SourceCheck = { source_id: string; title: string; url: string; status: string; http_status?: number | null; baseline_exists: boolean; last_checked_at: string | null; next_check_at?: string | null };
+type Updates = { items: Update[]; total: number; unread_count: number; preferences: { revision: number; enabled: boolean; families: string[]; read_event_ids: string[] }; monitor: { enabled: boolean; source_count: number; checked_count: number; baseline_count?: number; pending_count: number; error_count: number; last_checked_at: string | null; meaning?: string }; source_checks?: SourceCheck[]; notice: string };
+
+function sourceCheckMessage(status: string) {
+  const messages: Record<string, string> = {
+    pending_baseline: 'Waiting for the first check.',
+    source_changed: 'The source link changed. Waiting for a new check.',
+    baseline_created: 'First successful check. We can compare future versions.',
+    unchanged: 'No change found since the previous successful check.',
+    changed: 'The page changed. Please review it.',
+    http_error: 'The publisher did not provide the page. We will try again.',
+    network_error: 'We could not reach the publisher.',
+    read_deadline: 'The page took too long to load.',
+    response_too_large: 'This page is larger than our download limit.',
+    publisher_access_challenge: 'The publisher blocked this automatic check.',
+    redirect_blocked: 'The page moved. Its new address needs to be checked.',
+    unsupported_encoding: 'The publisher sent a format we cannot read.',
+    unsupported_content: 'The publisher did not send a supported document.',
+    empty_response: 'The publisher sent an empty page.',
+    invalid_response: 'The publisher sent an incomplete response.',
+    invalid_not_modified: 'The publisher did not send a page we can compare.',
+    blocked_source: 'This source address has not been approved for automatic checks.',
+  };
+  return messages[status] ?? 'We could not check this page.';
+}
 
 function sourceUrl(value?: string) {
   if (!value) return null;
@@ -206,7 +230,7 @@ export function UpdatesPage() {
     {error && <Notice kind="error">{error}<div><Button variant="ghost" onClick={() => setVersion(value => value + 1)}>Try again</Button></div></Notice>}{message && <Notice kind="success">{message}</Notice>}{loading && <Loading>Opening recorded source updates…</Loading>}
     {data && <>
       <Notice>{data.notice} A changed web page does not by itself establish a changed legal duty or an effective date.</Notice>
-      <section className="panel admin-section"><h2>What has actually been observed?</h2><p>{data.monitor.baseline_count === undefined ? 'The server has not supplied a successful baseline count.' : `${data.monitor.baseline_count} of ${data.monitor.source_count} sources have a successful observation baseline.`}</p>{data.monitor.meaning && <p className="admin-footnote">{data.monitor.meaning}</p>}{!!data.source_checks?.length && <details><summary>Which source pages have been checked?</summary><ul className="admin-task-list">{data.source_checks.map(source => <li key={source.source_id}><strong>{source.title}</strong><p>{source.status.replaceAll('_', ' ')} · {source.baseline_exists ? 'Observation baseline exists' : 'No successful baseline yet'}</p>{sourceUrl(source.url) && <a href={sourceUrl(source.url)!} target="_blank" rel="noreferrer">Open source page</a>}</li>)}</ul></details>}</section>
+      <section className="panel admin-section"><h2>What has actually been observed?</h2><p>{data.monitor.baseline_count === undefined ? 'We do not yet know how many pages have been checked successfully.' : `We have checked ${data.monitor.baseline_count} of ${data.monitor.source_count} pages successfully at least once.`}</p><p className="admin-footnote">Some recent checks may have failed. A failed check does not mean the rules stayed the same. Older texts alone cannot show every new amendment.</p>{!!data.source_checks?.length && <details><summary>Which source pages have been checked?</summary><ul className="admin-task-list">{data.source_checks.map(source => <li key={source.source_id}><strong>{source.title}</strong><p>{sourceCheckMessage(source.status)} {!source.baseline_exists && 'No successful check yet.'}</p>{source.last_checked_at && <p className="admin-footnote">Last attempt: {new Date(source.last_checked_at).toLocaleString()}.{source.next_check_at && ` Next attempt: ${new Date(source.next_check_at).toLocaleString()}.`}{source.http_status != null && ` Publisher response: HTTP ${source.http_status}.`}</p>}{sourceUrl(source.url) && <a href={sourceUrl(source.url)!} target="_blank" rel="noreferrer">Open source page</a>}</li>)}</ul></details>}</section>
       <section className="panel admin-section"><h2>How you want to see updates</h2><label className="check-row"><input type="checkbox" checked={data.preferences.enabled} disabled={busy} onChange={event => void preference(event.target.checked, data.preferences.read_event_ids)}/>Show relevant source changes inside my farm workspace</label><p className="admin-footnote">This preference does not turn on email, push messages or background collection of your farm data.</p><p className="muted">Source checking is {data.monitor.enabled ? 'enabled' : 'not enabled on this server'}.{data.monitor.last_checked_at ? ` Last check: ${new Date(data.monitor.last_checked_at).toLocaleString()}.` : ' No completed source check is recorded.'} {data.monitor.error_count > 0 ? `${data.monitor.error_count} sources could not be checked.` : ''}</p><Button variant="secondary" disabled={busy} onClick={() => setVersion(value => value + 1)}>Refresh recorded updates</Button></section>
       <section className="panel admin-section"><h2>{data.unread_count} unread source changes</h2>{!data.items.length && <p className="empty-state">No relevant source changes are recorded for this farm. This is not a guarantee that regulations have not changed.</p>}{data.items.map(update => <article className="admin-check" key={update.id}><div className="section-heading"><h3>{update.title}</h3><span className="badge">{update.is_read ? 'Marked as read' : 'New to you'}</span></div><p>{update.notice}</p>{update.required_action && <p>{update.required_action}</p>}<p className="admin-footnote">Page change detected {new Date(update.detected_at).toLocaleString()}{update.source_edition ? ` · source edition ${update.source_edition}` : ''}. Effective date has not been established by this observation.</p>{sourceUrl(update.url) && <p><a href={sourceUrl(update.url)!} target="_blank" rel="noreferrer">Read the official page</a></p>}<div className="actions"><Link to={`/app/checks?farm_id=${farmId}`}>Check recorded farm requirements</Link>{!update.is_read && <Button variant="secondary" loading={busy} onClick={() => void preference(data.preferences.enabled, [...new Set([...data.preferences.read_event_ids, update.id])])}>Mark as read</Button>}</div></article>)}</section>
     </>}

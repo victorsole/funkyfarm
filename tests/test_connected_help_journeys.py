@@ -181,6 +181,26 @@ def test_regulatory_baseline_changed_page_read_state_and_private_farm_relevance(
     assert baseline["total"] == 0 and baseline["monitor"]["baseline_count"] == 1
     assert authored_regulatory["poll"]()["items"][0]["status"] == "unchanged"
     assert authored_regulatory["state"]["calls"][-1]["headers"].get("If-None-Match")
+    retained = authored_regulatory["retained_state"]()
+    assert retained["content_hash"] == hashlib.sha256(authored_regulatory["state"]["body"]).hexdigest()
+    authored_regulatory["state"]["status"] = 202
+    try:
+        assert authored_regulatory["poll"]()["items"][0]["status"] == "http_error"
+        pending = owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()
+        assert pending["total"] == 0 and pending["monitor"]["baseline_count"] == 1
+        source_check = next(item for item in pending["source_checks"] if item["source_id"] == authored_regulatory["source"]["id"])
+        assert source_check["http_status"] == 202 and source_check["baseline_exists"] is True
+        failed = authored_regulatory["retained_state"]()
+        assert {key: failed[key] for key in ("content_hash", "etag", "last_modified")} == {key: retained[key] for key in ("content_hash", "etag", "last_modified")}
+        assert failed["last_http_status"] == 202 and failed["failure_count"] > retained["failure_count"]
+    finally:
+        authored_regulatory["state"]["status"] = 200
+    assert authored_regulatory["poll"]()["items"][0]["status"] == "unchanged"
+    recovered = authored_regulatory["retained_state"]()
+    assert recovered["last_http_status"] == 304 and recovered["failure_count"] == 0
+    assert {key: recovered[key] for key in ("content_hash", "etag", "last_modified")} == {key: retained[key] for key in ("content_hash", "etag", "last_modified")}
+    assert authored_regulatory["state"]["calls"][-1]["headers"]["If-None-Match"] == retained["etag"]
+    assert authored_regulatory["state"]["calls"][-1]["headers"]["If-Modified-Since"] == retained["last_modified"]
     authored_regulatory["state"]["body"] = b"Authored changed publisher bytes; legal effect is not established."
     assert authored_regulatory["poll"]()["items"][0]["status"] == "changed"
     changed = owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()
@@ -203,6 +223,8 @@ def test_regulatory_baseline_changed_page_read_state_and_private_farm_relevance(
     assert owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()["items"] == []
     assert owner.get("/tasks").json()["total"] == 0 and owner.get("/reports").json()["total"] == 0
     assert all(farm["data"]["name"] not in json.dumps(call) and farm["id"] not in json.dumps(call) for call in authored_regulatory["state"]["calls"])
+    assert all(call["headers"]["Host"] == "eur-lex.europa.eu" and call["headers"]["Accept-Encoding"] == "identity"
+               and "Authorization" not in call["headers"] and "Cookie" not in call["headers"] for call in authored_regulatory["state"]["calls"])
 
 
 def test_local_chat_explicit_context_grounding_privacy_and_bounded_inference(farmers, authored_model):

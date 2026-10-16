@@ -183,13 +183,13 @@ def regulatory_updates(conn, farm_id, limit=50, offset=0):
             sources.append(source)
             relevance[source["id"]] = relevant
     ids = [source["id"] for source in sources]
-    states = conn.execute("SELECT source_id,url,content_hash,last_checked_at,next_check_at,last_status,failure_count FROM regulatory_source_state WHERE source_id=ANY(%s::text[])", (ids,)).fetchall() if ids else []
+    states = conn.execute("SELECT source_id,url,content_hash,last_checked_at,next_check_at,last_status,last_http_status,failure_count FROM regulatory_source_state WHERE source_id=ANY(%s::text[])", (ids,)).fetchall() if ids else []
     current_urls = {source["id"]: source["url"] for source in sources}
     states = [state for state in states if state["url"] == current_urls[state["source_id"]]]
     last_checked = max((row["last_checked_at"] for row in states if row["last_checked_at"]), default=None)
     monitor = {"enabled": worker_enabled(), "source_count": len(sources), "checked_count": sum(bool(row["last_checked_at"]) for row in states), "baseline_count": sum(bool(row["content_hash"]) for row in states), "pending_count": len(sources) - sum(bool(row["last_checked_at"]) for row in states), "error_count": sum(row["failure_count"] > 0 for row in states), "last_checked_at": json_safe(last_checked), "poll_interval_seconds": _interval(), "meaning": "Checked counts attempts, not successful legal review. Baselines count successfully observed source pages. Pinned historical texts do not discover all newly published amendments."}
     state_map = {state["source_id"]: state for state in states}
-    checks = [{"source_id": source["id"], "title": source["title"], "url": source["url"], "status": state_map.get(source["id"], {}).get("last_status") or "pending_baseline", "baseline_exists": bool(state_map.get(source["id"], {}).get("content_hash")), "last_checked_at": json_safe(state_map.get(source["id"], {}).get("last_checked_at")), "next_check_at": json_safe(state_map.get(source["id"], {}).get("next_check_at"))} for source in sources]
+    checks = [{"source_id": source["id"], "title": source["title"], "url": source["url"], "status": state_map.get(source["id"], {}).get("last_status") or "pending_baseline", "http_status": state_map.get(source["id"], {}).get("last_http_status"), "baseline_exists": bool(state_map.get(source["id"], {}).get("content_hash")), "last_checked_at": json_safe(state_map.get(source["id"], {}).get("last_checked_at")), "next_check_at": json_safe(state_map.get(source["id"], {}).get("next_check_at"))} for source in sources]
     result = {"items": [], "total": 0, "unread_count": 0, "limit": limit, "offset": offset, "preferences": {"id": preference["id"] if preference else None, "revision": preference["revision"] if preference else 0, "enabled": prefs["enabled"], "families": prefs.get("families", []), "read_event_ids": prefs.get("read_event_ids", [])}, "monitor": monitor, "source_checks": checks, "notice": NOTICE}
     if not ids or not prefs.get("enabled", True):
         return result
