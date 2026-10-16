@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -43,6 +44,21 @@ class ModelCacheTests(unittest.TestCase):
         self.assertEqual(sum(blob["size"] for blob in blobs), 2497293931)
         self.assertEqual(manifest["layers"][0]["digest"], "sha256:3e4cb14174460404e7a233e531675303b2fbf7749c02f91864fe311ab6344e4f")
         self.assertTrue(any(x["mediaType"] == "application/vnd.ollama.image.license" for x in blobs))
+
+    def test_cache_initializes_v2_directory_before_fetch_without_publishing_alias(self):
+        previous_umask = os.umask(0o077)
+        self.addCleanup(os.umask, previous_umask)
+        with patch.object(bootstrap, "ROOT", self.root), patch.object(
+            bootstrap, "download_blob", side_effect=RuntimeError("Stop before public weight download")
+        ) as download:
+            with self.assertRaisesRegex(RuntimeError, "Stop before public weight download"):
+                bootstrap.prepare_cache()
+        download.assert_called_once_with(bootstrap.checked_manifest()[2][0])
+        store = self.root / "manifests-v2"
+        self.assertTrue(store.is_dir())
+        self.assertFalse(store.is_symlink())
+        self.assertEqual(list(store.iterdir()), [])
+        self.assertFalse((self.root / "manifests").exists())
 
     def test_modified_manifest_is_rejected(self):
         source = self.root / "manifest.json"

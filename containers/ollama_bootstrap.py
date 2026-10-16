@@ -119,6 +119,9 @@ def prepare_cache():
     os.umask(0o077)
     raw, document, blobs = checked_manifest()
     safe_path(ROOT)
+    # Ollama 0.40.5 opens its v2 store even for legacy pinned manifests. Only
+    # the fetch companion initializes it; the inference mount stays read-only.
+    safe_path(ROOT / "manifests-v2").mkdir(mode=0o700, exist_ok=True)
     target = ROOT / "manifests/registry.ollama.ai/library/funkyfarm-qwen3" / MANIFEST_DIGEST
     known = {target, ROOT / "LICENSE-qwen3.txt", ROOT / "provenance.json"}
     for blob in blobs:

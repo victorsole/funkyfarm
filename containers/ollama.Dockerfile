@@ -12,9 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 funkyfarm-model \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /tmp funkyfarm-model \
-    && mkdir -p /models/blobs /models/manifests /opt/funkyfarm-model \
-    && chown 10001:10001 /models /models/blobs /models/manifests \
-    && chmod 0700 /models /models/blobs /models/manifests
+    && mkdir -p /models/blobs /models/manifests /models/manifests-v2 /opt/funkyfarm-model \
+    && chown 10001:10001 /models /models/blobs /models/manifests /models/manifests-v2 \
+    && chmod 0700 /models /models/blobs /models/manifests /models/manifests-v2
 COPY --from=upstream /usr/bin/ollama /usr/bin/ollama
 COPY --from=upstream /cpu/ /usr/lib/ollama/
 ADD --checksum=sha256:5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226 https://raw.githubusercontent.com/ollama/ollama/v0.40.5/LICENSE /opt/funkyfarm-model/LICENSE-ollama

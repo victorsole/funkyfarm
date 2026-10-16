@@ -103,6 +103,9 @@ jobs:
                       time.sleep(0.5)
               else:
                   raise RuntimeError("CPU model server did not become ready")
+              with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as response:
+                  models = json.load(response)["models"]
+              assert models == [], models
           finally:
               server.terminate()
               server.wait(timeout=10)
