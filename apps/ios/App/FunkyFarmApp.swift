@@ -39,7 +39,6 @@ struct ElephantMark: View {
 struct SignInView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var labels: NativeLabels
-    @StateObject private var sso = NativeSSOSignIn()
     @State private var endpoint = "http://localhost:8139/api/v1"
     @State private var email = ""
     @State private var password = ""
@@ -54,7 +53,6 @@ struct SignInView: View {
                     HStack(spacing: 16) { ElephantMark(); VStack(alignment: .leading) { Text("funkyfarm").font(.title2.bold()); Text("Your farm. Your evidence.").foregroundStyle(.secondary) } }
                     Text("Handle requests with the farm records you already have. Review every new fact and approve each report yourself.")
                 }
-                NativeSSOSection(signIn: sso, base: endpoint, passwordBusy: working)
                 Section(register ? "Create your private workspace" : "Open your workspace") {
                     TextField(labels.text("auth.email", fallback: "Email"), text: $email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField(labels.text("auth.password", fallback: "Password"), text: $password).textContentType(register ? .newPassword : .password)
@@ -69,16 +67,14 @@ struct SignInView: View {
                     }.disabled(working || email.isEmpty || password.isEmpty || (register && name.isEmpty))
                     if working { ProgressView("Connecting…") }
                     Toggle("I need a new account", isOn: $register)
-                }.disabled(sso.isActive)
+                }
                 Section("Local service") {
                     TextField("Service API address", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                     Text("The simulator uses localhost. An iPhone needs the service's reachable HTTPS or .local address. Account data stays with the selected service.").font(.footnote).foregroundStyle(.secondary)
-                }.disabled(working || sso.isActive)
+                }.disabled(working)
                 if let problem = problem ?? store.error { Section { Notice(problem, warning: true) } }
                 Section { NavigationLink(labels.text("common.language", fallback: "Language")) { LanguageSettingsView() } }
             }.navigationTitle("Welcome")
-                .background(SSOPresentationWindowReader { sso.presentationWindow = $0 }.frame(width: 0, height: 0).accessibilityHidden(true))
-                .onDisappear { sso.cancelBrowser() }
         }
     }
 }

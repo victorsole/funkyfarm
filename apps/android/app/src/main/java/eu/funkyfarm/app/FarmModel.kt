@@ -1,7 +1,6 @@
 package eu.funkyfarm.app
 
 import android.content.Context
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,12 +23,9 @@ class FarmModel(val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val bootstrap = PrivateStore(context, "session")
     private val intake = PrivateStore(context, "intake")
-    private val nativeSignIn = NativeSignIn(context)
     private var vault: PrivateStore? = null
     private var state = JSONObject()
     private var generation = 0
-    private var providerLookup = 0
-    private var nativeAttempt = 0
     var session by mutableStateOf<JSONObject?>(null); private set
     var origin by mutableStateOf("http://10.0.2.2:8139"); private set
     var tab by mutableStateOf("Home")
@@ -48,21 +44,16 @@ class FarmModel(val context: Context) {
     var serverVersion by mutableStateOf(0); private set
     var staged by mutableStateOf<List<JSONObject>>(emptyList()); private set
     var shared by mutableStateOf<List<JSONObject>>(emptyList()); private set
-    var ssoProviders by mutableStateOf<List<JSONObject>>(emptyList()); private set
-    var ssoProviderOrigin by mutableStateOf(""); private set
-    var ssoPending by mutableStateOf(false); private set
     private val sending = mutableSetOf<String>()
     init {
         runCatching {
             val stored = bootstrap.json("auth.json")
             if (stored.has("session")) activate(stored.getJSONObject("session"), stored.getString("origin"))
             shared = intake.json("items.json").optJSONArray("items")?.objects().orEmpty()
-            ssoPending = nativeSignIn.hasPending()
         }.onFailure { message = "Private saved data could not be unlocked. Sign in again; no data has been sent." }
     }
     fun api() = Api(origin, session?.optString("token").orEmpty(), session?.optJSONObject("workspace")?.optString("id").orEmpty())
     private fun activate(auth: JSONObject, endpoint: String) {
-        nativeSignIn.cancel(); ssoPending = false
         generation++; origin = endpoint; session = auth; administration = null
         vault = PrivateStore(context, auth.getJSONObject("user").getString("id") + ":" + auth.getJSONObject("workspace").getString("id"))
         state = vault!!.json("workspace.json")
@@ -86,45 +77,12 @@ class FarmModel(val context: Context) {
         }
     }
     fun authenticate(endpoint: String, email: String, password: String, name: String, register: Boolean) = action {
-        cancelNativeSignIn()
         val credentials = obj("email" to email.trim(), "password" to password)
         if (register) credentials.put("display_name", name.trim())
         val response = withContext(Dispatchers.IO) { Api(endpoint).request(if (register) "/auth/register" else "/auth/login", "POST", credentials) }
         activate(response, endpoint); message = "Signed in to your private workspace."; refresh()
     }
-    fun loadSignInProviders(endpoint: String) = action {
-        ssoProviders = emptyList(); ssoProviderOrigin = ""
-        val expected = generation; val lookup = ++providerLookup
-        val response = withContext(Dispatchers.IO) { Api(endpoint).request("/auth/sso/providers") }
-        if (generation == expected && lookup == providerLookup && session == null && response.optJSONArray("native_redirect_uris").strings().contains(NATIVE_SIGN_IN_REDIRECT)) {
-            ssoProviders = response.optJSONArray("providers")?.objects().orEmpty()
-            ssoProviderOrigin = endpoint
-        }
-    }
-    fun beginNativeSignIn(endpoint: String, provider: JSONObject, launch: (Uri) -> Unit) {
-        runCatching {
-            require(session == null && !ssoPending && endpoint == ssoProviderOrigin && ssoProviders.any { it.toString() == provider.toString() }) { "Refresh the configured sign-in options before continuing." }
-            val uri = nativeSignIn.start(endpoint, provider)
-            ssoPending = true
-            launch(uri)
-            message = "Continue in your browser, or cancel browser sign-in here."
-        }.onFailure { nativeSignIn.cancel(); ssoPending = false; message = "The browser sign-in could not start. Check the service address or use your password." }
-    }
-    fun cancelNativeSignIn() { nativeAttempt++; nativeSignIn.cancel(); ssoPending = false }
-    fun completeNativeSignIn(uri: Uri) = action {
-        require(session == null) { "Already signed in. Sign out before choosing another account." }
-        val callback = try { nativeSignIn.callback(uri) } finally { ssoPending = nativeSignIn.hasPending() }
-        val expected = generation; val attempt = ++nativeAttempt
-        val response = withContext(Dispatchers.IO) { Api(callback.first).request("/auth/sso/native/token", "POST", callback.second) }
-        require(response.optString("token").isNotBlank() && response.optString("csrf_token").isNotBlank() && response.has("user") && response.has("workspace")) { "The sign-in session is incomplete. Start again." }
-        if (generation != expected || nativeAttempt != attempt || session != null) {
-            withContext(Dispatchers.IO) { runCatching { Api(callback.first, response.getString("token"), response.getJSONObject("workspace").getString("id")).request("/auth/logout", "POST", JSONObject()) } }
-            return@action
-        }
-        activate(response, callback.first); message = "Signed in to your private workspace."; refresh()
-    }
     fun logout() {
-        cancelNativeSignIn(); ssoProviders = emptyList(); ssoProviderOrigin = ""
         val client = api(); val old = vault; administration = null
         generation++; session = null; vault = null; state = JSONObject(); records = emptyMap(); totals = emptyMap(); staged = emptyList(); packs = emptyList(); extras = emptyMap(); privateUnavailable = emptySet(); item = null; detail = null; sending.clear(); busy = false; offline = false
         bootstrap.purge(); old?.purge(); intake.purge(); shared = emptyList()

@@ -192,8 +192,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
         OutlinedTextField(password, { password = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
         if (register) OutlinedTextField(name, { name = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         if (register) Text("Use a password of at least 12 characters.", style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { model.authenticate(endpoint.trim().trimEnd('/'), email, password, name, register); password = "" }, enabled = !model.busy && !model.ssoPending && email.isNotBlank() && password.length >= (if (register) 12 else 1) && (!register || name.isNotBlank()), modifier = Modifier.fillMaxWidth()) { Text(if (register) "Create private workspace" else "Sign in") }
-        ProviderSignIn(model, endpoint.trim().trimEnd('/'))
+        Button(onClick = { model.authenticate(endpoint.trim().trimEnd('/'), email, password, name, register); password = "" }, enabled = !model.busy && email.isNotBlank() && password.length >= (if (register) 12 else 1) && (!register || name.isNotBlank()), modifier = Modifier.fillMaxWidth()) { Text(if (register) "Create private workspace" else "Sign in") }
         TextButton(onClick = { register = !register }) { Text(if (register) "I already have an account" else "Create an account") }
         if (model.shared.isNotEmpty()) Text("${model.shared.size} shared files are encrypted on this device. You choose whether to add them after signing in.")
         var config by remember { mutableStateOf(false) }; TextButton(onClick = { config = !config }) { Text("Local API connection") }

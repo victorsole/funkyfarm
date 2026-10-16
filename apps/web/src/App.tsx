@@ -20,7 +20,6 @@ import { CompliancePage, UpdatesPage } from './pages/Compliance';
 import { CommunityPage } from './pages/Community';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
-import { SsoButtons, ssoReturnMessage, startSso, useSsoProviders, type SsoProvider } from './sso';
 import './pages/administration.css';
 
 const primary = [
@@ -165,9 +164,6 @@ function AuthPage() {
   const registering = location.pathname === '/register';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sso = useSsoProviders();
-  const [providerBusy, setProviderBusy] = useState<string | null>(null);
-  const providerMessage = ssoReturnMessage(location.search);
   useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · FunkyFarm`; }, [registering]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -181,11 +177,6 @@ function AuthPage() {
       navigate(location.pathname.startsWith('/app/') ? location.pathname + location.search : '/app/home', { replace: true });
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
-  async function continueWithProvider(provider: SsoProvider) {
-    setProviderBusy(provider.id); setError(null);
-    try { await startSso(provider, 'login', location.pathname + location.search + location.hash); }
-    catch (failure) { setError(errorMessage(failure)); setProviderBusy(null); }
-  }
   return <div className="auth-layout">
     <section className="auth-story">
       <Link className="brand" to="/"><BrandMark/><span>funky<span className="brand-second">farm.</span></span></Link>
@@ -197,15 +188,11 @@ function AuthPage() {
       <LanguagePicker/><p className="translation-note"><Text id="language.draftNotice"/></p>
       <p className="eyebrow">{registering ? 'A fresh page' : 'Pick up where you left off'}</p><h2>{registering ? 'Make yourself at home.' : 'Welcome back.'}</h2><p className="muted">{registering ? 'Create your private farm workspace.' : 'Sign in to open your farm workspace.'}</p>
       {sessionError && <Notice kind="warning">{sessionError} <button className="text-button" type="button" onClick={() => void refresh()}><Text id="common.retry"/></button></Notice>}{error && <Notice kind="error">{error}</Notice>}
-      {providerMessage && <Notice kind="warning">{providerMessage}</Notice>}
-      {sso.loading && <p className="muted" role="status">Checking other sign-in options…</p>}
-      {sso.error && <Notice kind="warning">Other sign-in options could not be loaded. The email and password form is available below. <button type="button" className="text-button" onClick={sso.retry}>Try sign-in options again</button></Notice>}
-      {sso.providers.length > 0 && <div className="auth-form stack"><SsoButtons providers={sso.providers} disabled={busy} busyProvider={providerBusy} onChoose={provider => void continueWithProvider(provider)}/>{providerBusy && <p className="muted" role="status">Opening the provider’s sign-in page…</p>}<p className="muted text-small">Or use your email and password</p></div>}
       <form className="auth-form stack" onSubmit={submit} aria-label={registering ? 'Create account' : 'Sign in'}>
         {registering && <label className="field"><span className="field-label"><Text id="auth.displayName"/></span><input name="display_name" autoComplete="name" required minLength={2} maxLength={100} placeholder="How should we call you?"/></label>}
         <label className="field"><span className="field-label"><Text id="auth.email"/></span><input type="email" name="email" autoComplete="email" required maxLength={254} placeholder="you@yourfarm.eu"/></label>
         <label className="field"><span className="field-label"><Text id="auth.password"/></span><input type="password" name="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 12 : 1} maxLength={256} aria-describedby={registering ? 'password-help' : undefined}/>{registering && <small className="muted" id="password-help">Use at least 12 characters.</small>}</label>
-        <Button type="submit" loading={busy} disabled={providerBusy !== null}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
+        <Button type="submit" loading={busy}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
       </form>
       <p className="auth-switch">{registering ? 'Already have an account?' : 'New to FunkyFarm?'} <Link to={registering ? '/login' : '/register'}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
     </div></main>

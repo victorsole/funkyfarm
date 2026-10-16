@@ -40,7 +40,6 @@ class MainActivity : ComponentActivity() {
     private fun receive(intent: Intent) {
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data ?: return
-            if (uri.scheme == "funkyfarmapp") { intent.data = null; model.completeNativeSignIn(uri); return }
             val match = Regex("^funkyfarm://record/(requests|documents|reports|farms)/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$").matchEntire(uri.toString())
             if (match != null && model.session != null) model.open(match.groupValues[1], match.groupValues[2])
             else model.notify("Sign in, then open the record link again. A link does not grant access.")

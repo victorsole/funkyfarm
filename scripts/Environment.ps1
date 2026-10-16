@@ -31,5 +31,4 @@ $env:FUNKYFARM_COOKIE_SECURE = 'false'
 $env:FUNKYFARM_ALLOWED_ORIGINS = 'http://localhost:5189,http://127.0.0.1:5189'
 $env:FUNKYFARM_PUBLIC_URL = 'http://127.0.0.1:5189'
 $env:FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP = 'true'
-$env:FUNKYFARM_SSO_ALLOW_LOCAL_HTTP = 'true'
 Remove-Variable farmCredential,farmAdmin,farmRuntime

@@ -23,9 +23,6 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict
 import pytest
 
-from oidc_provider import authored_oidc
-
-
 PROJECT = Path(__file__).resolve().parents[1]
 TEST_DATABASE = "funkyfarm_test"
 
@@ -200,7 +197,7 @@ def authored_model():
 
 
 @pytest.fixture(scope="session")
-def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model, authored_oidc):
+def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model):
     runtime_url = checked_database("FUNKYFARM_TEST_DATABASE_URL")
     checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     directory = tmp_path_factory.mktemp("funkyfarm-http")
@@ -226,14 +223,6 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
         "FUNKYFARM_OLLAMA_BASE_URL": authored_model["url"],
         "FUNKYFARM_OLLAMA_MODEL": authored_model["model"],
         "FUNKYFARM_OLLAMA_MODEL_DIGEST": "sha256:" + authored_model["digest"],
-        "FUNKYFARM_SSO_ALLOW_LOCAL_HTTP": "true",
-        "FUNKYFARM_SSO_PROVIDERS": json.dumps([{"id": identifier, "name": name,
-            "issuer": authored_oidc["issuer"], "authorization_endpoint": authored_oidc["issuer"] + "/authorize",
-            "token_endpoint": authored_oidc["issuer"] + "/token", "jwks_uri": authored_oidc["issuer"] + "/jwks",
-            "client_id": client_id, "client_secret": authored_oidc["client_secret"],
-            "reviewed": True, "allow_local_development": True}
-            for identifier, name, client_id in (("authored", "Authored local identity provider", authored_oidc["client_id"]),
-                                              ("authored-security", "Authored security identity provider", "authored-security-client"))]),
     }
     url = f"http://127.0.0.1:{port}/api/v1"
     with (directory / "server.log").open("w+", encoding="utf-8") as log:
@@ -255,46 +244,6 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
             else:
                 log.seek(0)
                 pytest.fail("Dedicated HTTP service did not become ready:\n" + log.read()[-8000:])
-            yield url
-        finally:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-
-
-@pytest.fixture
-def disabled_sso_url(tmp_path, browser_origin):
-    runtime_url = checked_database("FUNKYFARM_TEST_DATABASE_URL")
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        port = reservation.getsockname()[1]
-    url = f"http://127.0.0.1:{port}/api/v1"
-    environment = {**os.environ, "FUNKYFARM_DATABASE_URL": runtime_url,
-        "FUNKYFARM_STORAGE_ROOT": str(tmp_path / "disabled-sso-private-files"),
-        "FUNKYFARM_COOKIE_SECURE": "false", "FUNKYFARM_ALLOWED_ORIGINS": browser_origin,
-        "FUNKYFARM_PUBLIC_URL": url.removesuffix("/api/v1"), "FUNKYFARM_WEB_URL": browser_origin,
-        "FUNKYFARM_SSO_PROVIDERS": "[]", "FUNKYFARM_SSO_ALLOW_LOCAL_HTTP": "true",
-        "FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP": "true", "FUNKYFARM_REGULATORY_MONITOR_ENABLED": "false",
-        "FUNKYFARM_OLLAMA_ENABLED": "false", "PYTHONPATH": str(PROJECT / "services/api")}
-    with (tmp_path / "disabled-sso.log").open("w+", encoding="utf-8") as log:
-        process = subprocess.Popen([sys.executable, "-m", "uvicorn", "funkyfarm.app:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port)],
-            cwd=PROJECT, env=environment, stdout=log, stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        try:
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline and process.poll() is None:
-                try:
-                    if httpx.get(url + "/auth/session", timeout=1).status_code == 401:
-                        break
-                except httpx.TransportError:
-                    pass
-                time.sleep(0.1)
-            else:
-                log.seek(0)
-                pytest.fail("Disabled-SSO service did not become ready:\n" + log.read()[-4000:])
             yield url
         finally:
             process.terminate()
@@ -425,22 +374,6 @@ def farmers(service_url):
             assert changed.rowcount == 1
 
     register.change_generated_membership = change_generated_membership
-
-    def track_sso_session(identity, expected_email):
-        user_id, workspace_id = UUID(identity["user"]["id"]), UUID(identity["workspace"]["id"])
-        if any(farmer.user_id == str(user_id) for farmer in created):
-            return
-        email = identity["user"]["email"]
-        if not expected_email.startswith("journey-") or not expected_email.endswith("@example.invalid"):
-            raise AssertionError("Only this fixture's generated provider identities may be adopted.")
-        if email != expected_email and not email.endswith("@sso.invalid"):
-            raise AssertionError("The SSO session is not the generated provider identity.")
-        with psycopg.connect(admin_url, connect_timeout=5) as connection:
-            retained = connection.execute("SELECT 1 FROM funkyfarm.users u JOIN funkyfarm.workspaces w ON w.owner_id=u.id WHERE u.id=%s AND u.email=%s AND w.id=%s", (user_id, email, workspace_id)).fetchone()
-            assert retained is not None
-        created.append(Farmer(httpx.Client(base_url=service_url + "/", timeout=30), identity, email, ""))
-
-    register.track_sso_session = track_sso_session
 
     def expire_generated_qualification(farmer, profile_id, expires_on):
         if farmer not in created:

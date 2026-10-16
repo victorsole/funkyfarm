@@ -17,4 +17,4 @@ In `apps/web`, run `npm ci` and `npm run dev`. Open `http://127.0.0.1:5189`.
 
 ## Limits
 
-Prepared forms are not government submissions. Legal and country coverage is partial and needs qualified review. Provider sign-in needs configured credentials. iOS and physical-device checks remain pending. Never commit real farm data or `runtime/`.
+Prepared forms are not government submissions. Legal and country coverage is partial and needs qualified review. iOS and physical-device checks remain pending. Never commit real farm data or `runtime/`.
