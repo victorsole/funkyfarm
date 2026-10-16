@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "FunkyFarmers",
+  "short_name": "FunkyFarmers",
+  "description": "Farm work, fields and paperwork, kept together.",
+  "start_url": "/app/home",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f2eb",
+  "theme_color": "#482b43",
+  "icons": [
+    { "src": "/assets/elephant-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Record work", "url": "/app/record-work" },
+    { "name": "My fields", "url": "/app/fields" },
+    { "name": "Paperwork", "url": "/app/paperwork" }
+  ]
+}

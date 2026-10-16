@@ -1,0 +1,17 @@
+.connections-page { max-width: 1080px; }
+.connections-page > .notice { margin-bottom: 24px; }
+.connections-page .connection-picker .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.connections-page .connection-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; flex-wrap: wrap; }
+.connections-page .connection-state { padding: 12px 16px; border-left: 3px solid var(--plum); background: var(--plum-soft); }
+.connections-page .connection-sources { font-size: .85rem; padding-left: 20px; }
+.connections-page .connection-inventory { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+.connections-page .connection-inventory article { margin: 24px 0; padding-left: 18px; border-left: 2px solid var(--line); }
+.connections-page .connection-review, .connections-page .connection-result { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.connections-page .connection-checksum { font-family: 'Cascadia Code', Consolas, monospace; font-size: .72rem; overflow-wrap: anywhere; margin-top: 24px; }
+.connections-page .field { margin-bottom: 20px; }
+.connections-page .check-row { margin: 24px 0; }
+.connections-page .connection-result pre { max-height: 420px; overflow-y: auto; }
+@media (max-width: 760px) {
+  .connections-page .connection-picker .form-grid { grid-template-columns: 1fr; }
+  .connections-page .connection-section-heading { align-items: flex-start; gap: 8px; }
+}
