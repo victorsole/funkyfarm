@@ -15,6 +15,4 @@ Requires Python 3.13, Node 24 and Docker.
 
 In `apps/web`, run `npm ci` and `npm run dev`. Open `http://127.0.0.1:5189`.
 
-## Limits
-
-Prepared forms are not government submissions. Legal and country coverage is partial and needs qualified review. iOS and physical-device checks remain pending. Never commit real farm data or `runtime/`.
+Licensed under [AGPL-3.0-or-later](LICENSE).

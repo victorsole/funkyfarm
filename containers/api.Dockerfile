@@ -19,6 +19,7 @@ RUN apt-get update \
     && chmod 0700 /var/lib/funkyfarm/private-documents
 
 WORKDIR /app
+COPY LICENSE /app/LICENSE
 COPY containers/api-requirements.lock /app/containers/api-requirements.lock
 RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps \
         --requirement /app/containers/api-requirements.lock \

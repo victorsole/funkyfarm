@@ -14,6 +14,7 @@ FROM nginx:1.30.6-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77
 ARG NGINX_CONFIG=containers/nginx.conf
 COPY ${NGINX_CONFIG} /etc/nginx/nginx.conf
 COPY --from=build /project/apps/web/dist /srv/public
+COPY LICENSE /srv/public/LICENSE
 USER 101:101
 EXPOSE 8080
 ENTRYPOINT ["nginx", "-g", "daemon off;"]
