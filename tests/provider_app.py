@@ -14,11 +14,11 @@ import httpx
 
 
 def configure_regulatory_provider():
-    from funkyfarmers import regulatory
-    from funkyfarmers.regulatory_sources import SourceObservation
+    from funkyfarm import regulatory
+    from funkyfarm.regulatory_sources import SourceObservation
 
-    source = json.loads(os.environ["FUNKYFARMERS_TEST_REGULATORY_SOURCE"])
-    endpoint = os.environ["FUNKYFARMERS_TEST_REGULATORY_URL"]
+    source = json.loads(os.environ["FUNKYFARM_TEST_REGULATORY_SOURCE"])
+    endpoint = os.environ["FUNKYFARM_TEST_REGULATORY_URL"]
     if not source["id"].startswith("acceptance-") or urlsplit(endpoint).hostname != "127.0.0.1":
         raise RuntimeError("Authored regulatory fixture must use a generated ID and loopback transport.")
 
@@ -37,11 +37,11 @@ def configure_regulatory_provider():
 
 
 def create_app():
-    from funkyfarmers import satellite
-    from funkyfarmers import regulatory
-    from funkyfarmers.app import create_app as production_app
+    from funkyfarm import satellite
+    from funkyfarm import regulatory
+    from funkyfarm.app import create_app as production_app
 
-    endpoint = os.environ["FUNKYFARMERS_TEST_STAC_URL"]
+    endpoint = os.environ["FUNKYFARM_TEST_STAC_URL"]
     if urlsplit(endpoint).hostname != "127.0.0.1":
         raise RuntimeError("Authored STAC fixture must use loopback.")
 

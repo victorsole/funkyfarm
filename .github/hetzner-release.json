@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "id": "funkyfarmers",
+  "id": "funkyfarm",
   "source": {
-    "repository": "mahmoudelfeelig/funkyfarmers",
+    "repository": "mahmoudelfeelig/funkyfarm",
     "default_branch": "main",
-    "required_workflows": ["FunkyFarmers CI"]
+    "required_workflows": ["FunkyFarm CI"]
   },
   "registry": {
     "host": "registry.elfeel.me",
-    "image_namespace": "apps/funkyfarmers",
-    "release_repository": "releases/funkyfarmers"
+    "image_namespace": "apps/funkyfarm",
+    "release_repository": "releases/funkyfarm"
   },
   "release": {
     "strategy": "source-build",

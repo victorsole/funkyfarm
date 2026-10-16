@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const fixture = JSON.parse(process.env.FUNKYFARMERS_BROWSER_FIXTURES || '{}');
+const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 
 async function signIn(page, who) {
   await page.goto('/login');
@@ -120,7 +120,7 @@ test('adviser accepts a scoped grant, asks for evidence and loses access on revo
   await page.getByLabel('What the farmer needs to provide', { exact: true }).fill('A receipt date alone does not establish when a field treatment happened.');
   await page.getByRole('button', { name: 'Save question for farmer', exact: true }).click();
   await expect(page.getByText('Question saved for the farmer in this workspace.', { exact: true })).toBeVisible();
-  const ownerContext = await browser.newContext({ baseURL: process.env.FUNKYFARMERS_BROWSER_URL, reducedMotion: 'reduce' });
+  const ownerContext = await browser.newContext({ baseURL: process.env.FUNKYFARM_BROWSER_URL, reducedMotion: 'reduce' });
   try {
     const ownerPage = await ownerContext.newPage();
     await signIn(ownerPage, 'owner');
@@ -245,4 +245,37 @@ test('field draft survives reload after invalid geometry and requires comparison
   const current = (await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items;
   expect(current).toHaveLength(1);
   expect(current[0].name).toBe('Authored recoverable field draft');
+});
+
+test('configured SSO links the existing account, signs in and requires explicit unlink confirmation', async ({ page }) => {
+  const providerName = 'Authored local identity provider';
+  await signIn(page, 'seller');
+  await page.goto('/app/settings');
+  await expect(page.getByRole('heading', { name: 'How you sign in', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: `Link ${providerName}`, exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/settings\?sso=linked/);
+  await expect(page.getByRole('button', { name: `Unlink ${providerName}`, exact: true })).toBeEnabled();
+  const linked = await (await page.request.get('/api/v1/auth/session')).json();
+  expect(linked.user.id).toBe(fixture.accounts.seller.user_id);
+  expect(linked.workspace.id).toBe(fixture.accounts.seller.workspace_id);
+  await page.getByRole('heading', { name: 'Your account', exact: true }).locator('..').getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back.', exact: true })).toBeVisible();
+  expect((await page.request.get('/api/v1/auth/session')).status()).toBe(401);
+  await page.getByRole('button', { name: `Continue with ${providerName}`, exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'How you sign in', exact: true })).toBeVisible();
+  const signedIn = await (await page.request.get('/api/v1/auth/session')).json();
+  expect(signedIn.user.id).toBe(fixture.accounts.seller.user_id);
+  expect(signedIn.workspace.id).toBe(fixture.accounts.seller.workspace_id);
+  expect((await page.request.get(`/api/v1/farms/${fixture.private.id}`)).status()).toBe(404);
+  await page.goto('/app/settings');
+  await page.getByRole('button', { name: `Unlink ${providerName}`, exact: true }).click();
+  const confirmation = page.getByRole('button', { name: `Confirm unlink ${providerName}`, exact: true });
+  await expect(confirmation).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'I want to remove this provider as a way to sign in.', exact: true }).check();
+  await confirmation.click();
+  await expect(page).toHaveURL(/\/login\?sso=unlinked$/);
+  expect((await page.request.get('/api/v1/auth/session')).status()).toBe(401);
+  await signIn(page, 'seller');
+  expect((await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}`)).status()).toBe(200);
+  expect(await page.evaluate(() => Object.entries(localStorage).some(([key, value]) => /password|bearer|access_token/i.test(key) || /"token"\s*:/.test(value)))).toBe(false);
 });

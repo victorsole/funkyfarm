@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "FunkyFarmers",
-  "short_name": "FunkyFarmers",
+  "name": "FunkyFarm",
+  "short_name": "FunkyFarm",
   "description": "Farm work, fields and paperwork, kept together.",
   "start_url": "/app/home",
   "scope": "/",

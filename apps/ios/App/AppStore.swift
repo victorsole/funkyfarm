@@ -46,7 +46,22 @@ import UniformTypeIdentifiers
         if register { body["display_name"] = .string(displayName) }
         let response = try JSONDecoder().decode(AuthResponse.self, from: await client.send(register ? "/auth/register" : "/auth/login", method: "POST", body: body))
         guard let token = response.token, !token.isEmpty else { throw ServiceError(status: 0, message: "The service did not return a native bearer token.") }
-        let newAccount = Account(user: response.user, workspace: response.workspace, token: token, baseURL: url.absoluteString)
+        let newAccount = Account(user: response.user, workspace: response.workspace, token: token, csrfToken: response.csrf_token, baseURL: url.absoluteString)
+        try CredentialVault.save(newAccount)
+        try install(newAccount); sessionVerified = true
+        await refresh()
+    }
+    func authenticateSSO(base: String, code: String, verifier: String, redirectURI: String) async throws {
+        guard account == nil, !busy else { throw ServiceError(status: 0, message: "Another sign-in is already in progress. No SSO session was installed.") }
+        let current = generation
+        busy = true; defer { busy = false }
+        let url = try FarmAPI.validatedBase(base)
+        let client = FarmAPI(baseURL: url)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: await client.send("/auth/sso/native/token", method: "POST", body: ["code": .string(code), "code_verifier": .string(verifier), "redirect_uri": .string(redirectURI)]))
+        try Task.checkCancellation()
+        guard current == generation, account == nil else { throw CancellationError() }
+        guard let token = response.token, !token.isEmpty, let csrf = response.csrf_token, !csrf.isEmpty else { throw ServiceError(status: 0, message: "The service returned no complete native session. Start sign-in again.") }
+        let newAccount = Account(user: response.user, workspace: response.workspace, token: token, csrfToken: csrf, baseURL: url.absoluteString)
         try CredentialVault.save(newAccount)
         try install(newAccount); sessionVerified = true
         await refresh()
@@ -136,7 +151,7 @@ import UniformTypeIdentifiers
         let candidate = FarmAPI(baseURL: url, token: old.token, workspaceID: id)
         let verified = try JSONDecoder().decode(AuthResponse.self, from: await candidate.send("/auth/session"))
         guard generation == current, verified.user.id == old.user.id, verified.workspace.id == id else { throw ServiceError(status: 0, message: "The selected workspace was not authorized by the service.") }
-        let next = Account(user: old.user, workspace: Account.Workspace(id: id, name: name, role: role), token: old.token, baseURL: old.baseURL)
+        let next = Account(user: old.user, workspace: Account.Workspace(id: id, name: name, role: role), token: old.token, csrfToken: old.csrfToken, baseURL: old.baseURL)
         try CredentialVault.save(next); try install(next); sessionVerified = true; busy = false
         await refresh()
     }
@@ -337,7 +352,7 @@ import UniformTypeIdentifiers
         if let client { _ = try? await client.send("/auth/logout", method: "POST") }
     }
     func handleURL(_ url: URL) {
-        guard url.scheme == "funkyfarmers", let collection = url.host,
+        guard url.scheme == "funkyfarm", let collection = url.host,
               ["requests", "documents", "farms", "reports", "operations", "purchases", "sales", "facts", "tasks", "checklists"].contains(collection),
               let id = url.pathComponents.last, UUID(uuidString: id) != nil else { return }
         tab = ["requests": 3, "documents": 4, "farms": 2, "reports": 3, "operations": 1, "purchases": 1, "sales": 1, "facts": 3, "tasks": 3, "checklists": 3][collection] ?? 0

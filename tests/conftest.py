@@ -23,9 +23,11 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict
 import pytest
 
+from oidc_provider import authored_oidc
+
 
 PROJECT = Path(__file__).resolve().parents[1]
-TEST_DATABASE = "funkyfarmers_test"
+TEST_DATABASE = "funkyfarm_test"
 
 
 def checked_database(variable):
@@ -85,7 +87,7 @@ def authored_stac():
 
 @pytest.fixture(scope="session")
 def authored_regulatory():
-    admin_url = checked_database("FUNKYFARMERS_TEST_ADMIN_DATABASE_URL")
+    admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     source = {"id": "acceptance-" + uuid4().hex, "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32025R2203",
               "title": "Authored publisher HTTP fixture, not a legal conclusion", "country": "SK", "region": None,
               "workflow_ids": ["inputs"], "source_type": "official_legislation", "source_edition": "authored-response",
@@ -115,9 +117,9 @@ def authored_regulatory():
     def poll():
         # Advance only this generated public source's schedule, never other rows.
         with psycopg.connect(admin_url, connect_timeout=5) as connection:
-            connection.execute("UPDATE funkyfarmers.regulatory_source_state SET next_check_at=now(),lease_until=NULL WHERE source_id=%s AND url=%s", (source["id"], source["url"]))
-        environment = {**os.environ, "FUNKYFARMERS_DATABASE_URL": checked_database("FUNKYFARMERS_TEST_DATABASE_URL"),
-                       "FUNKYFARMERS_TEST_REGULATORY_SOURCE": json.dumps(source), "FUNKYFARMERS_TEST_REGULATORY_URL": endpoint,
+            connection.execute("UPDATE funkyfarm.regulatory_source_state SET next_check_at=now(),lease_until=NULL WHERE source_id=%s AND url=%s", (source["id"], source["url"]))
+        environment = {**os.environ, "FUNKYFARM_DATABASE_URL": checked_database("FUNKYFARM_TEST_DATABASE_URL"),
+                       "FUNKYFARM_TEST_REGULATORY_SOURCE": json.dumps(source), "FUNKYFARM_TEST_REGULATORY_URL": endpoint,
                        "PYTHONPATH": os.pathsep.join([str(PROJECT / "services/api"), str(PROJECT / "tests")])}
         result = subprocess.run([sys.executable, str(PROJECT / "tests/poll_authored_source.py")], env=environment, cwd=PROJECT,
                                 capture_output=True, text=True, timeout=30,
@@ -132,8 +134,8 @@ def authored_regulatory():
         server.server_close()
         worker.join(timeout=5)
         with psycopg.connect(admin_url, connect_timeout=5) as connection:
-            connection.execute("DELETE FROM funkyfarmers.regulatory_source_events WHERE source_id=%s AND source_url=%s", (source["id"], source["url"]))
-            connection.execute("DELETE FROM funkyfarmers.regulatory_source_state WHERE source_id=%s AND url=%s", (source["id"], source["url"]))
+            connection.execute("DELETE FROM funkyfarm.regulatory_source_events WHERE source_id=%s AND source_url=%s", (source["id"], source["url"]))
+            connection.execute("DELETE FROM funkyfarm.regulatory_source_state WHERE source_id=%s AND url=%s", (source["id"], source["url"]))
 
 
 @pytest.fixture(scope="session")
@@ -198,32 +200,40 @@ def authored_model():
 
 
 @pytest.fixture(scope="session")
-def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model):
-    runtime_url = checked_database("FUNKYFARMERS_TEST_DATABASE_URL")
-    checked_database("FUNKYFARMERS_TEST_ADMIN_DATABASE_URL")
-    directory = tmp_path_factory.mktemp("funkyfarmers-http")
+def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model, authored_oidc):
+    runtime_url = checked_database("FUNKYFARM_TEST_DATABASE_URL")
+    checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
+    directory = tmp_path_factory.mktemp("funkyfarm-http")
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
     environment = {
         **os.environ,
-        "FUNKYFARMERS_DATABASE_URL": runtime_url,
-        "FUNKYFARMERS_STORAGE_ROOT": str(directory / "private-files"),
-        "FUNKYFARMERS_COOKIE_SECURE": "false",
-        "FUNKYFARMERS_ALLOWED_ORIGINS": browser_origin + ",http://127.0.0.1:5189,http://localhost:5189",
+        "FUNKYFARM_DATABASE_URL": runtime_url,
+        "FUNKYFARM_STORAGE_ROOT": str(directory / "private-files"),
+        "FUNKYFARM_COOKIE_SECURE": "false",
+        "FUNKYFARM_ALLOWED_ORIGINS": browser_origin + ",http://127.0.0.1:5189,http://localhost:5189",
         "PYTHONPATH": os.pathsep.join([str(PROJECT / "services" / "api"), str(PROJECT / "tests")]),
-        "FUNKYFARMERS_TEST_STAC_URL": authored_stac["url"],
-        "FUNKYFARMERS_PDOK_BASE_URL": authored_stac["url"],
-        "FUNKYFARMERS_TEST_REGULATORY_SOURCE": json.dumps(authored_regulatory["source"]),
-        "FUNKYFARMERS_TEST_REGULATORY_URL": authored_regulatory["url"],
-        "FUNKYFARMERS_REGULATORY_MONITOR_ENABLED": "false",
-        "FUNKYFARMERS_OAUTH_ALLOW_LOCAL_HTTP": "true",
-        "FUNKYFARMERS_PUBLIC_URL": f"http://127.0.0.1:{port}",
-        "FUNKYFARMERS_WEB_URL": browser_origin,
-        "FUNKYFARMERS_OLLAMA_ENABLED": "true",
-        "FUNKYFARMERS_OLLAMA_BASE_URL": authored_model["url"],
-        "FUNKYFARMERS_OLLAMA_MODEL": authored_model["model"],
-        "FUNKYFARMERS_OLLAMA_MODEL_DIGEST": "sha256:" + authored_model["digest"],
+        "FUNKYFARM_TEST_STAC_URL": authored_stac["url"],
+        "FUNKYFARM_PDOK_BASE_URL": authored_stac["url"],
+        "FUNKYFARM_TEST_REGULATORY_SOURCE": json.dumps(authored_regulatory["source"]),
+        "FUNKYFARM_TEST_REGULATORY_URL": authored_regulatory["url"],
+        "FUNKYFARM_REGULATORY_MONITOR_ENABLED": "false",
+        "FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP": "true",
+        "FUNKYFARM_PUBLIC_URL": f"http://127.0.0.1:{port}",
+        "FUNKYFARM_WEB_URL": browser_origin,
+        "FUNKYFARM_OLLAMA_ENABLED": "true",
+        "FUNKYFARM_OLLAMA_BASE_URL": authored_model["url"],
+        "FUNKYFARM_OLLAMA_MODEL": authored_model["model"],
+        "FUNKYFARM_OLLAMA_MODEL_DIGEST": "sha256:" + authored_model["digest"],
+        "FUNKYFARM_SSO_ALLOW_LOCAL_HTTP": "true",
+        "FUNKYFARM_SSO_PROVIDERS": json.dumps([{"id": identifier, "name": name,
+            "issuer": authored_oidc["issuer"], "authorization_endpoint": authored_oidc["issuer"] + "/authorize",
+            "token_endpoint": authored_oidc["issuer"] + "/token", "jwks_uri": authored_oidc["issuer"] + "/jwks",
+            "client_id": client_id, "client_secret": authored_oidc["client_secret"],
+            "reviewed": True, "allow_local_development": True}
+            for identifier, name, client_id in (("authored", "Authored local identity provider", authored_oidc["client_id"]),
+                                              ("authored-security", "Authored security identity provider", "authored-security-client"))]),
     }
     url = f"http://127.0.0.1:{port}/api/v1"
     with (directory / "server.log").open("w+", encoding="utf-8") as log:
@@ -255,11 +265,51 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
                 process.wait(timeout=5)
 
 
+@pytest.fixture
+def disabled_sso_url(tmp_path, browser_origin):
+    runtime_url = checked_database("FUNKYFARM_TEST_DATABASE_URL")
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    url = f"http://127.0.0.1:{port}/api/v1"
+    environment = {**os.environ, "FUNKYFARM_DATABASE_URL": runtime_url,
+        "FUNKYFARM_STORAGE_ROOT": str(tmp_path / "disabled-sso-private-files"),
+        "FUNKYFARM_COOKIE_SECURE": "false", "FUNKYFARM_ALLOWED_ORIGINS": browser_origin,
+        "FUNKYFARM_PUBLIC_URL": url.removesuffix("/api/v1"), "FUNKYFARM_WEB_URL": browser_origin,
+        "FUNKYFARM_SSO_PROVIDERS": "[]", "FUNKYFARM_SSO_ALLOW_LOCAL_HTTP": "true",
+        "FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP": "true", "FUNKYFARM_REGULATORY_MONITOR_ENABLED": "false",
+        "FUNKYFARM_OLLAMA_ENABLED": "false", "PYTHONPATH": str(PROJECT / "services/api")}
+    with (tmp_path / "disabled-sso.log").open("w+", encoding="utf-8") as log:
+        process = subprocess.Popen([sys.executable, "-m", "uvicorn", "funkyfarm.app:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port)],
+            cwd=PROJECT, env=environment, stdout=log, stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        try:
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and process.poll() is None:
+                try:
+                    if httpx.get(url + "/auth/session", timeout=1).status_code == 401:
+                        break
+                except httpx.TransportError:
+                    pass
+                time.sleep(0.1)
+            else:
+                log.seek(0)
+                pytest.fail("Disabled-SSO service did not become ready:\n" + log.read()[-4000:])
+            yield url
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
 @pytest.fixture(scope="session")
 def browser_app(service_url, browser_origin, tmp_path_factory):
-    directory = tmp_path_factory.mktemp("funkyfarmers-browser")
-    environment = {**os.environ, "FUNKYFARMERS_BROWSER_API_URL": service_url.removesuffix("/api/v1")}
-    node = os.environ.get("FUNKYFARMERS_NODE", "node")
+    directory = tmp_path_factory.mktemp("funkyfarm-browser")
+    environment = {**os.environ, "FUNKYFARM_BROWSER_API_URL": service_url.removesuffix("/api/v1")}
+    node = os.environ.get("FUNKYFARM_NODE", "node")
     port = browser_origin.rsplit(":", 1)[1]
     command = [node, str(PROJECT / "apps/web/node_modules/vite/bin/vite.js"),
                "--config", str(PROJECT / "tests/browser/vite.config.mjs"),
@@ -324,7 +374,7 @@ class Farmer:
 
 @pytest.fixture
 def oauth_registration(service_url):
-    admin_url = checked_database("FUNKYFARMERS_TEST_ADMIN_DATABASE_URL")
+    admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     name = "Authored connector " + uuid4().hex
     callback = "https://chatgpt.com/connector_platform_oauth_redirect"
     with httpx.Client(base_url=service_url + "/", timeout=30, follow_redirects=False) as client:
@@ -336,13 +386,13 @@ def oauth_registration(service_url):
             yield {**registered, "callback": callback}
         finally:
             with psycopg.connect(admin_url, connect_timeout=5) as connection:
-                connection.execute("DELETE FROM funkyfarmers.assistant_oauth_requests WHERE data->>'client_id'=%s", (registered["client_id"],))
-                connection.execute("DELETE FROM funkyfarmers.assistant_oauth_clients WHERE client_id=%s AND metadata->>'client_name'=%s", (registered["client_id"], name))
+                connection.execute("DELETE FROM funkyfarm.assistant_oauth_requests WHERE data->>'client_id'=%s", (registered["client_id"],))
+                connection.execute("DELETE FROM funkyfarm.assistant_oauth_clients WHERE client_id=%s AND metadata->>'client_name'=%s", (registered["client_id"], name))
 
 
 @pytest.fixture
 def farmers(service_url):
-    admin_url = checked_database("FUNKYFARMERS_TEST_ADMIN_DATABASE_URL")
+    admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     created = []
 
     def register(name):
@@ -368,7 +418,7 @@ def farmers(service_url):
             raise AssertionError("Only this fixture's generated identities may be changed.")
         with psycopg.connect(admin_url, connect_timeout=5) as connection:
             changed = connection.execute(
-                "UPDATE funkyfarmers.memberships SET permissions=%s "
+                "UPDATE funkyfarm.memberships SET permissions=%s "
                 "WHERE workspace_id=%s AND user_id=%s",
                 (permissions, UUID(farmer.workspace_id), UUID(farmer.user_id)),
             )
@@ -376,12 +426,28 @@ def farmers(service_url):
 
     register.change_generated_membership = change_generated_membership
 
+    def track_sso_session(identity, expected_email):
+        user_id, workspace_id = UUID(identity["user"]["id"]), UUID(identity["workspace"]["id"])
+        if any(farmer.user_id == str(user_id) for farmer in created):
+            return
+        email = identity["user"]["email"]
+        if not expected_email.startswith("journey-") or not expected_email.endswith("@example.invalid"):
+            raise AssertionError("Only this fixture's generated provider identities may be adopted.")
+        if email != expected_email and not email.endswith("@sso.invalid"):
+            raise AssertionError("The SSO session is not the generated provider identity.")
+        with psycopg.connect(admin_url, connect_timeout=5) as connection:
+            retained = connection.execute("SELECT 1 FROM funkyfarm.users u JOIN funkyfarm.workspaces w ON w.owner_id=u.id WHERE u.id=%s AND u.email=%s AND w.id=%s", (user_id, email, workspace_id)).fetchone()
+            assert retained is not None
+        created.append(Farmer(httpx.Client(base_url=service_url + "/", timeout=30), identity, email, ""))
+
+    register.track_sso_session = track_sso_session
+
     def expire_generated_qualification(farmer, profile_id, expires_on):
         if farmer not in created:
             raise AssertionError("Only this fixture's generated identities may be changed.")
         with psycopg.connect(admin_url, connect_timeout=5) as connection:
             changed = connection.execute(
-                "UPDATE funkyfarmers.public_content SET data=jsonb_set(data,'{qualification_expires_on}',to_jsonb(%s::text)) "
+                "UPDATE funkyfarm.public_content SET data=jsonb_set(data,'{qualification_expires_on}',to_jsonb(%s::text)) "
                 "WHERE id=%s AND author_id=%s AND kind='adviser_profile'",
                 (expires_on, UUID(profile_id), UUID(farmer.user_id)),
             )
@@ -395,7 +461,7 @@ def farmers(service_url):
             raise AssertionError("Only this fixture's generated workspaces may be locked.")
         with psycopg.connect(admin_url, connect_timeout=5) as connection:
             record = connection.execute(
-                "SELECT id FROM funkyfarmers.records WHERE id=%s AND workspace_id=%s AND kind=%s FOR UPDATE",
+                "SELECT id FROM funkyfarm.records WHERE id=%s AND workspace_id=%s AND kind=%s FOR UPDATE",
                 (UUID(record_id), UUID(farmer.workspace_id), kind),
             ).fetchone()
             assert record is not None
@@ -430,19 +496,19 @@ def farmers(service_url):
             with psycopg.connect(admin_url, connect_timeout=5) as connection:
                 assert connection.execute("SELECT current_database()").fetchone()[0] == TEST_DATABASE
                 for farmer in created:
-                    connection.execute("DELETE FROM funkyfarmers.workspaces WHERE id=%s", (UUID(farmer.workspace_id),))
+                    connection.execute("DELETE FROM funkyfarm.workspaces WHERE id=%s", (UUID(farmer.workspace_id),))
                 for farmer in created:
-                    connection.execute("DELETE FROM funkyfarmers.users WHERE id=%s AND email=%s", (UUID(farmer.user_id), farmer.email))
+                    connection.execute("DELETE FROM funkyfarm.users WHERE id=%s AND email=%s", (UUID(farmer.user_id), farmer.email))
 
 
 @pytest.fixture
 def community_reviewer(farmers):
     reviewer = farmers("Generated independent community reviewer")
-    admin_url = checked_database("FUNKYFARMERS_TEST_ADMIN_DATABASE_URL")
+    admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     with psycopg.connect(admin_url, connect_timeout=5) as connection:
         configured = connection.execute(
-            "INSERT INTO funkyfarmers.community_reviewers(user_id) "
-            "SELECT id FROM funkyfarmers.users WHERE id=%s AND email=%s",
+            "INSERT INTO funkyfarm.community_reviewers(user_id) "
+            "SELECT id FROM funkyfarm.users WHERE id=%s AND email=%s",
             (UUID(reviewer.user_id), reviewer.email),
         )
         assert configured.rowcount == 1

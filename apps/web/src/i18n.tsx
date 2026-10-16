@@ -13,7 +13,7 @@ export type TranslationKey =
   | 'language.draftNotice';
 
 export const languages = Object.entries(catalogue.languages).map(([code, entry]) => ({ code: code as Language, name: entry.name }));
-const storageKey = 'funkyfarmers.interfaceLanguage';
+const storageKey = 'funkyfarm.interfaceLanguage';
 const translations = new Map<Language, Map<string, string>>();
 for (const { code } of languages) {
   const labels = catalogue.languages[code].labels.split(catalogue.metadata.separator);

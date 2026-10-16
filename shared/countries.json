@@ -1781,7 +1781,7 @@
           ],
           "limitations": [
             "This is the scoped organic-form route, not a universal application import contract.",
-            "FunkyFarmers does not generate or validate this XML or log in to Tast selv.",
+            "FunkyFarm does not generate or validate this XML or log in to Tast selv.",
             "Import is not final submission."
           ],
           "sources": [
@@ -3641,7 +3641,7 @@
           ],
           "limitations": [
             "The source lists services; access and permissions are not universal across them.",
-            "FunkyFarmers has not tested an AgFood account or established a general filing API."
+            "FunkyFarm has not tested an AgFood account or established a general filing API."
           ],
           "sources": [
             {
@@ -4998,7 +4998,7 @@
             "Upload supported parcel GPS geometry such as shapefile, GPX or KML in the official service."
           ],
           "limitations": [
-            "No geometry converter or authority upload is implemented in FunkyFarmers.",
+            "No geometry converter or authority upload is implemented in FunkyFarm.",
             "Geometry upload is not final aid-application filing."
           ],
           "sources": [

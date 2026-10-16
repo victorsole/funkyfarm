@@ -1,6 +1,6 @@
-name: FunkyFarmers
+name: FunkyFarm
 options:
-  bundleIdPrefix: eu.funkyfarmers
+  bundleIdPrefix: eu.funkyfarm
   deploymentTarget:
     iOS: "16.0"
 settings:
@@ -10,7 +10,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
 targets:
-  FunkyFarmers:
+  FunkyFarm:
     type: application
     platform: iOS
     sources:
@@ -26,7 +26,7 @@ targets:
       path: Configuration/App.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarmers.native
+        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarm.native
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
     dependencies:
@@ -44,11 +44,11 @@ targets:
       path: Configuration/Share.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarmers.native.intake
+        PRODUCT_BUNDLE_IDENTIFIER: eu.funkyfarm.native.intake
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 schemes:
-  FunkyFarmers:
+  FunkyFarm:
     build:
       targets:
-        FunkyFarmers: all
+        FunkyFarm: all

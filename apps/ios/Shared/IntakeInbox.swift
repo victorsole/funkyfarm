@@ -12,7 +12,7 @@ struct SharedIntake: Codable, Identifiable {
 // Deliberately contains no account, token, URLSession, or upload capability.
 // Only a reviewed host-app action moves an intake file into an account outbox.
 enum IntakeInbox {
-    static let group = "group.eu.funkyfarmers.intake"
+    static let group = "group.eu.funkyfarm.intake"
     static let maximumFileBytes = 20 * 1_024 * 1_024
     static func directory() throws -> URL {
         guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
@@ -27,7 +27,7 @@ enum IntakeInbox {
     static func save(bytes: Data, filename: String, type: UTType) throws {
         guard bytes.count <= maximumFileBytes else { throw NSError(domain: "Intake", code: 2, userInfo: [NSLocalizedDescriptionKey: "A shared file must be at most 20 MB."]) }
         let root = try directory()
-        guard try list().count < 20 else { throw NSError(domain: "Intake", code: 3, userInfo: [NSLocalizedDescriptionKey: "Review the existing 20 shared files in Funky Farmers before adding more."]) }
+        guard try list().count < 20 else { throw NSError(domain: "Intake", code: 3, userInfo: [NSLocalizedDescriptionKey: "Review the existing 20 shared files in funkyfarm before adding more."]) }
         let id = UUID()
         let stored = id.uuidString + "." + (type.preferredFilenameExtension ?? "bin")
         let item = SharedIntake(id: id, filename: URL(fileURLWithPath: filename).lastPathComponent, storedName: stored, mimeType: type.preferredMIMEType ?? "application/octet-stream", date: Date())

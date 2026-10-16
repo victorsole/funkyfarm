@@ -1,15 +1,15 @@
-name: funkyfarmers-local
+name: funkyfarm-local
 
 services:
   database:
     image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
     environment:
-      POSTGRES_DB: funkyfarmers
-      POSTGRES_USER: funkyfarmers_migrator
-      POSTGRES_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
+      POSTGRES_DB: funkyfarm
+      POSTGRES_USER: funkyfarm_migrator
+      POSTGRES_PASSWORD: ${FUNKYFARM_ADMIN_PASSWORD:?Set FUNKYFARM_ADMIN_PASSWORD}
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
     ports:
-      - "127.0.0.1:${FUNKYFARMERS_DATABASE_PORT:-55439}:5432"
+      - "127.0.0.1:${FUNKYFARM_DATABASE_PORT:-55440}:5432"
     volumes:
       - database:/var/lib/postgresql/data
     networks: [database]
@@ -22,14 +22,14 @@ services:
       start_period: 20s
 
   migrate:
-    image: funkyfarmers-api:local
+    image: funkyfarm-api:local
     build:
       context: .
       dockerfile: containers/api.Dockerfile
     command: [migrate]
     environment:
-      FUNKYFARMERS_ADMIN_PASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
-      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Set FUNKYFARMERS_RUNTIME_PASSWORD}
+      FUNKYFARM_ADMIN_PASSWORD: ${FUNKYFARM_ADMIN_PASSWORD:?Set FUNKYFARM_ADMIN_PASSWORD}
+      FUNKYFARM_RUNTIME_PASSWORD: ${FUNKYFARM_RUNTIME_PASSWORD:?Set FUNKYFARM_RUNTIME_PASSWORD}
     depends_on:
       database: {condition: service_healthy}
     networks: [database]
@@ -40,19 +40,24 @@ services:
     restart: "no"
 
   api:
-    image: funkyfarmers-api:local
+    image: funkyfarm-api:local
     build:
       context: .
       dockerfile: containers/api.Dockerfile
     environment:
-      FUNKYFARMERS_RUNTIME_PASSWORD: ${FUNKYFARMERS_RUNTIME_PASSWORD:?Set FUNKYFARMERS_RUNTIME_PASSWORD}
-      FUNKYFARMERS_ALLOWED_ORIGINS: http://localhost:${FUNKYFARMERS_WEB_PORT:-5189},http://127.0.0.1:${FUNKYFARMERS_WEB_PORT:-5189},http://localhost:${FUNKYFARMERS_API_PORT:-8139},http://127.0.0.1:${FUNKYFARMERS_API_PORT:-8139}
-      FUNKYFARMERS_COOKIE_SECURE: "false"
-      FUNKYFARMERS_CONNECTIONS_KEY: ${FUNKYFARMERS_CONNECTIONS_KEY:?Set a private provider encryption key}
+      FUNKYFARM_RUNTIME_PASSWORD: ${FUNKYFARM_RUNTIME_PASSWORD:?Set FUNKYFARM_RUNTIME_PASSWORD}
+      FUNKYFARM_ALLOWED_ORIGINS: http://localhost:${FUNKYFARM_WEB_PORT:-5189},http://127.0.0.1:${FUNKYFARM_WEB_PORT:-5189},http://localhost:${FUNKYFARM_API_PORT:-8139},http://127.0.0.1:${FUNKYFARM_API_PORT:-8139}
+      FUNKYFARM_COOKIE_SECURE: "false"
+      FUNKYFARM_CONNECTIONS_KEY: ${FUNKYFARM_CONNECTIONS_KEY:?Set a private provider encryption key}
+      FUNKYFARM_PUBLIC_URL: http://127.0.0.1:${FUNKYFARM_WEB_PORT:-5189}
+      FUNKYFARM_SSO_ALLOW_LOCAL_HTTP: "true"
+      FUNKYFARM_SSO_PROVIDERS: ${FUNKYFARM_SSO_PROVIDERS:-[]}
+      FUNKYFARM_GOOGLE_CLIENT_ID: ${FUNKYFARM_GOOGLE_CLIENT_ID:-}
+      FUNKYFARM_GOOGLE_CLIENT_SECRET: ${FUNKYFARM_GOOGLE_CLIENT_SECRET:-}
     ports:
-      - "127.0.0.1:${FUNKYFARMERS_API_PORT:-8139}:8139"
+      - "127.0.0.1:${FUNKYFARM_API_PORT:-8139}:8139"
     volumes:
-      - originals:/var/lib/funkyfarmers/private-documents
+      - originals:/var/lib/funkyfarm/private-documents
     networks: [database, web]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -71,12 +76,12 @@ services:
       start_period: 20s
 
   web:
-    image: funkyfarmers-web:local
+    image: funkyfarm-web:local
     build:
       context: .
       dockerfile: containers/web.Dockerfile
     ports:
-      - "127.0.0.1:${FUNKYFARMERS_WEB_PORT:-5189}:8080"
+      - "127.0.0.1:${FUNKYFARM_WEB_PORT:-5189}:8080"
     depends_on:
       api: {condition: service_healthy}
     networks: [web]
@@ -100,12 +105,12 @@ services:
     entrypoint: [/bin/sh, /tools/backup.sh]
     environment:
       PGHOST: database
-      PGUSER: funkyfarmers_migrator
-      PGDATABASE: funkyfarmers
-      PGPASSWORD: ${FUNKYFARMERS_ADMIN_PASSWORD:?Set FUNKYFARMERS_ADMIN_PASSWORD}
+      PGUSER: funkyfarm_migrator
+      PGDATABASE: funkyfarm
+      PGPASSWORD: ${FUNKYFARM_ADMIN_PASSWORD:?Set FUNKYFARM_ADMIN_PASSWORD}
     volumes:
       - originals:/originals:ro
-      - ${FUNKYFARMERS_BACKUP_DIRECTORY:-./runtime/backups}:/backup
+      - ${FUNKYFARM_BACKUP_DIRECTORY:-./runtime/backups}:/backup
       - ./containers/backup.sh:/tools/backup.sh:ro
       - ./containers/recovery-counts.sql:/tools/recovery-counts.sql:ro
     networks: [database]

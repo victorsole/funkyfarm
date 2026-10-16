@@ -61,6 +61,7 @@ struct Account: Codable, Equatable {
     let user: User
     let workspace: Workspace
     let token: String
+    let csrfToken: String?
     let baseURL: String
     var scope: String { baseURL + "/" + user.id + "/" + workspace.id }
 }
@@ -68,6 +69,7 @@ struct AuthResponse: Decodable {
     let user: Account.User
     let workspace: Account.Workspace
     let token: String?
+    let csrf_token: String?
 }
 struct Pack: Identifiable, Hashable {
     let id: String

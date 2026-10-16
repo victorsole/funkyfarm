@@ -1,11 +1,11 @@
-"""Read-only public smoke checks for the assigned FunkyFarmers production host."""
+"""Read-only public smoke checks for the assigned FunkyFarm production host."""
 
 import json
 import urllib.error
 import urllib.request
 
 
-ORIGIN = "https://funkyfarmers.elfeel.me"
+ORIGIN = "https://funkyfarm.elfeel.me"
 
 
 def main():

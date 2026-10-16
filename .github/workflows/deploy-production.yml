@@ -2,7 +2,7 @@ name: Production release
 
 on:
   workflow_run:
-    workflows: [FunkyFarmers CI]
+    workflows: [FunkyFarm CI]
     branches: [main]
     types: [completed]
 
@@ -19,6 +19,6 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     uses: mahmoudelfeelig/HetznerReleaseGateway/.github/workflows/release.yml@f6319b2dbaf4c1f10230c6425967f34553acd61d
     with:
-      app: funkyfarmers
+      app: funkyfarm
       source_sha: ${{ github.event.workflow_run.head_sha }}
       ci_run_id: ${{ github.event.workflow_run.id }}

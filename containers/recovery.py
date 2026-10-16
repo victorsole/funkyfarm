@@ -1,7 +1,7 @@
 """Explicit local backup and isolated recovery. Never restores over the source.
 
-backup --destination <new directory below runtime/backups> [--project funkyfarmers-local]
-rehearse --bundle <backup directory> --project funkyfarmers-recovery-<unique suffix>
+backup --destination <new directory below runtime/backups> [--project funkyfarm-local]
+rehearse --bundle <backup directory> --project funkyfarm-recovery-<unique suffix>
 
 Rehearsal resources are retained, stopped, for inspection. There is no automatic
 volume deletion and no command that resets the original database.
@@ -111,7 +111,7 @@ def verify_bundle(bundle):
     if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 65536:
         raise ValueError("Backup manifest must be a small regular file.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("format") != "funkyfarmers-local-backup-v1" or set(manifest.get("sha256", {})) != set(FILES):
+    if manifest.get("format") != "funkyfarm-local-backup-v1" or set(manifest.get("sha256", {})) != set(FILES):
         raise ValueError("Backup manifest format is invalid.")
     size = 0
     for name in FILES:
@@ -136,7 +136,7 @@ def backup(arguments):
         raise RuntimeError("Backup requires the selected source database and API to be running.")
     writers = [service for service in ("web", "api") if service in running]
     bundle.mkdir(parents=True, mode=0o700)
-    environment = dict(os.environ, FUNKYFARMERS_BACKUP_DIRECTORY=str(bundle))
+    environment = dict(os.environ, FUNKYFARM_BACKUP_DIRECTORY=str(bundle))
     try:
         run(command + ["stop", "--timeout", "30", *writers])
         run(command + ["--profile", "maintenance", "run", "--rm", "--no-deps", "backup"], environment)
@@ -144,7 +144,7 @@ def backup(arguments):
             raise ValueError("Backup bundle exceeds the size limit; it remains unverified.")
         inspect_archive(bundle / "originals.tar")
         manifest = {
-            "format": "funkyfarmers-local-backup-v1",
+            "format": "funkyfarm-local-backup-v1",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "source_project": arguments.project,
             "sha256": {name: hash_file(bundle / name) for name in FILES},
@@ -160,8 +160,8 @@ def backup(arguments):
 
 
 def unused_project(project):
-    if not re.fullmatch(r"funkyfarmers-recovery-[a-z0-9][a-z0-9-]{7,39}", project):
-        raise ValueError("Recovery requires an explicit fresh funkyfarmers-recovery-<8..40 character suffix> project.")
+    if not re.fullmatch(r"funkyfarm-recovery-[a-z0-9][a-z0-9-]{7,39}", project):
+        raise ValueError("Recovery requires an explicit fresh funkyfarm-recovery-<8..40 character suffix> project.")
     label = f"label=com.docker.compose.project={project}"
     for query in (["docker", "ps", "--all", "--quiet", "--filter", label],
                   ["docker", "volume", "ls", "--quiet", "--filter", label],
@@ -176,9 +176,9 @@ def rehearse(arguments):
     expected_files = inspect_archive(bundle / "originals.tar")
     unused_project(arguments.project)
     environment = dict(os.environ,
-                       FUNKYFARMERS_BACKUP_DIRECTORY=str(bundle),
-                       FUNKYFARMERS_ADMIN_PASSWORD=secrets.token_urlsafe(36),
-                       FUNKYFARMERS_RUNTIME_PASSWORD=secrets.token_urlsafe(36))
+                       FUNKYFARM_BACKUP_DIRECTORY=str(bundle),
+                       FUNKYFARM_ADMIN_PASSWORD=secrets.token_urlsafe(36),
+                       FUNKYFARM_RUNTIME_PASSWORD=secrets.token_urlsafe(36))
     command = compose(arguments.project, recovery=True)
     succeeded = False
     try:
@@ -190,7 +190,7 @@ def rehearse(arguments):
         if json.loads(observed) != json.loads((bundle / "counts.json").read_text(encoding="utf-8")):
             raise RuntimeError("Restored database row counts differ from the captured source.")
         verifier = (
-            "import hashlib,json,pathlib; root=pathlib.Path('/var/lib/funkyfarmers/private-documents'); "
+            "import hashlib,json,pathlib; root=pathlib.Path('/var/lib/funkyfarm/private-documents'); "
             "print(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() "
             "for p in root.rglob('*') if p.is_file()},sort_keys=True))"
         )
@@ -224,7 +224,7 @@ def main():
     actions = parser.add_subparsers(dest="action", required=True)
     capture = actions.add_parser("backup")
     capture.add_argument("--destination", required=True)
-    capture.add_argument("--project", default="funkyfarmers-local")
+    capture.add_argument("--project", default="funkyfarm-local")
     restore = actions.add_parser("rehearse")
     restore.add_argument("--bundle", required=True)
     restore.add_argument("--project", required=True)

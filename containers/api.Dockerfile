@@ -5,18 +5,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/services/api \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    FUNKYFARMERS_STORAGE_ROOT=/var/lib/funkyfarmers/private-documents \
-    FUNKYFARMERS_REPORT_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    FUNKYFARM_STORAGE_ROOT=/var/lib/funkyfarm/private-documents \
+    FUNKYFARM_REPORT_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
        fonts-dejavu-core poppler-utils tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 funkyfarmers \
-    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent funkyfarmers \
-    && mkdir -p /var/lib/funkyfarmers/private-documents \
-    && chown 10001:10001 /var/lib/funkyfarmers/private-documents \
-    && chmod 0700 /var/lib/funkyfarmers/private-documents
+    && groupadd --gid 10001 funkyfarm \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent funkyfarm \
+    && mkdir -p /var/lib/funkyfarm/private-documents \
+    && chown 10001:10001 /var/lib/funkyfarm/private-documents \
+    && chmod 0700 /var/lib/funkyfarm/private-documents
 
 WORKDIR /app
 COPY containers/api-requirements.lock /app/containers/api-requirements.lock
@@ -25,7 +25,7 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps \
     && python -m pip check
 
 # Keep the source layout: the pack resolver locates /app/packs relative to it.
-COPY services/api/funkyfarmers /app/services/api/funkyfarmers
+COPY services/api/funkyfarm /app/services/api/funkyfarm
 COPY packs /app/packs
 COPY locales /app/locales
 COPY shared /app/shared

@@ -13,17 +13,17 @@ def main():
         value = json.load(response)
         if value.get("status") != "ok" or value.get("database") != "postgresql" or value.get("isolation") != "force_rls":
             raise RuntimeError("Database/runtime health check failed")
-    root = Path(os.environ["FUNKYFARMERS_STORAGE_ROOT"])
+    root = Path(os.environ["FUNKYFARM_STORAGE_ROOT"])
     info = root.lstat()
     if root.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
         raise RuntimeError("Private originals directory permissions are invalid")
     os.umask(0o077)
     with tempfile.TemporaryFile(dir=root) as probe:
-        probe.write(b"funkyfarmers-private-volume-health")
+        probe.write(b"funkyfarm-private-volume-health")
         probe.flush()
         os.fsync(probe.fileno())
         probe.seek(0)
-        if probe.read() != b"funkyfarmers-private-volume-health":
+        if probe.read() != b"funkyfarm-private-volume-health":
             raise RuntimeError("Private originals write/read check failed")
 
 

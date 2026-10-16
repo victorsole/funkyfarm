@@ -1,6 +1,6 @@
 /* This cache contains public application files only. Farm API responses and
    original documents always go directly to the server. */
-const CACHE = 'funkyfarmers-public-shell-v2';
+const CACHE = 'funkyfarm-public-shell-v2';
 const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/elephant-logo.png'];
 
 self.addEventListener('install', event => {
@@ -19,7 +19,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const names = await caches.keys();
-    await Promise.all(names.filter(name => name.startsWith('funkyfarmers-public-shell-') && name !== CACHE).map(name => caches.delete(name)));
+    await Promise.all(names.filter(name => name.startsWith('funkyfarm-public-shell-') && name !== CACHE).map(name => caches.delete(name)));
     await self.clients.claim();
   })());
 });
@@ -33,7 +33,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       try { return await fetch(request); }
       catch {
-        return await caches.match('/') ?? await caches.match('/offline.html') ?? new Response('Reconnect to open FunkyFarmers.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+        return await caches.match('/') ?? await caches.match('/offline.html') ?? new Response('Reconnect to open FunkyFarm.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
       }
     })());
     return;

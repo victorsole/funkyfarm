@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiError, errorMessage } from '../api';
 import { Button, Field, Notice, PageHeader } from '../components';
 import { useRecords } from '../hooks';
 import { useSession } from '../auth';
 import type { Pack, Page, RecordItem } from '../types';
 import { countries, useReviewAccess } from './Core';
+import { SsoButtons, ssoReturnMessage, startSso, useSsoProviders, type SsoProvider } from '../sso';
 
 const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
 const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
@@ -39,5 +40,73 @@ export function SettingsPage() {
   const {session,logout} = useSession(); const [settings,setSettings] = useState<RecordItem | null>(null); const [error,setError] = useState<unknown>(null); const [busy,setBusy] = useState(false); const [saved,setSaved] = useState(false);
   async function load(){setError(null);try{setSettings(await api.get('/account'));}catch(e){setError(e);}}
   useEffect(()=>{void load();},[]);
-  return <><PageHeader title="Make yourself at home" description="Language and defaults belong to your account. Choosing a language never changes a farm's country."/><ErrorNotice error={error}/>{saved && <Notice kind="success">Your preferences are saved.</Notice>}{settings ? <section className="card"><form key={settings.revision} className="stack" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);setBusy(true);setError(null);setSaved(false);try{setSettings(await api.patch('/account',{expected_revision:settings.revision,data:{language:f.get('language'),country:f.get('country')||null,region:f.get('region')||null,reporting_year:Number(f.get('reporting_year')),notifications:f.get('notifications')==='on'}}));setSaved(true);}catch(e){setError(e);}finally{setBusy(false);}}}><div className="form-grid"><Field label="Preferred language"><select name="language" defaultValue={settings.data.language || 'en'}>{languages.map(l=><option value={l} key={l}>{languageNames.of(l)}{l==='en'?'':' — draft interface labels'}</option>)}</select></Field><Field label="Default country"><select name="country" defaultValue={settings.data.country||''}><option value="">Choose when adding a farm</option>{countries.map(c=><option key={c} value={c}>{countryNames.of(c)}</option>)}</select></Field><Field label="Default region"><input name="region" defaultValue={settings.data.region||''}/></Field><Field label="Default reporting year"><input name="reporting_year" type="number" min="1900" max="2200" defaultValue={settings.data.reporting_year||new Date().getFullYear()} required/></Field></div><label><input name="notifications" type="checkbox" defaultChecked={settings.data.notifications===true}/> Show workspace notifications</label><p className="muted">Notifications are shown inside the workspace. Saving this preference does not enable email or device reminders.</p><div className="actions"><Button type="submit" loading={busy}>Save preferences</Button>{error instanceof ApiError && error.status===409 && <Button variant="secondary" onClick={()=>void load()}>Load latest preferences</Button>}</div></form></section>:!error&&<Notice>Opening preferences…</Notice>}<section className="card"><h2>Your account</h2><p>{session?.user.display_name} · {session?.user.email}</p><p>{session?.workspace.name} · {session?.workspace.role}</p><Button variant="secondary" loading={busy} onClick={async()=>{setBusy(true);try{await logout();}catch(e){setError(e);}finally{setBusy(false);}}}>Sign out</Button></section></>;
+  return <><PageHeader title="Make yourself at home" description="Language and defaults belong to your account. Choosing a language never changes a farm's country."/><ErrorNotice error={error}/>{saved && <Notice kind="success">Your preferences are saved.</Notice>}{settings ? <section className="card"><form key={settings.revision} className="stack" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);setBusy(true);setError(null);setSaved(false);try{setSettings(await api.patch('/account',{expected_revision:settings.revision,data:{language:f.get('language'),country:f.get('country')||null,region:f.get('region')||null,reporting_year:Number(f.get('reporting_year')),notifications:f.get('notifications')==='on'}}));setSaved(true);}catch(e){setError(e);}finally{setBusy(false);}}}><div className="form-grid"><Field label="Preferred language"><select name="language" defaultValue={settings.data.language || 'en'}>{languages.map(l=><option value={l} key={l}>{languageNames.of(l)}{l==='en'?'':' — draft interface labels'}</option>)}</select></Field><Field label="Default country"><select name="country" defaultValue={settings.data.country||''}><option value="">Choose when adding a farm</option>{countries.map(c=><option key={c} value={c}>{countryNames.of(c)}</option>)}</select></Field><Field label="Default region"><input name="region" defaultValue={settings.data.region||''}/></Field><Field label="Default reporting year"><input name="reporting_year" type="number" min="1900" max="2200" defaultValue={settings.data.reporting_year||new Date().getFullYear()} required/></Field></div><label><input name="notifications" type="checkbox" defaultChecked={settings.data.notifications===true}/> Show workspace notifications</label><p className="muted">Notifications are shown inside the workspace. Saving this preference does not enable email or device reminders.</p><div className="actions"><Button type="submit" loading={busy}>Save preferences</Button>{error instanceof ApiError && error.status===409 && <Button variant="secondary" onClick={()=>void load()}>Load latest preferences</Button>}</div></form></section>:!error&&<Notice>Opening preferences…</Notice>}<AccountSignInMethods/><section className="card"><h2>Your account</h2><p>{session?.user.display_name} · {session?.user.email}</p><p>{session?.workspace.name} · {session?.workspace.role}</p><Button variant="secondary" loading={busy} onClick={async()=>{setBusy(true);try{await logout();}catch(e){setError(e);}finally{setBusy(false);}}}>Sign out</Button></section></>;
+}
+
+type LinkedSso = { id: string; provider_id: string; provider_name: string; email?: string; can_unlink: boolean };
+function AccountSignInMethods() {
+  const sso = useSsoProviders();
+  const { session } = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const callbackMessage = ssoReturnMessage(location.search);
+  const [accounts, setAccounts] = useState<LinkedSso[]>([]);
+  const [passwordEnabled, setPasswordEnabled] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [providerBusy, setProviderBusy] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+  const [remove, setRemove] = useState<LinkedSso | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const result = await api.get<{ items: LinkedSso[]; password_enabled: boolean }>('/auth/sso/accounts');
+      setAccounts(result.items); setPasswordEnabled(result.password_enabled);
+    } catch (failure) { setError(errorMessage(failure)); } finally { setLoading(false); }
+  }
+  useEffect(() => {
+    let active = true;
+    api.get<{ items: LinkedSso[]; password_enabled: boolean }>('/auth/sso/accounts').then(result => { if (active) { setAccounts(result.items); setPasswordEnabled(result.password_enabled); } }).catch(failure => { if (active) setError(errorMessage(failure)); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+  async function link(provider: SsoProvider) {
+    setProviderBusy(provider.id); setError(''); setMessage('');
+    try { await startSso(provider, 'link', '/app/settings'); }
+    catch (failure) { setError(errorMessage(failure)); setProviderBusy(null); }
+  }
+  async function unlink() {
+    if (!remove || !confirmed) return;
+    setUnlinking(remove.id); setError(''); setMessage('');
+    try {
+      const result = await api.post<{ unlinked: boolean; signed_out: boolean }>(`/auth/sso/accounts/${encodeURIComponent(remove.id)}/unlink`, {});
+      if (result.unlinked && result.signed_out) {
+        let outcome = 'unlinked';
+        if (session) {
+          try { const { purgeAccount } = await import('../offline'); await purgeAccount(`${session.user.id}/${session.workspace.id}`); }
+          catch { outcome = 'unlinked_drafts_retained'; }
+        }
+        window.dispatchEvent(new Event('session-expired'));
+        navigate(`/login?sso=${outcome}`, { replace: true });
+        return;
+      }
+      setAccounts(previous => previous.filter(account => account.id !== remove.id));
+      setRemove(null); setConfirmed(false);
+      await load(); setMessage('The sign-in connection was removed. Your farm records and other sign-in methods have not been removed.');
+    } catch (failure) { setError(errorMessage(failure)); } finally { setUnlinking(null); }
+  }
+  const available = sso.providers.filter(provider => !accounts.some(account => account.provider_id === provider.id));
+  return <section className="card"><h2>How you sign in</h2><p>Link a provider to sign in to this same account. This does not grant an assistant access to your farm or change anyone’s farm permissions.</p>
+    {callbackMessage && <Notice kind="warning">{callbackMessage}</Notice>}
+    {error && <Notice kind="error">{error}<div><Button variant="ghost" onClick={() => void load()}>Reload sign-in methods</Button></div></Notice>}{message && <Notice kind="success">{message}</Notice>}
+    {loading ? <p role="status" className="muted">Opening your sign-in methods…</p> : <>
+      {passwordEnabled !== null && <p className="muted">Email and password sign-in: {passwordEnabled ? 'available' : 'not set up for this account'}.</p>}
+      {accounts.length ? <ul className="record-list">{accounts.map(account => <li key={account.id}><div className="record-row"><div className="record-main"><strong>{account.provider_name}</strong>{account.email && <span className="muted">{account.email}</span>}<span className="muted">Linked to this account</span></div><Button variant="secondary" disabled={!account.can_unlink || providerBusy !== null || unlinking !== null} onClick={() => { setRemove(account); setConfirmed(false); }}>{`Unlink ${account.provider_name}`}</Button></div>{!account.can_unlink && <p className="muted text-small">Keep another working sign-in method before removing this connection.</p>}</li>)}</ul> : <p className="muted">No provider sign-in is linked to this account.</p>}
+      {remove && <fieldset className="stack"><legend>{`Remove ${remove.provider_name} sign-in?`}</legend><p>Your farm records stay in your account. Removing this provider signs you out on all devices and removes this account’s unsaved encrypted form drafts from this device. Save any unfinished work to the farm workspace first. You will need another working sign-in method.</p><label className="check-row"><input type="checkbox" checked={confirmed} disabled={unlinking !== null} onChange={event => setConfirmed(event.target.checked)}/>I want to remove this provider as a way to sign in.</label><div className="actions"><Button variant="danger" disabled={!confirmed} loading={unlinking !== null} onClick={() => void unlink()}>{`Confirm unlink ${remove.provider_name}`}</Button><Button variant="secondary" disabled={unlinking !== null} onClick={() => { setRemove(null); setConfirmed(false); }}>Keep this connection</Button></div></fieldset>}
+      {sso.loading && <p role="status" className="muted">Checking available providers…</p>}{sso.error && <Notice kind="warning">Other provider options could not be loaded. <button type="button" className="text-button" onClick={sso.retry}>Try provider options again</button></Notice>}
+      {available.length > 0 && <div className="admin-subsection"><h3>Link another sign-in method</h3><p>You will continue on the provider’s own sign-in page. Choose the account you want to link.</p><SsoButtons providers={available} mode="link" disabled={unlinking !== null || remove !== null} busyProvider={providerBusy} onChoose={provider => void link(provider)}/>{providerBusy && <p role="status" className="muted">Opening the provider’s sign-in page…</p>}</div>}
+      {!sso.loading && !sso.error && !sso.providers.length && <p className="muted">The site owner has not configured any provider sign-in options.</p>}
+    </>}
+  </section>;
 }

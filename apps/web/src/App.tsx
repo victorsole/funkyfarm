@@ -20,6 +20,7 @@ import { CompliancePage, UpdatesPage } from './pages/Compliance';
 import { CommunityPage } from './pages/Community';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
+import { SsoButtons, ssoReturnMessage, startSso, useSsoProviders, type SsoProvider } from './sso';
 import './pages/administration.css';
 
 const primary = [
@@ -105,7 +106,7 @@ function Shell() {
   useEffect(() => {
     const page = primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
       ?? secondary.find(([path]) => location.pathname.startsWith(`/app/${path}`))?.[1] ?? 'Workspace';
-    document.title = `${page} · FunkyFarmers`;
+    document.title = `${page} · FunkyFarm`;
     if (location.hash) {
       let fragment = location.hash.slice(1);
       try { fragment = decodeURIComponent(fragment); } catch { /* Keep malformed fragments harmless. */ }
@@ -124,7 +125,7 @@ function Shell() {
   return <div className="workspace-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
-      <Link to="/app/home" className="brand" aria-label="FunkyFarmers home"><BrandMark /><span>funky<span className="brand-second">farmers<span className="brand-dot">.</span></span></span></Link>
+      <Link to="/app/home" className="brand" aria-label="funkyfarm home"><BrandMark /><span>funky<span className="brand-second">farm<span className="brand-dot">.</span></span></span></Link>
       <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name} · {workspace.role}</option>)}</select> : <strong>{session?.workspace.name}</strong>}</div>
       <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{t(item.label as TranslationKey)}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
       <div className="sidebar-bottom"><p className="sidebar-note">A little less paperwork.<br/>More time for the farm.</p><span className="private-label"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="6" width="9" height="7" rx="1"/><path d="M3.5 6V3.5a2.5 2.5 0 0 1 5 0V6"/></svg> Private farm records</span></div>
@@ -152,7 +153,7 @@ function Shell() {
         {logoutError && <Notice kind="error">{logoutError}</Notice>}
         <div className="page-enter" key={location.pathname}><PageBoundary><Outlet /></PageBoundary></div>
       </main>
-      <footer className="workspace-footer"><span>FunkyFarmers · The farm folio</span><Link to="/app/help">Help with the paperwork</Link></footer>
+      <footer className="workspace-footer"><span>FunkyFarm · The farm folio</span><Link to="/app/help">Help with the paperwork</Link></footer>
     </div>
   </div>;
 }
@@ -164,7 +165,10 @@ function AuthPage() {
   const registering = location.pathname === '/register';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · FunkyFarmers`; }, [registering]);
+  const sso = useSsoProviders();
+  const [providerBusy, setProviderBusy] = useState<string | null>(null);
+  const providerMessage = ssoReturnMessage(location.search);
+  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · FunkyFarm`; }, [registering]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -177,9 +181,14 @@ function AuthPage() {
       navigate(location.pathname.startsWith('/app/') ? location.pathname + location.search : '/app/home', { replace: true });
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
+  async function continueWithProvider(provider: SsoProvider) {
+    setProviderBusy(provider.id); setError(null);
+    try { await startSso(provider, 'login', location.pathname + location.search + location.hash); }
+    catch (failure) { setError(errorMessage(failure)); setProviderBusy(null); }
+  }
   return <div className="auth-layout">
     <section className="auth-story">
-      <Link className="brand" to="/"><BrandMark/><span>funky<span className="brand-second">farmers.</span></span></Link>
+      <Link className="brand" to="/"><BrandMark/><span>funky<span className="brand-second">farm.</span></span></Link>
       <div className="auth-story-content"><p className="eyebrow">The farm folio</p><h1>Good records.<br/>Room to grow.</h1><p>Keep farm work, field details and paperwork together, ready when you need them.</p>
         <div className="folio-illustration" aria-hidden="true"><div className="folio-back"/><div className="folio-sheet"><div className="sheet-heading"><BrandMark/><span>THE FARM<br/>FOLIO / 01</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-box"><span>Farm work. Fields. Paperwork.</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-signature">Ready when you need it.</div></div><div className="folio-stamp">KEPT<br/>TOGETHER</div></div>
       </div><p className="auth-footnote">Your farm records, kept together.</p>
@@ -188,13 +197,17 @@ function AuthPage() {
       <LanguagePicker/><p className="translation-note"><Text id="language.draftNotice"/></p>
       <p className="eyebrow">{registering ? 'A fresh page' : 'Pick up where you left off'}</p><h2>{registering ? 'Make yourself at home.' : 'Welcome back.'}</h2><p className="muted">{registering ? 'Create your private farm workspace.' : 'Sign in to open your farm workspace.'}</p>
       {sessionError && <Notice kind="warning">{sessionError} <button className="text-button" type="button" onClick={() => void refresh()}><Text id="common.retry"/></button></Notice>}{error && <Notice kind="error">{error}</Notice>}
+      {providerMessage && <Notice kind="warning">{providerMessage}</Notice>}
+      {sso.loading && <p className="muted" role="status">Checking other sign-in options…</p>}
+      {sso.error && <Notice kind="warning">Other sign-in options could not be loaded. The email and password form is available below. <button type="button" className="text-button" onClick={sso.retry}>Try sign-in options again</button></Notice>}
+      {sso.providers.length > 0 && <div className="auth-form stack"><SsoButtons providers={sso.providers} disabled={busy} busyProvider={providerBusy} onChoose={provider => void continueWithProvider(provider)}/>{providerBusy && <p className="muted" role="status">Opening the provider’s sign-in page…</p>}<p className="muted text-small">Or use your email and password</p></div>}
       <form className="auth-form stack" onSubmit={submit} aria-label={registering ? 'Create account' : 'Sign in'}>
         {registering && <label className="field"><span className="field-label"><Text id="auth.displayName"/></span><input name="display_name" autoComplete="name" required minLength={2} maxLength={100} placeholder="How should we call you?"/></label>}
         <label className="field"><span className="field-label"><Text id="auth.email"/></span><input type="email" name="email" autoComplete="email" required maxLength={254} placeholder="you@yourfarm.eu"/></label>
         <label className="field"><span className="field-label"><Text id="auth.password"/></span><input type="password" name="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 12 : 1} maxLength={256} aria-describedby={registering ? 'password-help' : undefined}/>{registering && <small className="muted" id="password-help">Use at least 12 characters.</small>}</label>
-        <Button type="submit" loading={busy}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
+        <Button type="submit" loading={busy} disabled={providerBusy !== null}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
       </form>
-      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to FunkyFarmers?'} <Link to={registering ? '/login' : '/register'}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
+      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to FunkyFarm?'} <Link to={registering ? '/login' : '/register'}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
     </div></main>
   </div>;
 }

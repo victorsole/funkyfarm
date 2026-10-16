@@ -3,7 +3,7 @@ import Security
 import CryptoKit
 
 enum CredentialVault {
-    private static let service = "eu.funkyfarmers.session"
+    private static let service = "eu.funkyfarm.session"
     static func save(_ account: Account) throws {
         let bytes = try JSONEncoder().encode(account)
         try clear()
@@ -11,10 +11,10 @@ enum CredentialVault {
             kSecAttrAccount: "current", kSecValueData: bytes,
             kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly] as CFDictionary, nil)
         guard result == errSecSuccess else { throw ServiceError(status: 0, message: "Could not store the session securely (\(result)).") }
-        UserDefaults.standard.set(false, forKey: "FunkyFarmersSignedOut")
+        UserDefaults.standard.set(false, forKey: "FunkyFarmSignedOut")
     }
     static func load() -> Account? {
-        guard !UserDefaults.standard.bool(forKey: "FunkyFarmersSignedOut") else { return nil }
+        guard !UserDefaults.standard.bool(forKey: "FunkyFarmSignedOut") else { return nil }
         var value: CFTypeRef?
         let result = SecItemCopyMatching([kSecClass: kSecClassGenericPassword, kSecAttrService: service,
             kSecAttrAccount: "current", kSecReturnData: true, kSecMatchLimit: kSecMatchLimitOne] as CFDictionary, &value)
@@ -23,7 +23,7 @@ enum CredentialVault {
     }
     static func clear() throws {
         // A failed Keychain removal must never restore a signed-out session on next launch.
-        UserDefaults.standard.set(true, forKey: "FunkyFarmersSignedOut")
+        UserDefaults.standard.set(true, forKey: "FunkyFarmSignedOut")
         let result = SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service] as CFDictionary)
         guard result == errSecSuccess || result == errSecItemNotFound else { throw ServiceError(status: 0, message: "Could not remove the Keychain session (\(result)). Automatic restoration is disabled.") }
     }

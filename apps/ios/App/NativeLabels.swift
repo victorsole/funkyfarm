@@ -9,11 +9,11 @@ import SwiftUI
         let additional: [String: [String: String]]?
     }
     @Published var selection: String {
-        didSet { UserDefaults.standard.set(selection, forKey: "FunkyFarmersLanguage") }
+        didSet { UserDefaults.standard.set(selection, forKey: "FunkyFarmLanguage") }
     }
     private let catalogue: Catalogue?
     init() {
-        selection = UserDefaults.standard.string(forKey: "FunkyFarmersLanguage") ?? "system"
+        selection = UserDefaults.standard.string(forKey: "FunkyFarmLanguage") ?? "system"
         if let url = Bundle.main.url(forResource: "interface", withExtension: "json"), let bytes = try? Data(contentsOf: url) { catalogue = try? JSONDecoder().decode(Catalogue.self, from: bytes) }
         else { catalogue = nil }
     }

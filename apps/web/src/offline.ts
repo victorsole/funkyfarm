@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import { useSession } from './auth';
 
-const DATABASE = 'funkyfarmers-private-drafts-v1';
+const DATABASE = 'funkyfarm-private-drafts-v1';
 const encoder = new TextEncoder();
 let connection: Promise<IDBDatabase> | undefined;
 const queues = new Map<string, Promise<unknown>>();
 const blockedAccounts = new Set<string>();
-const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('funkyfarmers-private-drafts');
+const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('funkyfarm-private-drafts');
 if (channel) channel.onmessage = event => {
   if (event.data?.type === 'purge' && typeof event.data.account === 'string') {
     blockedAccounts.add(event.data.account);
@@ -38,7 +38,7 @@ function database() {
         db.createObjectStore('drafts', { keyPath: ['scope', 'name'] });
       };
       request.onerror = () => { connection = undefined; reject(new Error('The browser could not open private draft storage. Keep this form open until you save it.')); };
-      request.onblocked = () => { connection = undefined; reject(new Error('Another open tab is blocking private draft storage. Close older FunkyFarmers tabs and try again.')); };
+      request.onblocked = () => { connection = undefined; reject(new Error('Another open tab is blocking private draft storage. Close older FunkyFarm tabs and try again.')); };
       request.onsuccess = () => {
         const db = request.result;
         db.onversionchange = () => { db.close(); connection = undefined; };
@@ -69,7 +69,7 @@ function serialized<T>(scope: string, operation: () => Promise<T>): Promise<T> {
   const pending = previous.catch(() => undefined).then(async (): Promise<T> => {
     if (navigator.locks) {
       return await new Promise<T>((resolve, reject) => {
-        void navigator.locks.request(`funkyfarmers-drafts:${owner}`, async () => {
+        void navigator.locks.request(`funkyfarm-drafts:${owner}`, async () => {
           try { resolve(await operation()); }
           catch (failure) { reject(failure); }
         }).catch(reject);

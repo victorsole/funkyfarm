@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "name": "FunkyFarmers",
+  "name": "FunkyFarm",
   "locked_on": "2026-10-16",
   "purpose": "Keep the records a farmer will need, complete paperwork, and handle corrections with as little repeated entry as possible.",
   "farmer_pages": ["Home", "Record work", "My fields", "Paperwork", "Documents"],
@@ -25,7 +25,7 @@
     "Farm data remains private across accounts and adviser grants."
   ],
   "external_gates": ["Agency credentials and software approval", "Country and regional rule review", "Consented grower validation", "Fluent language review", "Actual Claude and ChatGPT account acceptance", "Mac/Xcode and physical-device verification"],
-  "deployment": {"github_visibility": "private", "host": "existing Hetzner release platform", "domain": "funkyfarmers.elfeel.me", "dns": "Cloudflare", "requirement": "Immutable release with app-specific isolation, health checks, backup and rollback"},
+  "deployment": {"github_visibility": "private", "host": "existing Hetzner release platform", "domain": "funkyfarm.elfeel.me", "dns": "Cloudflare", "requirement": "Immutable release with app-specific isolation, health checks, backup and rollback"},
   "acceptance": ["Complete farmer workflow", "Complete scoped adviser workflow", "Import and correction workflows", "Field and satellite review", "AI permission boundaries", "Tenant isolation", "Web and native client checks", "Private storage recovery", "Live HTTPS verification"],
   "verification_policy": "One integrated final workflow pass after source freeze; fix and rerun only affected failures. Never claim unavailable external evidence."
 }

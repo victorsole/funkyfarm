@@ -19,16 +19,17 @@ if (-not $farmCredential.PSObject.Properties['Connections']) {
 }
 $farmAdmin = [Net.NetworkCredential]::new('', $farmCredential.Admin).Password
 $farmRuntime = [Net.NetworkCredential]::new('', $farmCredential.Runtime).Password
-$env:FUNKYFARMERS_ADMIN_PASSWORD = $farmAdmin
-$env:FUNKYFARMERS_RUNTIME_PASSWORD = $farmRuntime
-$env:FUNKYFARMERS_ADMIN_DATABASE_URL = "postgresql://funkyfarmers_admin:${farmAdmin}@127.0.0.1:55439/funkyfarmers"
-$env:FUNKYFARMERS_DATABASE_URL = "postgresql://funkyfarmers_app:${farmRuntime}@127.0.0.1:55439/funkyfarmers"
-$env:FUNKYFARMERS_TEST_ADMIN_DATABASE_URL = "postgresql://funkyfarmers_admin:${farmAdmin}@127.0.0.1:55439/funkyfarmers_test"
-$env:FUNKYFARMERS_TEST_DATABASE_URL = "postgresql://funkyfarmers_app:${farmRuntime}@127.0.0.1:55439/funkyfarmers_test"
-$env:FUNKYFARMERS_STORAGE_ROOT = Join-Path $farmPrivate 'documents'
-$env:FUNKYFARMERS_CONNECTIONS_KEY = [Net.NetworkCredential]::new('', $farmCredential.Connections).Password
-$env:FUNKYFARMERS_COOKIE_SECURE = 'false'
-$env:FUNKYFARMERS_ALLOWED_ORIGINS = 'http://localhost:5189,http://127.0.0.1:5189'
-$env:FUNKYFARMERS_PUBLIC_URL = 'http://127.0.0.1:5189'
-$env:FUNKYFARMERS_OAUTH_ALLOW_LOCAL_HTTP = 'true'
+$env:FUNKYFARM_ADMIN_PASSWORD = $farmAdmin
+$env:FUNKYFARM_RUNTIME_PASSWORD = $farmRuntime
+$env:FUNKYFARM_ADMIN_DATABASE_URL = "postgresql://funkyfarm_admin:${farmAdmin}@127.0.0.1:55440/funkyfarm"
+$env:FUNKYFARM_DATABASE_URL = "postgresql://funkyfarm_app:${farmRuntime}@127.0.0.1:55440/funkyfarm"
+$env:FUNKYFARM_TEST_ADMIN_DATABASE_URL = "postgresql://funkyfarm_admin:${farmAdmin}@127.0.0.1:55440/funkyfarm_test"
+$env:FUNKYFARM_TEST_DATABASE_URL = "postgresql://funkyfarm_app:${farmRuntime}@127.0.0.1:55440/funkyfarm_test"
+$env:FUNKYFARM_STORAGE_ROOT = Join-Path $farmPrivate 'documents'
+$env:FUNKYFARM_CONNECTIONS_KEY = [Net.NetworkCredential]::new('', $farmCredential.Connections).Password
+$env:FUNKYFARM_COOKIE_SECURE = 'false'
+$env:FUNKYFARM_ALLOWED_ORIGINS = 'http://localhost:5189,http://127.0.0.1:5189'
+$env:FUNKYFARM_PUBLIC_URL = 'http://127.0.0.1:5189'
+$env:FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP = 'true'
+$env:FUNKYFARM_SSO_ALLOW_LOCAL_HTTP = 'true'
 Remove-Variable farmCredential,farmAdmin,farmRuntime

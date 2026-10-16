@@ -2,8 +2,8 @@
 !pyproject.toml
 !services/
 !services/api/
-!services/api/funkyfarmers/
-!services/api/funkyfarmers/**
+!services/api/funkyfarm/
+!services/api/funkyfarm/**
 !packs/
 !packs/**
 !locales/

@@ -18,7 +18,7 @@ import urllib.request
 
 
 MANIFEST_DIGEST = "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7"
-ALIAS = "funkyfarmers-qwen3:" + MANIFEST_DIGEST
+ALIAS = "funkyfarm-qwen3:" + MANIFEST_DIGEST
 TOTAL_BYTES = 2497293931
 MAX_CACHE_BYTES = 3 * 1024**3
 MIN_FREE_BYTES = 8 * 1024**3
@@ -93,7 +93,7 @@ def download_blob(blob, *, root=None, opener=None):
         temporary.unlink()
     request = urllib.request.Request(
         "https://registry.ollama.ai/v2/library/qwen3/blobs/" + blob["digest"],
-        headers={"User-Agent": "FunkyFarmers-Pinned-Model-Cache/1.0"},
+        headers={"User-Agent": "FunkyFarm-Pinned-Model-Cache/1.0"},
     )
     opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
     digest = hashlib.sha256()
@@ -119,7 +119,7 @@ def prepare_cache():
     os.umask(0o077)
     raw, document, blobs = checked_manifest()
     safe_path(ROOT)
-    target = ROOT / "manifests/registry.ollama.ai/library/funkyfarmers-qwen3" / MANIFEST_DIGEST
+    target = ROOT / "manifests/registry.ollama.ai/library/funkyfarm-qwen3" / MANIFEST_DIGEST
     known = {target, ROOT / "LICENSE-qwen3.txt", ROOT / "provenance.json"}
     for blob in blobs:
         path = ROOT / "blobs" / blob["digest"].replace(":", "-")

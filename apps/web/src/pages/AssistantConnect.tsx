@@ -130,7 +130,7 @@ function ConnectionPage() {
     </section>}
 
     {!pending && configuration && <section className="card"><h2>Start in your assistant</h2>
-      <p>Add FunkyFarmers as a custom MCP connector in your existing ChatGPT or Claude account. The assistant starts an OAuth request, then brings you here to sign in and choose farm access.</p>
+      <p>Add FunkyFarm as a custom MCP connector in your existing ChatGPT or Claude account. The assistant starts an OAuth request, then brings you here to sign in and choose farm access.</p>
       {!configuration.available ? <Notice kind="warning">{configuration.message} No public connector is configured.</Notice> : <>
         {configuration.local_development && <Notice kind="warning">This is a local development address. A cloud-hosted ChatGPT or Claude connector cannot reach this computer through it. Public HTTPS hosting and a real provider-account connection remain unverified.</Notice>}
         <Field label="MCP server address"><input readOnly value={configuration.resource || ''} onFocus={event => event.target.select()} /></Field><Button variant="secondary" onClick={() => void copyAddress()}>Copy server address</Button>

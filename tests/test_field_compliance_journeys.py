@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 from decimal import Decimal
+import hashlib
+import json
 
 import pytest
 
@@ -218,3 +220,57 @@ def test_source_backed_ppp_checks_ask_for_actual_use_and_leave_national_timing_u
     outsider.get(f"/requests/{request['id']}/checks", expected=404)
     farm = owner.patch(f"/farms/{farm['id']}", json={"expected_revision": farm["revision"], "data": {"notes": "A changed farm invalidates an old checklist creation context."}}).json()
     owner.post(f"/compliance/farms/{farm['id']}/checklist", expected=409, json=checklist_body)
+
+
+def test_historical_iacs_subset_preserves_codes_rights_and_source_area_without_adopting_land(farmers):
+    owner = farmers("Fictional historical-reference reviewer")
+    outsider = farmers("Unrelated reference account")
+    farm = owner.create("farms", {**farm_data("Private Dutch reference comparison"), "country": "NL", "region": None, "area_ha": 9.0})
+    original_farm = owner.get(f"/farms/{farm['id']}").json()
+    catalog = owner.get("/reference-data/iacs/catalog").json()
+    assert catalog["version"] == "1.3" and catalog["native_crs"] == "EPSG:3035"
+    assert catalog["accepted_subset_crs"] == "EPSG:4326" and catalog["automatic_download"] is False
+    properties = {"field_id": "source-007", "crop_code": "0012", "crop_name": "Original rye", "EC_trans_n": "Rye", "EC_hcat_n": "rye", "EC_hcat_c": "0012345678", "field_size": "3.750", "crop_area": "2.500", "farm_id": "public-applicant-not-owner", "organic": "2"}
+    outline = {"type": "Polygon", "coordinates": [[[5.0, 52.0], [5.002, 52.0], [5.002, 52.001], [5.0, 52.001], [5.0, 52.0]]]}
+    feature = {"type": "Feature", "properties": properties, "geometry": outline}
+    content = json.dumps({"type": "FeatureCollection", "features": [feature]}, separators=(",", ":"))
+    body = {"farm_id": farm["id"], "country": "NL", "region": None, "year": 2025, "format": "geojson", "content": content,
+        "source_crs": "EPSG:4326", "source_area_unit": "ha", "rights_basis": "I checked the original source reuse terms for this authored fixture.",
+        "source_context_confirmed": True, "upstream_file_name": "NL_2025.parquet", "use_purpose": "private_reference"}
+    retry = {"Idempotency-Key": "historical-reference-" + uuid4().hex}
+    preview = owner.post("/reference-data/iacs/preview", expected=201, headers=retry, json=body).json()
+    assert owner.post("/reference-data/iacs/preview", expected=201, headers=retry, json=body).json() == preview
+    candidate = preview["data"]["candidates"][0]
+    assert candidate["external_id"] == "source-007" and candidate["crop_code"] == "0012" and candidate["hcat_code"] == "0012345678"
+    assert candidate["original_properties"] == properties
+    assert candidate["source_area_ha"] == 3.75 and candidate["source_crop_area_ha"] == 2.5
+    assert candidate["organic_raw"] == "2" and candidate["organic_verified"] is False
+    assert candidate["upstream_applicant_id"] == "public-applicant-not-owner" and candidate["review_status"] == "historical_reference_unreviewed"
+    provenance = preview["data"]["provenance"]
+    assert provenance["subset_sha256"] == hashlib.sha256(content.encode()).hexdigest()
+    assert provenance["source_crs_original"] == "EPSG:3035" and provenance["subset_crs_confirmed_by_user"] == "EPSG:4326"
+    assert provenance["upstream_file_checksum_verified"] is False and preview["data"]["shared_redistribution"] is False
+    assert owner.get(f"/farms/{farm['id']}").json() == original_farm
+    assert owner.get("/facts").json()["total"] == 0 and owner.get(f"/farms/{farm['id']}/fields").json()["items"] == []
+    outsider.get(f"/reference-data/iacs/{preview['id']}", expected=404)
+    outsider.post("/reference-data/iacs/preview", expected=404, json=body)
+    invalid_contents = [
+        {"type": "FeatureCollection", "features": [{**feature, "properties": {**properties, "EC_hcat_c": 12345678}}]},
+        {"type": "FeatureCollection", "features": [feature, feature]},
+        {"type": "FeatureCollection", "features": [{**feature, "properties": {key: value for key, value in properties.items() if key != "crop_code"}}]},
+        {"type": "FeatureCollection", "features": [{**feature, "geometry": {"type": "Polygon", "coordinates": [[[4000000, 3000000], [4000010, 3000000], [4000010, 3000010], [4000000, 3000000]]]}}]},
+    ]
+    for invalid in invalid_contents:
+        owner.post("/reference-data/iacs/preview", expected=422, json={**body, "content": json.dumps(invalid)})
+    for change in ({"year": 2026}, {"country": "DE"}, {"source_crs": "EPSG:3035"}, {"source_context_confirmed": False}):
+        owner.post("/reference-data/iacs/preview", expected=422, json={**body, **change})
+    lithuanian = owner.create("farms", {**farm_data("Rights-restricted reference example"), "country": "LT", "region": None})
+    owner.post("/reference-data/iacs/preview", expected=422, json={**body, "farm_id": lithuanian["id"], "country": "LT", "upstream_file_name": "LT_2025.parquet"})
+    csv_content = "field_id,crop_code,crop_name,EC_trans_n,EC_hcat_n,EC_hcat_c,field_size\nsource-008,0012,Original rye,Rye,rye,0012345678,3.750\n"
+    metadata = owner.post("/reference-data/iacs/preview", expected=201, json={**body, "format": "csv", "content": csv_content}).json()["data"]["candidates"][0]
+    assert metadata["geometry"] is None and metadata["field_reference"]["geometry"] is None
+    proposed = owner.post(f"/farms/{farm['id']}/field-proposals", json={"expected_revision": farm["revision"], "parcel": {"name": "Farmer-supplied present outline", "geometry": outline, "crop": "Farmer to review current crop"}, "reference": candidate["field_reference"], "note": "Compare a historical reference; no ownership or current eligible-area assertion."}).json()
+    assert proposed["data"]["status"] == "proposed" and proposed["data"]["reference"]["external_id"] == "source-007"
+    assert owner.get(f"/farms/{farm['id']}").json() == original_farm
+    farm = owner.patch(f"/farms/{farm['id']}", json={"expected_revision": farm["revision"], "data": {"notes": "Current farm context changed after the historical preview."}}).json()
+    assert owner.get(f"/reference-data/iacs/{preview['id']}").json()["farm_context_changed"] is True

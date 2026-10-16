@@ -3,7 +3,7 @@ set -eu
 umask 077
 
 if [ "$(psql --no-password --no-psqlrc --tuples-only --no-align \
-    --set=ON_ERROR_STOP=1 --command="SELECT count(*) FROM pg_namespace WHERE nspname='funkyfarmers'")" != 0 ]; then
+    --set=ON_ERROR_STOP=1 --command="SELECT count(*) FROM pg_namespace WHERE nspname='funkyfarm'")" != 0 ]; then
     printf '%s\n' 'Recovery refuses an already populated schema.' >&2
     exit 1
 fi
@@ -13,8 +13,8 @@ if [ -n "$(find /restore-originals -mindepth 1 -maxdepth 1 -print -quit)" ]; the
 fi
 
 psql --no-password --no-psqlrc --set=ON_ERROR_STOP=1 \
-    --set=runtime_password="$FUNKYFARMERS_RUNTIME_PASSWORD" <<'SQL'
-CREATE ROLE funkyfarmers_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS PASSWORD :'runtime_password';
+    --set=runtime_password="$FUNKYFARM_RUNTIME_PASSWORD" <<'SQL'
+CREATE ROLE funkyfarm_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS PASSWORD :'runtime_password';
 SQL
 pg_restore --no-password --exit-on-error --no-owner --no-tablespaces \
     --dbname="$PGDATABASE" /backup/database.dump

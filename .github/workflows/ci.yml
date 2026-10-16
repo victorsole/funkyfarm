@@ -1,4 +1,4 @@
-name: FunkyFarmers CI
+name: FunkyFarm CI
 
 on:
   push:
@@ -20,20 +20,20 @@ jobs:
       database:
         image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
         env:
-          POSTGRES_DB: funkyfarmers_test
-          POSTGRES_USER: funkyfarmers_admin
+          POSTGRES_DB: funkyfarm_test
+          POSTGRES_USER: funkyfarm_admin
           # Disposable runner-only credentials. Production credentials are generated on the host.
           POSTGRES_PASSWORD: disposable-ci-admin-password-only
         ports: ["55439:5432"]
         options: >-
-          --health-cmd "pg_isready -U funkyfarmers_admin -d funkyfarmers_test"
+          --health-cmd "pg_isready -U funkyfarm_admin -d funkyfarm_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      FUNKYFARMERS_ADMIN_DATABASE_URL: postgresql://funkyfarmers_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarmers_test
-      FUNKYFARMERS_TEST_ADMIN_DATABASE_URL: postgresql://funkyfarmers_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarmers_test
-      FUNKYFARMERS_RUNTIME_PASSWORD: disposable-ci-runtime-password-only
-      FUNKYFARMERS_TEST_DATABASE_URL: postgresql://funkyfarmers_app:disposable-ci-runtime-password-only@127.0.0.1:55439/funkyfarmers_test
-      FUNKYFARMERS_REPORT_FONT: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      FUNKYFARM_ADMIN_DATABASE_URL: postgresql://funkyfarm_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarm_test
+      FUNKYFARM_TEST_ADMIN_DATABASE_URL: postgresql://funkyfarm_admin:disposable-ci-admin-password-only@127.0.0.1:55439/funkyfarm_test
+      FUNKYFARM_RUNTIME_PASSWORD: disposable-ci-runtime-password-only
+      FUNKYFARM_TEST_DATABASE_URL: postgresql://funkyfarm_app:disposable-ci-runtime-password-only@127.0.0.1:55439/funkyfarm_test
+      FUNKYFARM_REPORT_FONT: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -55,7 +55,7 @@ jobs:
           python -m pip install 'pytest>=8,<10' 'pytest-timeout>=2.3,<3'
           python -m pip check
       - name: Prepare only the disposable test database
-        run: python -m funkyfarmers.migrate
+        run: python -m funkyfarm.migrate
       - name: Generate the disposable provider encryption key
         run: |
           python - <<'PY'
@@ -63,7 +63,7 @@ jobs:
           value = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')
           print('::add-mask::' + value)
           with open(os.environ['GITHUB_ENV'], 'a') as stream:
-              stream.write('FUNKYFARMERS_CONNECTIONS_KEY=' + value + '\n')
+              stream.write('FUNKYFARM_CONNECTIONS_KEY=' + value + '\n')
           PY
       - name: Install web and browser journey dependencies
         run: |
@@ -79,15 +79,15 @@ jobs:
         run: npm run build
       - name: Build the exact production image definitions
         run: |
-          docker build --file containers/api.Dockerfile --tag funkyfarmers-api:ci .
-          docker build --file containers/web.Dockerfile --build-arg NGINX_CONFIG=containers/nginx.production.conf --tag funkyfarmers-web:ci .
-          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint python funkyfarmers-api:ci -c "import funkyfarmers.app, psycopg, reportlab; from pathlib import Path; assert Path('/app/packs').is_dir()"
+          docker build --file containers/api.Dockerfile --tag funkyfarm-api:ci .
+          docker build --file containers/web.Dockerfile --build-arg NGINX_CONFIG=containers/nginx.production.conf --tag funkyfarm-web:ci .
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint python funkyfarm-api:ci -c "import funkyfarm.app, psycopg, reportlab; from pathlib import Path; assert Path('/app/packs').is_dir()"
       - name: Verify the CPU-only local-model runtime without downloading weights
         run: |
-          docker build --file containers/ollama.Dockerfile --tag funkyfarmers-ollama:ci .
-          size=$(docker image inspect funkyfarmers-ollama:ci --format '{{.Size}}')
+          docker build --file containers/ollama.Dockerfile --tag funkyfarm-ollama:ci .
+          size=$(docker image inspect funkyfarm-ollama:ci --format '{{.Size}}')
           test "$size" -lt 1073741824
-          docker run --rm --network none --read-only --tmpfs /tmp:rw,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --entrypoint python3 funkyfarmers-ollama:ci -c '
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --entrypoint python3 funkyfarm-ollama:ci -c '
           import json, subprocess, time, urllib.request
           server = subprocess.Popen(["/usr/bin/ollama", "serve"])
           try:

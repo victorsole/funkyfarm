@@ -1,5 +1,5 @@
 {
-  "name": "@funkyfarmers/acceptance-browser",
+  "name": "@funkyfarm/acceptance-browser",
   "private": true,
   "type": "module",
   "scripts": {"test": "playwright test"},

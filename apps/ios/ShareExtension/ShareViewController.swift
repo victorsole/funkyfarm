@@ -7,7 +7,7 @@ final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        message.text = "Save a private copy for review in Funky Farmers. No account is selected and nothing is uploaded here. Open the app afterward to assign each file to a farm."
+        message.text = "Save a private copy for review in funkyfarm. No account is selected and nothing is uploaded here. Open the app afterward to assign each file to a farm."
         message.numberOfLines = 0; message.font = .preferredFont(forTextStyle: .body)
         message.adjustsFontForContentSizeCategory = true
         saveButton.setTitle("Save for review", for: .normal)
@@ -43,7 +43,7 @@ final class ShareViewController: UIViewController {
                     }
                     try IntakeInbox.save(bytes: bytes, filename: provider.suggestedName ?? "Shared evidence.\(type.preferredFilenameExtension ?? "bin")", type: type)
                 }
-                message.text = "Saved on this device. Open Funky Farmers and review Shared intake under Documents. No upload has been made."
+                message.text = "Saved on this device. Open funkyfarm and review Shared intake under Documents. No upload has been made."
                 saveButton.setTitle("Done", for: .normal); saveButton.removeTarget(self, action: #selector(save), for: .touchUpInside)
                 saveButton.addTarget(self, action: #selector(close), for: .touchUpInside); saveButton.isEnabled = true
             } catch {
