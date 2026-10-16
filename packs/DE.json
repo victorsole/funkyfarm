@@ -1,0 +1,288 @@
+[
+  {
+    "id": "de-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DE",
+    "region": "Nordrhein-Westfalen",
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Jährlicher betrieblicher Düngebedarf / Nährstoffeinsatz",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.landwirtschaftskammer.de/landwirtschaft/ackerbau/duengung/programme/dbepdf/index.htm",
+        "title": "LWK NRW — Papierformulare zur Düngebedarfsermittlung und Düngedokumentation",
+        "edition": "Düngeverordnung 2020 forms; index includes 2026 Nmin links; no form-wide 2026 edition stated"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Official annual aggregates identified, but annual calculation and source rows have not been mapped.",
+      "The authority warns that the supplied paper files cannot calculate annual nutrient use in most cases; no complete annual result is generated."
+    ],
+    "checks": []
+  },
+  {
+    "id": "de-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DE",
+    "region": "Nordrhein-Westfalen",
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "ELAN-NRW — Sammelantrag 2026, Flächen- und Landschaftselementeverzeichnis",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.landwirtschaftskammer.de/foerderung/formulare/merkblaetter/mb-elan.htm",
+        "title": "LWK NRW — Merkblätter zum ELAN-Antragsverfahren",
+        "edition": "Sammelantrag 2026 index"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Other Länder have different application systems; this regional reference must not be shown as a Germany-wide completed form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "de-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DE",
+    "region": "Nordrhein-Westfalen",
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Düngeportal NRW — Schlagbezogene Pflanzenschutzanwendungen (2026 module)",
+    "fields": [
+      {
+        "key": "operator",
+        "label": "Applicator full name",
+        "official_field": "2.2 Anwender: Vorname Nachname",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "crop",
+        "label": "Crop name",
+        "official_field": "2.2 Kultur: Bezeichnung",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "eppo_code",
+        "label": "EPPO crop code",
+        "official_field": "2.2 Kultur: EPPO-Code",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "product_name",
+        "label": "Plant protection product",
+        "official_field": "2.2 Pflanzenschutzmittel: Bezeichnung",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "product_authorisation",
+        "label": "Product authorisation number",
+        "official_field": "2.2 Zulassungsnummer",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "indication",
+        "label": "Application or indication",
+        "official_field": "2.2 Auswahl Anwendung",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "application_rate",
+        "label": "Quantity applied per selected unit",
+        "official_field": "2.2 Verwendete Menge",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "rate_unit",
+        "label": "Selected quantity unit",
+        "official_field": "2.2 Verwendete Menge: Einheit",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "growth_stage",
+        "label": "Crop growth stage",
+        "official_field": "2.2 BBCH-Stadium Kultur",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "application_date",
+        "label": "Application date",
+        "official_field": "2.2 Datum",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_start_time",
+        "label": "Start time",
+        "official_field": "2.2 Uhrzeit (Startzeit)",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "parcel_name",
+        "label": "Parcel name",
+        "official_field": "2.2 Fläche: Bezeichnung",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "parcel_location",
+        "label": "FLIK or parcel point coordinate",
+        "official_field": "2.2 Fläche: Lage",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "treated_extent",
+        "label": "Treated area or unit extent",
+        "official_field": "2.2 Behandelte Einheit",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "treated_extent_unit",
+        "label": "Treated extent unit",
+        "official_field": "2.2 Behandelte Einheit: Einheit",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "use_type",
+        "label": "Type of use",
+        "official_field": "2.2 Art der Verwendung",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "notes",
+        "label": "Notes",
+        "official_field": "2.2 Bemerkung",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.landwirtschaftskammer.de/landwirtschaft/ackerbau/duengung/portal/pdf/pflanzenschutzdoku-duengeportal.pdf",
+        "title": "LWK NRW — Neue Pflanzenschutzdokumentation im Düngeportal NRW",
+        "edition": "Stand 28.11.2025; describes module for records from 2026; section 2.2"
+      }
+    ],
+    "limitations": [
+      "Selected fields mapped to the cited official document; this is a reviewable draft, not a complete legal form or accepted authority submission.",
+      "Regional software mapping, not a nationwide German filing schema.",
+      "BBCH and start time are conditional; false required flags do not waive a condition on the product label.",
+      "Quantity and treated-extent units must remain explicit. No maximum-rate, authorisation-date, buffer, mixture or bee-protection decision is automated.",
+      "Non-parcel applications and seed/storage treatments require the separate Betriebsbezogene Anwendungen module and are not covered.",
+      "The source describes documentation assistance and explicitly does not provide a full legal review."
+    ],
+    "checks": [
+      "Review the product authorisation and conditions applicable on the actual application date.",
+      "Review each tank-mix product separately; do not infer mixture compliance."
+    ]
+  },
+  {
+    "id": "de-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DE",
+    "region": "Nordrhein-Westfalen",
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Düngeportal NRW — Pflanzenschutzbericht for review",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.landwirtschaftskammer.de/landwirtschaft/ackerbau/duengung/portal/pdf/pflanzenschutzdoku-duengeportal.pdf",
+        "title": "LWK NRW — Neue Pflanzenschutzdokumentation im Düngeportal NRW",
+        "edition": "Stand 28.11.2025; describes module for records from 2026; section 2.2"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "The manual identifies Bericht generieren, but an inspection request, evidence scope and report layout have not been mapped.",
+      "Reuses the named source for inspection context only; no separate legal inspection form is asserted."
+    ],
+    "checks": []
+  },
+  {
+    "id": "de-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DE",
+    "region": "Nordrhein-Westfalen",
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "ELAN-NRW — Öko-Regelungen 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.landwirtschaftskammer.de/foerderung/formulare/merkblaetter/mb-elan.htm",
+        "title": "LWK NRW — Merkblätter zum ELAN-Antragsverfahren",
+        "edition": "2026 index includes ÖR 1a, 1b and 1c"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Individual eco-scheme annexes and checks remain unmapped."
+    ],
+    "checks": []
+  }
+]

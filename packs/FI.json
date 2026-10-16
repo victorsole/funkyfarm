@@ -1,0 +1,216 @@
+[
+  {
+    "id": "FI-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FI",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Finland: Annual farm reporting — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Finland annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FI-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FI",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Finland: CAP application preparation — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Finland cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FI-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FI",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "sourced_draft_mapping",
+    "title": "Finland: professional plant protection product use record",
+    "fields": [
+      {
+        "key": "product_name",
+        "label": "Plant protection product name",
+        "official_field": "name of the plant protection product",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "product_registration",
+        "label": "Product registration number",
+        "official_field": "registration number of the plant protection product",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_date",
+        "label": "Date/time of use",
+        "official_field": "time of use",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_dose",
+        "label": "Dose used, retaining the source unit",
+        "official_field": "the dose used",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treated_area",
+        "label": "Size of the area treated, retaining the source unit",
+        "official_field": "size of the area treated",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "crop_name",
+        "label": "Crop treated",
+        "official_field": "the crop treated",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "crop_eppo",
+        "label": "EPPO crop/category code",
+        "official_field": "its EPPO code",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treatment_location",
+        "label": "Address, coordinates, greenhouse number, parcel ID or forest compartment",
+        "official_field": "information about the location of the area treated",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treatment_type",
+        "label": "Land; enclosed space/plants in enclosed space; seeds/propagating material",
+        "official_field": "information about whether the treatment concerned 1) land areas, 2) enclosed spaces or plants in enclosed spaces, 3) seeds and propagating material",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "spraying_time",
+        "label": "Time of spraying when restrictions apply",
+        "official_field": "time of spraying",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "bbch_stage",
+        "label": "BBCH growth stage/range when restrictions apply",
+        "official_field": "the BBCH growth stage or growth stage range of the crops",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://tukes.fi/en/record-keeping-for-plant-protection-products",
+        "title": "Tukes — Record-keeping for plant protection products",
+        "edition": "Current authority guidance retrieved 2026-10-16; 2026 requirements; electronic records from 2027"
+      }
+    ],
+    "limitations": [
+      "Maps the information listed by Finland's Tukes guidance; it is a draft record, not a verified Vipu/authority import format.",
+      "Units and exact date representation are not fixed in the inspected national guidance; retain the recorded unit and date rather than assuming every treatment is per hectare.",
+      "Time of spraying and BBCH are required when product restrictions concern time of day or growth stage; optional markers require case-specific review.",
+      "Tukes permits category-level EPPO codes from its national list; individual species codes are optional. No automatic code lookup or product restriction verification is supplied here.",
+      "The guidance says electronic records apply from 2027 and that detailed guidelines will be published in late 2026. This 2026 draft does not assert that a published 2027 electronic schema is implemented.",
+      "The source requires at least three years of retention for use records; storage/retention compliance is outside the mapping. Biocide, trade and certification variants are separate.",
+      "No live filing, authority acceptance, legal compliance certification or complete regional/scheme coverage is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FI-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FI",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Finland: Inspection response — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Finland inspection response form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FI-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FI",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Finland: Sustainability evidence — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Finland sustainability evidence form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  }
+]

@@ -1,0 +1,135 @@
+[
+  {
+    "id": "HU-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HU",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Hungary: Annual farm reporting — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.allamkincstar.gov.hu/hirek/elindult-a-2026.-evi-egyseges-kerelmek-benyujtasa",
+        "title": "Magyar Államkincstár — Elindult a 2026. évi egységes kérelmek benyújtása",
+        "edition": "2026-04-15 official announcement retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Hungary annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "HU-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HU",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Hungary: CAP application preparation — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.allamkincstar.gov.hu/hirek/elindult-a-2026.-evi-egyseges-kerelmek-benyujtasa",
+        "title": "Magyar Államkincstár — Elindult a 2026. évi egységes kérelmek benyújtása",
+        "edition": "2026-04-15 official announcement retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Hungary cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "HU-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HU",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Hungary: Input-use records — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.allamkincstar.gov.hu/hirek/elindult-a-2026.-evi-egyseges-kerelmek-benyujtasa",
+        "title": "Magyar Államkincstár — Elindult a 2026. évi egységes kérelmek benyújtása",
+        "edition": "2026-04-15 official announcement retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Hungary input-use records form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "HU-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HU",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Hungary: Inspection response — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Hungary inspection response form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "HU-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HU",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Hungary: Sustainability evidence — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Hungary sustainability evidence form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  }
+]

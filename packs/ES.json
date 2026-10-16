@@ -1,0 +1,252 @@
+[
+  {
+    "id": "ES-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "ES",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Spain: Annual farm reporting — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Spain annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ES-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "ES",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Spain: CAP application preparation — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Spain cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ES-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "ES",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "sourced_draft_mapping",
+    "title": "Spain: Cuaderno de explotación — phytosanitary treatment record, Annex III I.B",
+    "fields": [
+      {
+        "key": "application_date",
+        "label": "Treatment date",
+        "official_field": "B.a. Fecha de tratamiento",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treatment_parcel",
+        "label": "Parcel, premises or vehicle identifier",
+        "official_field": "B.b. Número de identificación de la parcela, o en su caso, local o medio de transporte tratado",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "target_pest",
+        "label": "Pest to control",
+        "official_field": "B.c. Plaga a controlar",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "applicator",
+        "label": "Applicator identification",
+        "official_field": "B.d. Identificación del aplicador",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "adviser",
+        "label": "Adviser identification where applicable",
+        "official_field": "B.d. en su caso, del asesor",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "crop_species_variety",
+        "label": "Crop species and variety",
+        "official_field": "B.e. Cultivo, indicando especie y variedad",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treated_seed_product",
+        "label": "Product used for herbaceous crops sown with treated seed",
+        "official_field": "B.e. Si es cultivo herbáceo y la siembra se realiza con semilla tratada, indicar el producto utilizado",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treated_area",
+        "label": "Treated area for a field treatment",
+        "official_field": "B.f. Superficie tratada expresada en hectáreas",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treated_volume",
+        "label": "Treated volume where applicable (premises)",
+        "official_field": "B.f. En los casos en que proceda, como tratamiento de locales, el volumen tratado expresado en metros cúbicos",
+        "required": false,
+        "unit": "m3",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "product_name",
+        "label": "Commercial name",
+        "official_field": "B.g. Producto fitosanitario aplicado (Nombre comercial)",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "product_registration",
+        "label": "Product registration number",
+        "official_field": "B.g. número de registro",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_equipment",
+        "label": "Machine or equipment identification, including registration where applicable",
+        "official_field": "B.h. Identificación de la maquina o equipo de tratamiento empleado, indicando cuando proceda el número de registro",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "product_amount",
+        "label": "Product quantity used in the treatment; retain kg or L",
+        "official_field": "B.i. Kilogramos. o litros del producto fitosanitario utilizados en el tratamiento",
+        "required": true,
+        "unit": "kg or L",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treatment_effectiveness",
+        "label": "Assessment of treatment effectiveness",
+        "official_field": "B.j. Valoración de la eficacia del tratamiento",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "other_observations",
+        "label": "Other relevant observations",
+        "official_field": "B.k. Otras observaciones pertinentes",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-11605",
+        "title": "Real Decreto 1311/2012 — Annex III, Parte I.B, Información de tratamientos fitosanitarios",
+        "edition": "BOE consolidated text last updated 2025-11-20; inspected 2026-10-16"
+      },
+      {
+        "url": "https://www.mapa.gob.es/es/agricultura/temas/sanidad-vegetal/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios",
+        "title": "MAPA — Uso sostenible de productos fitosanitarios / Cuaderno de Explotación",
+        "edition": "Live authority page retrieved 2026-10-16; model approved 2013-12-18"
+      }
+    ],
+    "limitations": [
+      "National Annex III Part I.B treatment-row subset only. General holding/parcel information in Part I.A, fertilisation/irrigation records in I.C and non-agricultural records in Part II are not mapped here.",
+      "One of treated area in hectares or applicable treated volume in cubic metres is needed according to the treatment context. The optional markers do not waive that conditional requirement.",
+      "B.i is the total kg or litres of product used, not a dose in kg/ha or L/ha. Do not silently convert between total quantity and application rate.",
+      "No regional CUE import schema, SIGPAC reconciliation, electronic log transmission, pesticide legality or CAP eligibility decision is implemented.",
+      "The inspected consolidated BOE text is informative; the original official publications and subsequent applicable changes require qualified review.",
+      "This draft does not certify that a complete 2026 EU electronic-record format is represented. Preserve date and unit literals and obtain the region's accepted representation before filing."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ES-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "ES",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Spain: Inspection response — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Spain inspection response form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ES-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "ES",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Spain: Sustainability evidence — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Spain sustainability evidence form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  }
+]

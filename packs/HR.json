@@ -1,0 +1,125 @@
+[
+  {
+    "id": "hr-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HR",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "HR: annual format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No annual format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "hr-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HR",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Jedinstveni zahtjev 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.apprrr.hr/do-1-lipnja-produljen-rok-za-podnosenje-jedinstvenih-zahtjeva-za-2026-godinu/",
+        "title": "APPRRR — Jedinstveni zahtjev 2026 deadline extension",
+        "edition": "2026 campaign; NN 49/2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Official application identified; AGRONET field list, ARKOD parcel mapping and annexes remain open."
+    ],
+    "checks": []
+  },
+  {
+    "id": "hr-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HR",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "HR: inputs format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inputs format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "hr-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HR",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "HR: inspection format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inspection format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "hr-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "HR",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "IAKS — Obrazac 4–9, 11–34 (2025 reference)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.apprrr.hr/dostava-evidencija-o-provedbi-iaks-mjera-ruralnog-razvoja/",
+        "title": "APPRRR — Dostava Evidencija o provedbi IAKS mjera ruralnog razvoja",
+        "edition": "17.11.2025 notice for campaign 2025; some deliveries fall in January 2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "These are explicitly 2025 records; a January 2026 delivery date does not make them campaign-2026 forms.",
+      "2026 form editions and each operation's columns still need independent verification."
+    ],
+    "checks": []
+  }
+]

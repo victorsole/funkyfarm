@@ -1,0 +1,293 @@
+[
+  {
+    "id": "se-annual-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "SE",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Sweden – Annual farm and expense summary (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://jordbruksverket.se/stod/jordbruk-tradgard-och-rennaring/sam-ansokan-och-allmant-om-jordbrukarstoden/det-har-ar-sam-ansokan",
+        "title": "Jordbruksverket – Det här är SAM-ansökan",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national annual farm and expense summary form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "se-cap-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "SE",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Jordbruksverket SAM-ansökan 2026 – unmapped reference",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://jordbruksverket.se/stod/jordbruk-tradgard-och-rennaring/sam-ansokan-och-allmant-om-jordbrukarstoden/det-har-ar-sam-ansokan",
+        "title": "Jordbruksverket – Det här är SAM-ansökan",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The named application is identified, but scheme applicability, required fields, eligibility conditions and authority payload remain unmapped.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "se-inputs-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "SE",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "sourced-draft-2026-10-16-v1",
+    "capability": "sourced_draft_mapping",
+    "title": "Jordbruksverket Sprutjournal 2026 – outdoor application record",
+    "fields": [
+      {
+        "key": "se_spray_date",
+        "label": "Application date",
+        "official_field": "Datum",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_time",
+        "label": "Application time",
+        "official_field": "Klockslag",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_purpose",
+        "label": "Purpose of treatment",
+        "official_field": "Syfte med bekämpningen",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_application_type",
+        "label": "Type of use",
+        "official_field": "Typ av användning",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_location",
+        "label": "Application location",
+        "official_field": "Plats för spridning",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_operator",
+        "label": "Sprayer operator",
+        "official_field": "Sprutförare",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_crop_or_situation",
+        "label": "Crop or situation according to EPPO code",
+        "official_field": "Gröda eller situation i enlighet med EPPO-kod",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_bbch",
+        "label": "Development stage according to BBCH scale",
+        "official_field": "Utvecklingsstadium enligt BBCH-skala",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_product",
+        "label": "Plant protection product name",
+        "official_field": "Namn på växtskyddsmedel som använts",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_registration_number",
+        "label": "Plant protection product registration number",
+        "official_field": "Registreringsnummer",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_dose",
+        "label": "Applied dose with kg/ha or l/ha unit",
+        "official_field": "Dos (den använda dosen, kg/ha eller l/ha)",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_treated_area",
+        "label": "Treated area",
+        "official_field": "Storlek på behandlad yta (antal hektar)",
+        "required": true,
+        "unit": "ha",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_fixed_buffer",
+        "label": "Fixed buffer: object and distance in whole metres",
+        "official_field": "Fasta skyddsavstånd (objekt och avstånd i hela antal meter)",
+        "required": false,
+        "unit": "m",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_adjusted_buffer",
+        "label": "Adjusted buffer: object and distance in whole metres",
+        "official_field": "Anpassade skyddsavstånd (objekt och avstånd i hela antal meter, använd hjälpredan)",
+        "required": false,
+        "unit": "m",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_flowering_vegetation",
+        "label": "Flowering vegetation",
+        "official_field": "Blommande vegetation",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_withholding_days",
+        "label": "Withholding interval, when shown on the label",
+        "official_field": "Karenstid",
+        "required": false,
+        "unit": "dagar",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "se_spray_harvest_date",
+        "label": "Harvest date, if there is a withholding interval",
+        "official_field": "Skördedatum",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.lansstyrelsen.se/download/18.664a32d319c935b7940ca951/1773319607766/SJV%20sprutjournal%202026.pdf",
+        "title": "Jordbruksverket – Sprutjournal 2026, utomhus (V158)",
+        "edition": "2026 outdoor journal, 1-page official template hosted by Länsstyrelsen"
+      }
+    ],
+    "limitations": [
+      "Partial sourced draft mapping only. This is not the complete national form, a domain-reviewed rule set or a verified authority submission payload.",
+      "Required flags describe completeness of this local draft subset. Conditional applicability must be reviewed manually against the original source.",
+      "One outdoor application record only. Indoor/greenhouse and seed-treatment templates are separate; fertiliser and other input records remain unmapped.",
+      "The template instructs users to enter a dash when a cell does not apply. Conditional fields require explicit manual applicability review rather than a silent blank/default.",
+      "The dose alternatives are kg/ha and l/ha. Null fixed unit means the supplied dose must retain its actual unit; no mass/volume conversion or inferred unit is supported.",
+      "Buffer records include the protected object as well as distance. No label compliance, buffer calculation, BBCH applicability or withholding-interval rule is implemented.",
+      "This local draft does not implement Sweden's 2027 digital journal requirements or an authority-approved interchange format.",
+      "No eligibility, compliance, certification, authority acceptance or filing-transport claim is made. Unmapped fields and required variants remain completion gaps."
+    ],
+    "checks": []
+  },
+  {
+    "id": "se-inspection-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "SE",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Sweden – Inspection response (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://jordbruksverket.se/stod/jordbruk-tradgard-och-rennaring/sam-ansokan-och-allmant-om-jordbrukarstoden/det-har-ar-sam-ansokan",
+        "title": "Jordbruksverket – Det här är SAM-ansökan",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national inspection response form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "se-sustainability-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "SE",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Sweden – Sustainability and certification evidence (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://jordbruksverket.se/stod/jordbruk-tradgard-och-rennaring/sam-ansokan-och-allmant-om-jordbrukarstoden/det-har-ar-sam-ansokan",
+        "title": "Jordbruksverket – Det här är SAM-ansökan",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national sustainability and certification evidence form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  }
+]

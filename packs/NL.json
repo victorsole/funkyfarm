@@ -1,0 +1,279 @@
+[
+  {
+    "id": "nl-annual-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "NL",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "sourced-draft-2026-10-16-v1",
+    "capability": "sourced_draft_mapping",
+    "title": "RVO Gecombineerde opgave 2026 – identity and irrigation subset",
+    "fields": [
+      {
+        "key": "nl_name",
+        "label": "Name",
+        "official_field": "p. 2 / Uw gegevens / Naam",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "nl_kvk_number",
+        "label": "KVK registration number",
+        "official_field": "p. 2 / Uw gegevens / KVK-nummer",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "nl_legal_form",
+        "label": "Legal form",
+        "official_field": "p. 2 / Uw gegevens / Rechtsvorm",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "nl_irrigation_installation_2026",
+        "label": "Do you have an irrigation installation in 2026?",
+        "official_field": "p. 30 / Heeft u in 2026 een installatie om uw landbouwgrond mee te beregenen?",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_irrigable_land_2026",
+        "label": "Land that can be irrigated using this installation",
+        "official_field": "p. 30 / Hoeveel landbouwgrond kunt u beregenen met deze installatie?",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.rvo.nl/sites/default/files/2026-02/260212-Vragen-in-de-Gecombineerde-opgave-2026-v1.pdf",
+        "title": "RVO – Vragen in de Gecombineerde opgave 2026",
+        "edition": "2026 v1, publication filename 260212, 46 pages"
+      }
+    ],
+    "limitations": [
+      "Partial sourced draft mapping only. This is not the complete national form, a domain-reviewed rule set or a verified authority submission payload.",
+      "Required flags describe completeness of this local draft subset. Conditional applicability must be reviewed manually against the original source.",
+      "Only the listed identity and irrigation questions are mapped. Annual expense, revenue, labour and livestock sections remain unmapped.",
+      "Irrigable land is installation capacity in 2026, not actual irrigation volume or dated application evidence. The source excludes borrowed or rented installations.",
+      "The RVO document itself warns of possible small differences from the actual application. Prefilled identity values require review.",
+      "No eligibility, compliance, certification, authority acceptance or filing-transport claim is made. Unmapped fields and required variants remain completion gaps."
+    ],
+    "checks": []
+  },
+  {
+    "id": "nl-cap-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "NL",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "sourced-draft-2026-10-16-v1",
+    "capability": "sourced_draft_mapping",
+    "title": "RVO Gecombineerde opgave 2026 – GLB scheme-selection subset",
+    "fields": [
+      {
+        "key": "nl_name",
+        "label": "Name",
+        "official_field": "p. 2 / Uw gegevens / Naam",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "nl_glb_basic_first_40ha_2026",
+        "label": "Basic premium and extra payment for first 40 hectares",
+        "official_field": "p. 22 / Basispremie en extra betaling eerste 40 hectare",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_glb_eco_scheme_2026",
+        "label": "Eco scheme requested",
+        "official_field": "p. 22 / Eco-regeling",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_glb_young_farmer_2026",
+        "label": "Young farmer extra payment requested",
+        "official_field": "p. 22 / Extra betaling jonge landbouwers",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_glb_rare_breeds_2026",
+        "label": "Rare livestock breeds support requested",
+        "official_field": "p. 22 / Behoud van zeldzame landbouwhuisdierrassen",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_glb_weather_insurance_2026",
+        "label": "Broad weather insurance support requested",
+        "official_field": "p. 22 / Brede weersverzekering",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.rvo.nl/sites/default/files/2026-02/260212-Vragen-in-de-Gecombineerde-opgave-2026-v1.pdf",
+        "title": "RVO – Vragen in de Gecombineerde opgave 2026",
+        "edition": "2026 v1, publication filename 260212, 46 pages"
+      }
+    ],
+    "limitations": [
+      "Partial sourced draft mapping only. This is not the complete national form, a domain-reviewed rule set or a verified authority submission payload.",
+      "Required flags describe completeness of this local draft subset. Conditional applicability must be reviewed manually against the original source.",
+      "Only scheme selections are mapped. Applicant eligibility, corporate relationships, parcel declarations, eco-activity evidence and calculations remain unmapped.",
+      "The source has conditions for individual scheme selections; no condition is implemented here. A selected yes/no answer cannot establish eligibility or an entitlement.",
+      "No eligibility, compliance, certification, authority acceptance or filing-transport claim is made. Unmapped fields and required variants remain completion gaps."
+    ],
+    "checks": []
+  },
+  {
+    "id": "nl-inputs-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "NL",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Netherlands – Input and application records (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.rvo.nl/sites/default/files/2026-02/260212-Vragen-in-de-Gecombineerde-opgave-2026-v1.pdf",
+        "title": "RVO – Vragen in de Gecombineerde opgave 2026",
+        "edition": "2026 v1, publication filename 260212, 46 pages"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national input and application records form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "nl-inspection-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "NL",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Netherlands – Inspection response (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.rvo.nl/sites/default/files/2026-02/260212-Vragen-in-de-Gecombineerde-opgave-2026-v1.pdf",
+        "title": "RVO – Vragen in de Gecombineerde opgave 2026",
+        "edition": "2026 v1, publication filename 260212, 46 pages"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national inspection response form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "nl-sustainability-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "NL",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "sourced-draft-2026-10-16-v1",
+    "capability": "sourced_draft_mapping",
+    "title": "RVO Gecombineerde opgave 2026 – organic declaration subset",
+    "fields": [
+      {
+        "key": "nl_organic_or_conversion_2026",
+        "label": "Is any part of the farm organic or in conversion in 2026?",
+        "official_field": "p. 7 / Is uw bedrijf in 2026 (voor een deel) biologisch of in omschakeling naar biologisch?",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nl_organic_parcels_2026_05_15",
+        "label": "Organic or conversion parcels used on 15 May 2026",
+        "official_field": "p. 7 / Heeft u op 15 mei 2026 percelen in gebruik die biologisch zijn of in omschakeling naar biologisch?",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "nl_skal_parcels_listed_2026_05_15",
+        "label": "Were these parcels listed as organic on the Skal certificate by 15 May 2026?",
+        "official_field": "p. 7 / Staan deze percelen allemaal, uiterlijk 15 mei 2026, als biologisch op het Skal-certificaat?",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "nl_skal_number",
+        "label": "Skal registration number",
+        "official_field": "p. 7 / Wat is uw Skal-nummer?",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "static"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.rvo.nl/sites/default/files/2026-02/260212-Vragen-in-de-Gecombineerde-opgave-2026-v1.pdf",
+        "title": "RVO – Vragen in de Gecombineerde opgave 2026",
+        "edition": "2026 v1, publication filename 260212, 46 pages"
+      }
+    ],
+    "limitations": [
+      "Partial sourced draft mapping only. This is not the complete national form, a domain-reviewed rule set or a verified authority submission payload.",
+      "Required flags describe completeness of this local draft subset. Conditional applicability must be reviewed manually against the original source.",
+      "This maps the RVO organic declaration questions only; it does not map the Skal inspection/certification process or the complete eco-scheme.",
+      "Date-specific facts must retain 2026-05-15. A certificate identifier or declared organic status does not prove that all parcels, products or reporting periods are certified.",
+      "No eligibility, compliance, certification, authority acceptance or filing-transport claim is made. Unmapped fields and required variants remain completion gaps."
+    ],
+    "checks": []
+  }
+]

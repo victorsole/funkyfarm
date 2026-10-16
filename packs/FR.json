@@ -1,0 +1,281 @@
+[
+  {
+    "id": "FR-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FR",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "France: Annual farm reporting — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the France annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FR-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FR",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "France: CAP application preparation — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the France cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FR-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FR",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "sourced_draft_mapping",
+    "title": "France: registre phytopharmaceutique — surface treatments, Annex II A",
+    "fields": [
+      {
+        "key": "siret_holder",
+        "label": "Register holder SIRET (14 digits)",
+        "official_field": "Numéro SIRET détenteur",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "siret_beneficiary",
+        "label": "Beneficiary SIRET when providing a service (14 digits)",
+        "official_field": "Numéro SIRET bénéficiaire",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "product_name",
+        "label": "Full commercial product name",
+        "official_field": "Produit",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "product_authorisation",
+        "label": "Product authorisation number (7 digits)",
+        "official_field": "Numéro d'autorisation du produit",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_date",
+        "label": "Use date (JJ/MM/AAAA)",
+        "official_field": "Date d'utilisation",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_start",
+        "label": "Start time, where required (CET, 24 hour HH:MM)",
+        "official_field": "Horaire de début d'utilisation",
+        "required": false,
+        "unit": "HH:MM",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_end",
+        "label": "End time, where required (CET, 24 hour HH:MM)",
+        "official_field": "Horaire de fin d'utilisation",
+        "required": false,
+        "unit": "HH:MM",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "early_reentry_interval",
+        "label": "Early re-entry interval, where applicable (HH:MM)",
+        "official_field": "Délai de rentrée anticipée",
+        "required": false,
+        "unit": "HH:MM",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_dose",
+        "label": "Dose with its recorded unit; adapted units permitted by source",
+        "official_field": "Dose de produit utilisée",
+        "required": true,
+      "unit": null,
+      "unit_guidance": "Preserve the actual recorded dose unit. The source lists kg/ha and L/ha and permits adapted units; these are alternatives, not a composite unit. No conversion is inferred.",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "target",
+        "label": "Target, when recorded",
+        "official_field": "Cible",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "application_method",
+        "label": "Application method, when recorded",
+        "official_field": "Mode d'application",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "rpg_islet",
+        "label": "RPG îlot number, if RPG reference exists (4 characters)",
+        "official_field": "Localisation de la surface traitée selon le registre parcellaire graphique (RPG) — numéro de l'îlot",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "rpg_parcel",
+        "label": "RPG parcel within îlot, if RPG reference exists (3 characters)",
+        "official_field": "Localisation de la surface traitée selon le registre parcellaire graphique (RPG) — numéro de la parcelle",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "insee_commune",
+        "label": "INSEE commune code, if RPG reference exists (5 characters)",
+        "official_field": "Localisation de la surface traitée selon le registre parcellaire graphique (RPG) — code commune Insee",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treatment_coordinates",
+        "label": "Representative WGS84 decimal coordinates if no RPG reference",
+        "official_field": "Détermination de la localisation",
+        "required": false,
+        "unit": "WGS84 decimal degrees",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "treated_area",
+        "label": "Treated area, with the unit actually recorded",
+        "official_field": "Surface traitée",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "crop_name_or_eppo",
+        "label": "Crop or situation: OEPP code (5 or 6 characters) or text",
+        "official_field": "Dénomination de la culture",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "bbch_stage",
+        "label": "BBCH stage where relevant (2 digits)",
+        "official_field": "Stade phénologique de la culture au moment du traitement",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "organic_production",
+        "label": "Organic production (Oui/non)",
+        "official_field": "Conduite biologique de la production",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.legifrance.gouv.fr/loda/id/JORFTEXT000053228465/",
+        "title": "Arrêté du 24 décembre 2025 relatif à la tenue des registres d'utilisation des produits phytopharmaceutiques et de leurs adjuvants",
+        "edition": "Consolidated version in force 2026-10-16; last updated 2026-01-01; Annexes I and II"
+      }
+    ],
+    "limitations": [
+      "Source-backed draft of Annex II A surface-treatment records only. Enclosed spaces (II B), seed/plant treatment (II C) and sowing treated seeds (II D) require separate mappings.",
+      "Fields marked optional include conditional legal requirements. A service requires beneficiary SIRET; location requires either the RPG îlot/parcel/INSEE combination or WGS84 coordinates. Time, BBCH and early re-entry details require applicability review.",
+      "Early re-entry also requires the moment, place, reason and worker exposure mitigation details under Annex I; this subset does not represent that complete scenario.",
+      "Preserve the source date, units, leading zeros and identifier characters. The displayed unit lists standard field treatment units; the source permits adapted units, which must remain explicit.",
+      "The order enters into force on 2026-01-01. Article 4 permits uses before 2027-01-01 to remain without conversion to electronic format; this draft does not impose a 2026 electronic-filing requirement.",
+      "Human review is required. No portal submission, verified machine-readable authority payload, product authorisation validation or authority acceptance is implemented.",
+      "Five-year record retention and integrity under Article 3 are source requirements, not proved by this field mapping."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FR-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FR",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "France: Inspection response — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the France inspection response form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "FR-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "FR",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "France: Sustainability evidence — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the France sustainability evidence form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  }
+]

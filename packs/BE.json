@@ -1,0 +1,218 @@
+[
+  {
+    "id": "be-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "BE",
+    "region": "Vlaanderen",
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Vlaanderen — Mestbankaangifte",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.vlm.be/nl/themas/waterkwaliteit/mestbank/formulieren_en_registers/registers/kunstmestregister_landbouwers/faq_kunstmestregister/Paginas/default.aspx",
+        "title": "VLM — Veelgestelde vragen over het kunstmestregister",
+        "edition": "Live FAQ; sections include updates 12.02.2026; section Welke gegevens moet ik invullen"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "FAQ verifies the annual declaration's link to use-register data; full declaration and reporting-year mapping remain open."
+    ],
+    "checks": []
+  },
+  {
+    "id": "be-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "BE",
+    "region": "Vlaanderen",
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Vlaanderen — Verzamelaanvraag 2026 / Perceelsaangifte",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://lv.vlaanderen.be/bedrijfsvoering/verzamelaanvraag-randvoorwaarden/verzamelaanvraag",
+        "title": "Agentschap Landbouw en Zeevisserij — Verzamelaanvraag",
+        "edition": "2026 campaign index"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Flemish application only; regional coverage for Wallonia and Brussels remains open."
+    ],
+    "checks": []
+  },
+  {
+    "id": "be-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "BE",
+    "region": "Vlaanderen",
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Vlaanderen — Kunstmestregister, Gebruiksregister",
+    "fields": [
+      {
+        "key": "fertilizer_code",
+        "label": "Mestbank fertilizer code",
+        "official_field": "Gebruiksregister: mestcode van de Mestbank",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "fertilizer_name",
+        "label": "Fertilizer own name",
+        "official_field": "Gebruiksregister: eventueel een eigen naam voor de meststof",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nitrogen_percent",
+        "label": "Nitrogen concentration",
+        "official_field": "Gebruiksregister: %N",
+        "required": true,
+        "unit": "%",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "phosphate_percent",
+        "label": "Phosphate concentration",
+        "official_field": "Gebruiksregister: %P2O5",
+        "required": true,
+        "unit": "%",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "quantity",
+        "label": "Fertilizer amount",
+        "official_field": "Gebruiksregister: hoeveelheid (kg of l)",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "quantity_unit",
+        "label": "Quantity unit",
+        "official_field": "Gebruiksregister: kg of l",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "use_date",
+        "label": "Use date",
+        "official_field": "Gebruiksregister: datum van gebruik van de meststof",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "farmer_number",
+        "label": "Farmer number for parcel identification",
+        "official_field": "Gebruiksregister: landbouwernummer",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "parcel_campaign_year",
+        "label": "Parcel identification campaign year",
+        "official_field": "Gebruiksregister: campagnejaar",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "parcel_number",
+        "label": "Parcel number",
+        "official_field": "Gebruiksregister: perceelsnummer",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.vlm.be/nl/themas/waterkwaliteit/mestbank/formulieren_en_registers/registers/kunstmestregister_landbouwers/faq_kunstmestregister/Paginas/default.aspx",
+        "title": "VLM — Veelgestelde vragen over het kunstmestregister",
+        "edition": "Live FAQ; sections include updates 12.02.2026; section Welke gegevens moet ik invullen"
+      }
+    ],
+    "limitations": [
+      "Selected fields mapped to the cited official document; this is a reviewable draft, not a complete legal form or accepted authority submission.",
+      "Flemish mineral-fertilizer use register only; Wallonia and Brussels are not covered.",
+      "Draft uses the explicit farmer-number/campaign-year/parcel-number identification option; official system also allows map/list selection.",
+      "The separate Verhandelingsregister and annual Mestbankaangifte are not complete in this mapping.",
+      "Confirm actual reporting duty and any exemption; required flags describe a use-register row once applicable.",
+      "Product amount is kg or litres; nutrient percentages must not be substituted for product quantity."
+    ],
+    "checks": [
+      "Confirm parcel campaign year matches the official parcel reference.",
+      "Keep kg versus litres explicit; do not silently convert."
+    ]
+  },
+  {
+    "id": "be-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "BE",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "BE: inspection format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inspection format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "be-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "BE",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "BE: sustainability format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No sustainability format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  }
+]

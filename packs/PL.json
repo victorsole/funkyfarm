@@ -1,0 +1,228 @@
+[
+  {
+    "id": "pl-annual-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PL",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Poland – Annual farm and expense summary (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.pl/web/arimr/zasady-skladania-wniosku",
+        "title": "ARiMR – Zasady składania wniosku",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national annual farm and expense summary form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pl-cap-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PL",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "ARiMR eWniosekPlus 2026 – unmapped reference",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.pl/web/arimr/zasady-skladania-wniosku",
+        "title": "ARiMR – Zasady składania wniosku",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The named application is identified, but scheme applicability, required fields, eligibility conditions and authority payload remain unmapped.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pl-inputs-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PL",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "sourced-draft-2026-10-16-v1",
+    "capability": "sourced_draft_mapping",
+    "title": "Poland – plant-protection surface-application record subset, 2026",
+    "fields": [
+      {
+        "key": "pl_ppp_application_type",
+        "label": "Application type",
+        "official_field": "p. 1 / Rodzaj zastosowania",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_product_name",
+        "label": "Product name",
+        "official_field": "p. 1 / Środek ochrony roślin / Nazwa produktu",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_authorisation_number",
+        "label": "Product authorisation number",
+        "official_field": "p. 1 / Środek ochrony roślin / numer zezwolenia",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_application_date",
+        "label": "Application date",
+        "official_field": "p. 1 / Czas zastosowania / Data",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_application_start_time",
+        "label": "Start time, where relevant",
+        "official_field": "p. 1 / Czas zastosowania / godzina rozpoczęcia (godz.), w stosownych przypadkach",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_dose",
+        "label": "Applied dose with supplied kg/ha or litre/ha unit",
+        "official_field": "p. 1 / Zastosowana dawka / Ilość w kilogramach/litrach zastosowanego środka ochrony roślin na hektar",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_location",
+        "label": "Treated area identification",
+        "official_field": "p. 1 / Lokalizacja lub identyfikacja obszaru lub jednostki poddanych działaniu środka",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_treated_area",
+        "label": "Treated area",
+        "official_field": "p. 1 / Wielkość obszaru / Liczba hektarów, na których zastosowano środek",
+        "required": true,
+        "unit": "ha",
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "pl_ppp_crop_or_situation",
+        "label": "Crop or land-use situation, including relevant EPPO/BBCH detail",
+        "official_field": "p. 1 / Uprawa lub umiejscowienie zastosowanie w odniesieniu do gruntów",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.gov.pl/attachment/dbab5312-3063-4b45-ab21-33655bd85b03",
+        "title": "Polish government – Informacje, które należy zamieścić w dokumentacji dotyczącej stosowanych środków ochrony roślin",
+        "edition": "Requirements from 2026-01-01, 2-page official information sheet"
+      }
+    ],
+    "limitations": [
+      "Partial sourced draft mapping only. This is not the complete national form, a domain-reviewed rule set or a verified authority submission payload.",
+      "Required flags describe completeness of this local draft subset. Conditional applicability must be reviewed manually against the original source.",
+      "Only the surface-area application row is mapped. Enclosed-space and seed/propagating-material rows use different quantities and units and remain unsupported.",
+      "Dose has no fixed unit: the original allows kilogram or litre per hectare and qualified unit adjustments. Preserve the explicit supplied dose and unit together; never infer a unit or convert mass to volume.",
+      "Start time, EPPO codes and BBCH stage have source-specific conditional relevance. Applicability and the alternative location-identification methods remain manual.",
+      "This information sheet is not a complete electronic filing schema or an agronomic authorisation/label check.",
+      "No eligibility, compliance, certification, authority acceptance or filing-transport claim is made. Unmapped fields and required variants remain completion gaps."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pl-inspection-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PL",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Poland – Inspection response (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.pl/web/arimr/zasady-skladania-wniosku",
+        "title": "ARiMR – Zasady składania wniosku",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national inspection response form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pl-sustainability-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PL",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Poland – Sustainability and certification evidence (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.pl/web/arimr/zasady-skladania-wniosku",
+        "title": "ARiMR – Zasady składania wniosku",
+        "edition": "2026 campaign guidance, retrieved 2026-10-16"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national sustainability and certification evidence form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  }
+]

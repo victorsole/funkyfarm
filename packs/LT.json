@@ -1,0 +1,135 @@
+[
+  {
+    "id": "LT-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "LT",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Lithuania: Annual farm reporting — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://nma.lrv.lt/lt/naujienos/patvirtintos-2026-m-tiesioginiu-ismoku-taisykles-QgR",
+        "title": "NMA — Patvirtintos 2026 m. tiesioginių išmokų taisyklės",
+        "edition": "2026 campaign official search excerpt retrieved 2026-10-16; full rules and forms not yet inspected"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Lithuania annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "LT-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "LT",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Lithuania: CAP application preparation — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://nma.lrv.lt/lt/naujienos/patvirtintos-2026-m-tiesioginiu-ismoku-taisykles-QgR",
+        "title": "NMA — Patvirtintos 2026 m. tiesioginių išmokų taisyklės",
+        "edition": "2026 campaign official search excerpt retrieved 2026-10-16; full rules and forms not yet inspected"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Lithuania cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "LT-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "LT",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Lithuania: Input-use records — mapping unavailable",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://nma.lrv.lt/lt/naujienos/patvirtintos-2026-m-tiesioginiu-ismoku-taisykles-QgR",
+        "title": "NMA — Patvirtintos 2026 m. tiesioginių išmokų taisyklės",
+        "edition": "2026 campaign official search excerpt retrieved 2026-10-16; full rules and forms not yet inspected"
+      }
+    ],
+    "limitations": [
+      "Coverage gap: the Lithuania input-use records form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "LT-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "LT",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Lithuania: Inspection response — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Lithuania inspection response form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  },
+  {
+    "id": "LT-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "LT",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "1.0.0",
+    "capability": "reference_only",
+    "title": "Lithuania: Sustainability evidence — mapping unavailable",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Coverage gap: the Lithuania sustainability evidence form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
+      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
+      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+    ],
+    "checks": []
+  }
+]

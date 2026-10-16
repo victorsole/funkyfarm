@@ -1,0 +1,131 @@
+[
+  {
+    "id": "cy-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CY",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "CY: annual format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No annual format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "cy-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CY",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Ενιαία Αίτηση Εκταρικών Επιδοτήσεων 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.cy/capo/documents/eniaia-aitisi-ektarikon-epidotiseon-2026/",
+        "title": "CAPO — Ενιαία Αίτηση Εκταρικών Επιδοτήσεων 2026",
+        "edition": "2026 campaign; official document index published 28.05.2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Official EAS application and 2026 manual identified; parcel and applicant fields remain unmapped.",
+      "Deadlines on the document index may have subsequent amendments; no filing deadline is encoded."
+    ],
+    "checks": []
+  },
+  {
+    "id": "cy-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CY",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "CY: inputs format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inputs format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "cy-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CY",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Εγχειρίδιο Αιρεσιμότητας — Παράρτημα 3 Κατάλογοι Ελέγχου 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.cy/capo/documents/eniaia-aitisi-ektarikon-epidotiseon-2026/",
+        "title": "CAPO — Ενιαία Αίτηση Εκταρικών Επιδοτήσεων 2026",
+        "edition": "2026 campaign; official document index published 28.05.2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "The 2026 inspection-checklist annex is linked in the source; individual checklist questions and applicability are not yet mapped."
+    ],
+    "checks": []
+  },
+  {
+    "id": "cy-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CY",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "ΕΑΕΕ 2026 — Οικολογικά Προγράμματα Α.Π. 3.1 / 3.2",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.gov.cy/capo/documents/eniaia-aitisi-ektarikon-epidotiseon-2026/",
+        "title": "CAPO — Ενιαία Αίτηση Εκταρικών Επιδοτήσεων 2026",
+        "edition": "2026 campaign; official document index published 28.05.2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Source identifies soil/nutrient and plant-protection eco-programmes; scheme-specific annex fields remain unmapped."
+    ],
+    "checks": []
+  }
+]

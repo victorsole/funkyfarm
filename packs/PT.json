@@ -1,0 +1,152 @@
+[
+  {
+    "id": "pt-annual-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PT",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Portugal – Annual farm and expense summary (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
+        "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
+        "edition": "Updated 2026-07-29; 2026 campaign"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national annual farm and expense summary form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pt-cap-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PT",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "IFAP Pedido Único 2026 – unmapped reference",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
+        "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
+        "edition": "Updated 2026-07-29; 2026 campaign"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The named application is identified, but scheme applicability, required fields, eligibility conditions and authority payload remain unmapped.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pt-inputs-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PT",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Portugal – Input and application records (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
+        "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
+        "edition": "Updated 2026-07-29; 2026 campaign"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national input and application records form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pt-inspection-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PT",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Portugal – Inspection response (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
+        "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
+        "edition": "Updated 2026-07-29; 2026 campaign"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national inspection response form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  },
+  {
+    "id": "pt-sustainability-2026-v1",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "PT",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "inventory-2026-10-16-v1",
+    "capability": "reference_only",
+    "title": "Portugal – Sustainability and certification evidence (national format unverified)",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
+        "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
+        "edition": "Updated 2026-07-29; 2026 campaign"
+      }
+    ],
+    "limitations": [
+      "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format.",
+      "The applicable national sustainability and certification evidence form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family.",
+      "Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability.",
+      "No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed."
+    ],
+    "checks": []
+  }
+]

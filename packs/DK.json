@@ -1,0 +1,265 @@
+[
+  {
+    "id": "dk-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DK",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Gødningsregnskab",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://lbst.dk/planter/goedning/goedningsregnskab",
+        "title": "Official Gødningsregnskab entrypoint",
+        "edition": "Live entrypoint; no annual form edition stated"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Annual fertilizer account submitted through landbrugsindberetning.dk; accounting period and complete fields remain unmapped."
+    ],
+    "checks": []
+  },
+  {
+    "id": "dk-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DK",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "Fællesskema 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://lbst.dk/tilskud/foer-under-og-efter-ansoegning/statistik-for-ansoegning-i-faellesskema-2026",
+        "title": "Official Fællesskema 2026 statistics",
+        "edition": "2026 campaign"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Official campaign existence verified; statistics are not a field specification. Complete Fællesskema field mapping remains open."
+    ],
+    "checks": []
+  },
+  {
+    "id": "dk-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DK",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Gødningskvote og Efterafgrøder 2026 — Markplan (selected editable columns)",
+    "fields": [
+      {
+        "key": "deduction_area",
+        "label": "Other areas without fertilizer quota",
+        "official_field": "C4 — Fradragsarealer",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "soil_type",
+        "label": "Soil type (JB number)",
+        "official_field": "C8 — Jordbundstype",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "irrigation",
+        "label": "Irrigated land selection",
+        "official_field": "C9 — Vanding",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "main_crop",
+        "label": "Main crop code",
+        "official_field": "C10 — Hovedafgrøde",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "previous_crop",
+        "label": "Previous year's main crop",
+        "official_field": "C11 — Forfrugt",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "undersown_crop",
+        "label": "Undersown crop",
+        "official_field": "C12 — Udlæg",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "uncropped_catch_area",
+        "label": "Area without established catch crop or undersown crop",
+        "official_field": "C13 — Øvrige fradragsarealer uden efterafgrøder eller udlæg",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "soil_phosphorus",
+        "label": "Average measured soil phosphorus value",
+        "official_field": "C15 — Fosfortal",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "nitrogen_adjustment",
+        "label": "Nitrogen norm adjustment per hectare",
+        "official_field": "C19 — N-korrektion",
+        "required": false,
+        "unit": "kg N/ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "targeted_catch_selection",
+        "label": "Obligatory targeted catch crop selection",
+        "official_field": "C34 — Obligatoriske efterafgrøder eller alternativer i målrettet kvælstofregulering",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "mandatory_catch_selection",
+        "label": "Mandatory and livestock catch crop selection",
+        "official_field": "C35 — Pligtige og husdyrefterafgrøder eller alternativer",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "catch_sowing_date",
+        "label": "Late catch crop sowing date",
+        "official_field": "C36 — Så-tidspunkt ved sen etablering af efterafgrøder",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "calendar_date"
+      },
+      {
+        "key": "catch_crop_alternative",
+        "label": "Catch crop or alternative",
+        "official_field": "C37 — Efterafgrøder eller alternativer",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "precision_scheme",
+        "label": "Precision agriculture scheme",
+        "official_field": "C38 — Præcisionslandbrug tilmeldt ordning",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "sludge_applied",
+        "label": "Sewage sludge applied selection",
+        "official_field": "C41 — Udbragt slam",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://help.lbst.dk/hjaelpetekster-i-tast-selv/gkea/gkea-markplan/",
+        "title": "Tast selv — GKEA Markplan",
+        "edition": "GKEA 2026; main crops plan period 2025/2026; catch crops plan period 2026/2027"
+      }
+    ],
+    "limitations": [
+      "Selected fields mapped to the cited official document; this is a reviewable draft, not a complete legal form or accepted authority submission.",
+      "Partial editable-column mapping only; linked IMK field geometry and automatically calculated quotas are not supplied.",
+      "Main-crop fields refer to 2025/2026; catch-crop selections refer to 2026/2027 even though the application campaign is 2026.",
+      "C11 records the previous crop; never populate it from this year's crop.",
+      "Conditional applicability and documentation for irrigation, soil tests and higher yields require human review.",
+      "This is fertilizer planning, not pesticide accounting and not the annual Gødningsregnskab."
+    ],
+    "checks": [
+      "Keep C19 in kg N/ha; do not substitute a whole-field nitrogen total.",
+      "Verify plan-period alignment for main crops, previous crops and catch crops."
+    ]
+  },
+  {
+    "id": "dk-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DK",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "DK: inspection format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inspection format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "dk-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "DK",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "GKEA 2026 — Efterafgrøder / alternativer",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://help.lbst.dk/hjaelpetekster-i-tast-selv/gkea/gkea-markplan/",
+        "title": "Tast selv — GKEA Markplan",
+        "edition": "GKEA 2026; main crops plan period 2025/2026; catch crops plan period 2026/2027"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Catch-crop columns are identifiable; the complete scheme-specific quota and eligibility calculations are not implemented.",
+      "The input mapping contains selected C34–C38 columns, but that alone does not establish a complete environmental filing."
+    ],
+    "checks": []
+  }
+]

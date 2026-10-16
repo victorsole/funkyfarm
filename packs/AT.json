@@ -1,0 +1,248 @@
+[
+  {
+    "id": "at-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "AT",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Mehrfachantrag — Tierliste (non-bovine inventory; 2026 handbook)",
+    "fields": [
+      {
+        "key": "holding_number",
+        "label": "Main or subsidiary holding number",
+        "official_field": "2.4 Tierliste: Betriebsnummer",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "static"
+      },
+      {
+        "key": "species",
+        "label": "Animal species",
+        "official_field": "2.4 Nichtrinder: Tierart",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "animal_category",
+        "label": "Animal category",
+        "official_field": "2.4 Nichtrinder: Kategorie",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "count_april_1",
+        "label": "Animal count on 1 April",
+        "official_field": "2.4 Anzahl zum Stichtag 01.04.",
+        "required": true,
+        "unit": "head",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "annual_average_count",
+        "label": "Annual average animal count",
+        "official_field": "2.4 Anzahl im Jahresdurchschnitt",
+        "required": false,
+        "unit": "head",
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.ama.at/media/onnjutee/online_handbuch_2026_version_25.pdf",
+        "title": "AMA Benutzerhandbuch Online-Erfassung Mehrfachantrag",
+        "edition": "Version 25, 15.01.2026; sections 2.3 and 2.4; examples include earlier years"
+      }
+    ],
+    "limitations": [
+      "Selected fields mapped to the cited official document; this is a reviewable draft, not a complete legal form or accepted authority submission.",
+      "This is the MFA livestock annex, not whole-farm annual accounts.",
+      "Only non-bovine rows are mapped. Each subsidiary holding needs its own inventory.",
+      "Annual average is conditional on changes from the 1 April stock; applicability is reviewed by the farmer.",
+      "The handbook's category codes and 2026 horse/pony category changes are not reproduced here."
+    ],
+    "checks": [
+      "Record the year and distinguish the 1 April snapshot from the annual average."
+    ]
+  },
+  {
+    "id": "at-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "AT",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Mehrfachantrag 2026 — Feldstücksliste / Hilfssummenblatt (selected fields)",
+    "fields": [
+      {
+        "key": "field_number",
+        "label": "Field number",
+        "official_field": "2.3 Schlagnutzungsarten: FS-Nummern",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "field_use_type",
+        "label": "Field use type",
+        "official_field": "2.3 Feldstücknutzungsarten: FS-Nutzungsart",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "crop",
+        "label": "Crop or use",
+        "official_field": "2.3 Schlagnutzungsarten: Nutzung bzw. Kultur",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "gross_area",
+        "label": "Gross area",
+        "official_field": "2.3 Schlagnutzungsarten: Fläche in ha brutto",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "net_area",
+        "label": "Net area",
+        "official_field": "2.3 Schlagnutzungsarten: Fläche in ha netto",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "scheme_code",
+        "label": "Scheme code",
+        "official_field": "2.3 Codes: Code",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "cover_variant",
+        "label": "Cover-crop variant",
+        "official_field": "2.3 Begrünungsvarianten: Variante",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.ama.at/media/onnjutee/online_handbuch_2026_version_25.pdf",
+        "title": "AMA Benutzerhandbuch Online-Erfassung Mehrfachantrag",
+        "edition": "Version 25, 15.01.2026; sections 2.3 and 2.4; examples include earlier years"
+      }
+    ],
+    "limitations": [
+      "Selected fields mapped to the cited official document; this is a reviewable draft, not a complete legal form or accepted authority submission.",
+      "Summary-table fields only; digital parcel geometry, ownership, eligibility and application declarations are not mapped.",
+      "MFA 2026 code catalogue must be reviewed separately; the handbook includes historical example screenshots.",
+      "Rows represent a selected field/use summary; gross and net areas are not interchangeable."
+    ],
+    "checks": []
+  },
+  {
+    "id": "at-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "AT",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "ÖPUL — Bodennahe Ausbringung flüssiger Wirtschaftsdünger und Gülleseparation",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ama.at/fachliche-informationen/oepul/aufzeichnungsvorlagen",
+        "title": "AMA ÖPUL Aufzeichnungsvorlagen",
+        "edition": "ÖPUL 2023 programme; live template index, no common annual edition stated"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Named templates verified in the official index; PDF column mappings remain open.",
+      "These scheme-specific records do not cover every Austrian fertilizer or pesticide obligation."
+    ],
+    "checks": []
+  },
+  {
+    "id": "at-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "AT",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "AMA MFA Fotos — Flächenmonitoring 2026",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ama.at/fachliche-informationen/mehrfachantrag/merkblaetter",
+        "title": "AMA Merkblätter / Handbücher",
+        "edition": "Index lists Merkblatt Flächenmonitoring 2026"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Monitoring response and georeferenced photo evidence have not been mapped to request-specific requirements."
+    ],
+    "checks": []
+  },
+  {
+    "id": "at-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "AT",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "ÖPUL — Begrünung von Ackerflächen, System Immergrün",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://www.ama.at/fachliche-informationen/oepul/aufzeichnungsvorlagen",
+        "title": "AMA ÖPUL Aufzeichnungsvorlagen",
+        "edition": "ÖPUL 2023 programme; live template index, no common annual edition stated"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Official programme template identified; measure-specific field mapping remains open."
+    ],
+    "checks": []
+  }
+]

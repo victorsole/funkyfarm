@@ -1,0 +1,229 @@
+[
+  {
+    "id": "ee-annual-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "farm-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "EE",
+    "region": null,
+    "workflow_id": "annual",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "EE: annual format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No annual format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ee-cap-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "cap-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "EE",
+    "region": null,
+    "workflow_id": "cap",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Pindala- ja loomapõhiste toetuste taotlus 2026 — selected direct-payment fields",
+    "fields": [
+      {
+        "key": "basic_support_selection",
+        "label": "Basic income and redistributive support claim selection",
+        "official_field": "3.4.1 point 1.1 — Taotlen põhisissetuleku toetust (PST) ja ümberjaotavat toetust (ÜJT)",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "basic_support_land_type",
+        "label": "Claim for fields, heritage meadows, or both",
+        "official_field": "3.4.1 point 1.1 — põldudele / pärandniitudele / mõlemale",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "young_farmer_selection",
+        "label": "Young farmer support claim selection",
+        "official_field": "3.4.1 point 1.2 — Taotlen noore põllumajandustootja toetust (NPT)",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "field_block_number",
+        "label": "Field block number",
+        "official_field": "3.4.5 Põldude loetelu — põllumassiivi number",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "field_area",
+        "label": "Parcel area",
+        "official_field": "3.4.5 Põldude loetelu — põllu pindala",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "field_claim_marks",
+        "label": "Support claim selections for each field",
+        "official_field": "3.4.5 Põldude loetelu — toetuse taotlemise veerud",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.pria.ee/sites/default/files/2026-05/2026_pindalatoetused_epria_juhend.pdf",
+        "title": "PRIA — Juhend pindala- ja loomapõhiste toetuste taotluse esitamiseks e-PRIAs",
+        "edition": "2026 application manual; sections 3.4.1, 3.4.2, 3.4.5, 3.4.6"
+      }
+    ],
+    "limitations": [
+      "Selected 2026 fields only, not a complete application or accepted authority submission.",
+      "The system exposes additional fields depending on selected supports; these are not exhaustively mapped.",
+      "Field block number and area are edited through the official map application; draft values do not update e-PRIA.",
+      "Young-farmer eligibility confirmations 1.2.1/1.2.2 and evidence attachments remain unmapped.",
+      "A claim choice is not eligibility proof; per-field claim selections are also required when applicable."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ee-inputs-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "EE",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "EE: inputs format mapping gap",
+    "fields": [],
+    "sources": [],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "No inputs format has been verified for nationwide 2026 coverage. This gap is not a national reporting form."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ee-inspection-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "inspection-evidence",
+    "mapping_status": "reference_only",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "EE",
+    "region": null,
+    "workflow_id": "inspection",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "reference_only",
+    "title": "PTA — Toetuste kontroll",
+    "fields": [],
+    "sources": [
+      {
+        "url": "https://pta.agri.ee/jarelevalve-korraldus-ja-tulemused/toetuste-kontroll",
+        "title": "Põllumajandus- ja Toiduamet — Toetuste kontroll",
+        "edition": "Live control-information page; no form edition verified"
+      }
+    ],
+    "limitations": [
+      "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented.",
+      "Control authority reference only; request-specific evidence checklist and return format remain unmapped."
+    ],
+    "checks": []
+  },
+  {
+    "id": "ee-sustainability-2026",
+    "inventory_checked_date": "2026-10-16",
+    "common_pack_id": "sustainability-evidence",
+    "mapping_status": "partial_mapping",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "EE",
+    "region": null,
+    "workflow_id": "sustainability",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "ÖKO 2026 — Ökoalade loetelu (selected fields)",
+    "fields": [
+      {
+        "key": "eco_claim_selection",
+        "label": "Claim ecological-area support",
+        "official_field": "3.4.2 Ökokavad — ÖKO",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "green_manure_fallow",
+        "label": "Green manure selection on field row",
+        "official_field": "3.4.6 Põldude loetelu — HV",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "green_fallow",
+        "label": "Green fallow selection on field row",
+        "official_field": "3.4.6 Põldude loetelu — HK",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "eco_area",
+        "label": "Ecological area",
+        "official_field": "3.4.6 Ökoala pindala (ha)",
+        "required": false,
+        "unit": "ha",
+        "temporal_basis": "campaign_year"
+      },
+      {
+        "key": "eco_row_selection",
+        "label": "Count this ecological-area row",
+        "official_field": "3.4.6 Ökoalade loetelu — ÖKO",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.pria.ee/sites/default/files/2026-05/2026_pindalatoetused_epria_juhend.pdf",
+        "title": "PRIA — Juhend pindala- ja loomapõhiste toetuste taotluse esitamiseks e-PRIAs",
+        "edition": "2026 application manual; sections 3.4.1, 3.4.2, 3.4.5, 3.4.6"
+      }
+    ],
+    "limitations": [
+      "Selected columns only; this does not calculate qualifying ecological-area totals or establish eligibility.",
+      "The official system derives potential ecological areas from field area and crop; copied area alone is insufficient.",
+      "The ÖKO block appears only when ecological-area support is selected.",
+      "When the same field has several potential ecological-area types, the manual permits selecting only one type for that field.",
+      "Landscape-element registration, geometry and official assessment remain external to this draft."
+    ],
+    "checks": [
+      "Review that each field is selected as at most one ecological-area type.",
+      "Review the official map intersection and overlap deductions before using ecological area."
+    ]
+  }
+]
