@@ -159,13 +159,13 @@ def authored_model():
             if self.path == "/api/show":
                 self.respond({"details": {"format": "gguf"}})
                 return
-            if self.path != "/api/chat":
+            if self.path != "/api/generate":
                 self.send_error(404)
                 return
             if state["hold"]:
                 state["entered"].set()
                 state["release"].wait(timeout=10)
-            prompt = json.loads(payload["messages"][-1]["content"])
+            prompt = json.loads(payload["prompt"].split("<|im_start|>user\n", 1)[1].split("<|im_end|>\n<|im_start|>assistant", 1)[0])
             kind = "workflow"
             if state["mode"] == "legal":
                 source = next(item for item in prompt["sources"] if item["id"].startswith("L"))
@@ -179,7 +179,7 @@ def authored_model():
                 answer["answer"] = "UNSUPPORTED-LEGAL-CERTAINTY: every farm is legally compliant."
             elif state["mode"] == "invented":
                 answer.update(answer="UNSUPPORTED-EXTERNAL-CLAIM https://attacker.invalid", source_ids=["MADE-UP-SOURCE"])
-            self.respond({"model": model, "done": True, "message": {"role": "assistant", "content": json.dumps(answer)}})
+            self.respond({"model": model, "done": True, "response": json.dumps(answer)})
 
         def log_message(self, *_):
             pass
