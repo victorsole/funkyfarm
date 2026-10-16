@@ -1,0 +1,1835 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-16",
+  "status": "source_backed_review_catalogue_not_legal_certification",
+  "field_contract": "Field keys are internal evidence checks, not authority form codes. Conditional fields need an explicit applicability answer; missing input means unknown, not exemption.",
+  "limits": [
+    "Not a complete EU or national legal inventory and not 27 accepted filing formats.",
+    "A passed evidence check does not establish compliance, product safety, payment eligibility, certification or authority acceptance.",
+    "National/regional law, derogations, species, use types and scheme choices require confirmation. Do not compute a deadline from an unresolved national option.",
+    "A changed page is a review signal, not proof that a rule changed or entered into force.",
+    "Preserve original units, dates, identifiers and evidence. Zero, null and missing are distinct; do not invent historical activity."
+  ],
+  "sources": [
+    {
+      "id": "eu-ppp-base",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02009R1107-20260616",
+      "title": "Regulation (EC) 1107/2009",
+      "version": "2026-06-16",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-ppp-detail",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02023R0564-20251123",
+      "title": "Implementing Regulation (EU) 2023/564",
+      "version": "2025-11-23",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-ppp-amendment",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32025R2203",
+      "title": "Implementing Regulation (EU) 2025/2203",
+      "version": "2025-11-23",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-cap-base",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02021R2116-20260818",
+      "title": "Regulation (EU) 2021/2116",
+      "version": "2026-08-18",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "cap",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-cap-applications",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "version": "2026-08-06",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "cap",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-animal-health",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02016R0429-20210421",
+      "title": "Regulation (EU) 2016/429",
+      "version": "2021-04-21",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-animal-detail",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02019R2035-20260422",
+      "title": "Delegated Regulation (EU) 2019/2035",
+      "version": "2026-04-22",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-animal-transmission",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02021R0520-20210702",
+      "title": "Implementing Regulation (EU) 2021/520",
+      "version": "2021-07-02",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-veterinary-medicines",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02019R0006-20220128",
+      "title": "Regulation (EU) 2019/6",
+      "version": "2022-01-28",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-food-traceability",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02002R0178-20260101",
+      "title": "Regulation (EC) 178/2002",
+      "version": "2026-01-01",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual",
+        "inspection"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-nitrates",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:31991L0676",
+      "title": "Council Directive 91/676/EEC",
+      "version": "Base directive read together with 2026/288; national transposition required",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs",
+        "sustainability"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-nitrates-amendment",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32026L0288",
+      "title": "Commission Directive (EU) 2026/288",
+      "version": "Published 2026-02-10; enters into force 2026-03-02; Member State transposition due by 2028-03-02, not automatic farmer authorisation.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs",
+        "sustainability"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-organic",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02018R0848-20250325",
+      "title": "Regulation (EU) 2018/848",
+      "version": "2025-03-25",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "sustainability",
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-organic-record-amendment",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32021R1691",
+      "title": "Delegated Regulation (EU) 2021/1691",
+      "version": "2021-09-22 publication; applies 2022-01-01",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "sustainability",
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "fr-ppp-record-guidance",
+      "url": "https://agriculture.gouv.fr/le-registre-dutilisation-des-produits-phytopharmaceutiques-au-format-electronique",
+      "title": "French agriculture ministry — electronic PPP use register",
+      "version": "2026-09-25",
+      "country": "FR",
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_authority_guidance",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Relevant official authority page reviewed; no authenticated account test."
+    },
+    {
+      "id": "cz-ppp-record-guidance",
+      "url": "https://mze.gov.cz/public/portal/mze/farmar/eph/Novinky-EPH/informace-ke-zmene-terminu-vedeni-elektronicke-evidence-pouziti-por-od-1-1-2027",
+      "title": "MZe — electronic PPP records from 1 January 2027",
+      "version": "2025-11-04",
+      "country": "CZ",
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_authority_guidance",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Relevant official authority page reviewed; no authenticated account test."
+    },
+    {
+      "id": "de-ppp-retention",
+      "url": "https://www.gesetze-im-internet.de/pflschg_2012/__11.html",
+      "title": "German Plant Protection Act, section 11",
+      "version": "Current official online text",
+      "country": "DE",
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Relevant official authority page reviewed; no authenticated account test."
+    },
+    {
+      "id": "de-nrw-ppp-guidance",
+      "url": "https://www.landwirtschaftskammer.de/landwirtschaft/pflanzenschutz/genehmigungen/aufzeichnung.htm",
+      "title": "LWK NRW — plant-protection recording duties",
+      "version": "Current authority guidance checked 2026-10-16",
+      "country": "DE",
+      "region": "Nordrhein-Westfalen",
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_authority_guidance",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Relevant official authority page reviewed; no authenticated account test."
+    },
+    {
+      "id": "eu-bovine-guidance",
+      "url": "https://food.ec.europa.eu/animals/identification/bovine-animals_en",
+      "title": "European Commission — bovine identification",
+      "version": "Current authority guide checked 2026-10-16",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual"
+      ],
+      "source_type": "official_authority_guidance",
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Current-version metadata and relevant official text or indexed primary excerpts; some direct EUR-Lex requests returned a JavaScript challenge."
+    },
+    {
+      "id": "eu-ppp-base-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32009R1107",
+      "title": "Plant-protection-product regulation: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-ppp-records"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    },
+    {
+      "id": "eu-ppp-detail-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32023R0564",
+      "title": "PPP record regulation: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "inputs"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-ppp-records",
+        "eu-ppp-surface-use",
+        "eu-ppp-closed-space-use",
+        "eu-ppp-seed-treatment-use"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    },
+    {
+      "id": "eu-cap-base-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32021R2116",
+      "title": "CAP financing/IACS regulation: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "cap"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-cap-application"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    },
+    {
+      "id": "eu-cap-application-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32022R1173",
+      "title": "CAP application rules: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "cap"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-cap-application"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    },
+    {
+      "id": "eu-animal-detail-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32019R2035",
+      "title": "Animal traceability rules: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "annual"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-animal-establishment-records",
+        "eu-animal-movement-reporting"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    },
+    {
+      "id": "eu-organic-index",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32018R0848",
+      "title": "Organic regulation: amendment and consolidation metadata",
+      "version": "Original-act metadata page; follow and review any later act/consolidation separately.",
+      "country": null,
+      "region": null,
+      "workflow_ids": [
+        "sustainability"
+      ],
+      "source_type": "official_legislation_metadata",
+      "rule_ids": [
+        "eu-organic-operator-records"
+      ],
+      "checked_date": "2026-10-16",
+      "retrieval_scope": "Official indexed metadata verified; direct retrieval returned a JavaScript challenge on 2026-10-16. Challenge pages must not be treated as legal content or a change."
+    }
+  ],
+  "rules": [
+    {
+      "id": "eu-ppp-records",
+      "title": "Keep a record of every professional plant-protection product use",
+      "country": null,
+      "region": null,
+      "workflow_id": "inputs",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.uses_professional_plant_protection",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "ppp-actual-use",
+          "label": "Actual product use, separate from purchase evidence",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "product",
+              "label": "Product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "date",
+              "label": "Actual use date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "dose",
+              "label": "Application dose and its unit",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treated_size",
+              "label": "Size or amount actually treated, preserving the original unit",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "crop",
+              "label": "Crop or situation",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "pesticide_application"
+          ],
+          "temporal_basis": "calendar_date",
+          "evidence_semantics": "each_actual_use_if_any; absence_of_saved_events_is_not_proof_of_no_use"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "No universally applicable national calendar deadline is established by this catalogue."
+      },
+      "citations": [
+        {
+          "source_id": "eu-ppp-base",
+          "title": "Regulation (EC) 1107/2009",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02009R1107-20260616",
+          "section": "Article 67(1)",
+          "version": "2026-06-16",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-ppp-detail",
+          "title": "Implementing Regulation (EU) 2023/564",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02023R0564-20251123",
+          "section": "Articles 1–5 and Annex",
+          "version": "2025-11-23",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-ppp-amendment",
+          "title": "Implementing Regulation (EU) 2025/2203",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32025R2203",
+          "section": "Article 1",
+          "version": "2025-11-23",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Record completeness and evidence review, not legal compliance or authority acceptance.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2026-01-01",
+        "checked_date": "2026-10-16",
+        "pre_existing_base_duty": "Article 67 already required professional-user records before the detailed rules began applying in 2026."
+      },
+      "limits": [
+        "A receipt establishes acquisition, not application. Do not infer a dose, date, crop or treated area from a purchase.",
+        "The five-year rule for producers/suppliers is not the professional-user three-year minimum. National retention can be longer.",
+        "Product authorisation, label restrictions and national additions need separate review; completeness does not establish lawful use."
+      ],
+      "retention": {
+        "status": "eu_minimum",
+        "minimum_years": 3,
+        "source": "1107/2009 Article 67(1)",
+        "national_longer_period": "not_exhaustively_verified"
+      },
+      "legal_timing": {
+        "record_each_use": "without_undue_delay",
+        "electronic_transfer": {
+          "default_days": 30,
+          "anchor": "actual_use_date",
+          "status": "national_option_review_required",
+          "shorter_national_period_possible": true,
+          "pre_2030_longer_option": "Only where the Member State permits it; electronic records must be available before 31 January following the use year.",
+          "pre_2027_exemption": "Only where the Member State permits no electronic conversion for uses before 2027-01-01."
+        },
+        "authority_request": {
+          "general": "without_undue_delay",
+          "early_electronic_request": "Earlier of the applicable transfer deadline or ten working days, under Article 4 conditions."
+        },
+        "contractor": "Give the contracting person access or a copy without undue delay or restrictions."
+      },
+      "national_options": {
+        "interpretation": "EU 2025/2203 gives a Member State option, not a universal one-year postponement.",
+        "verified": [
+          {
+            "country": "FR",
+            "region": null,
+            "electronic_conversion_for_pre_2027_uses": "not_required_under_the_cited_national_transition",
+            "electronic_requirement_from": "2027-01-01",
+            "pre_2030_transition": "The ministry describes conversion by 31 January following the use year; check the legal order and any request-specific timing.",
+            "citations": [
+              {
+                "source_id": "fr-ppp-record-guidance",
+                "title": "French agriculture ministry — electronic PPP use register",
+                "url": "https://agriculture.gouv.fr/le-registre-dutilisation-des-produits-phytopharmaceutiques-au-format-electronique",
+                "section": "Sections Ce qui évolue and La règlementation prévoit-elle un délai d’adaptation ?",
+                "version": "2026-09-25",
+                "retrieved_at": "2026-10-16"
+              }
+            ],
+            "limits": [
+              "The national source adds content beyond the EU minimum; this catalogue does not reproduce the complete French form.",
+              "The webpage wording at the 2030 boundary is not used to infer an exception for 1 January 2030."
+            ]
+          },
+          {
+            "country": "CZ",
+            "region": null,
+            "electronic_requirement_from": "2027-01-01",
+            "pre_2027_uses": "Universal 2023/564 electronic-format requirement deferred; existing national duties remain.",
+            "citations": [
+              {
+                "source_id": "cz-ppp-record-guidance",
+                "title": "MZe — electronic PPP records from 1 January 2027",
+                "url": "https://mze.gov.cz/public/portal/mze/farmar/eph/Novinky-EPH/informace-ke-zmene-terminu-vedeni-elektronicke-evidence-pouziti-por-od-1-1-2027",
+                "section": "Announcement of 4 November 2025; final two paragraphs",
+                "version": "2025-11-04",
+                "retrieved_at": "2026-10-16"
+              }
+            ],
+            "limits": [
+              "Existing electronic monthly transmission for the specified agricultural holdings over 200 ha is unchanged through 2026. Do not treat the general transition as their exemption.",
+              "The area threshold concerns the listed LPIS crop categories combined, not every land-area measure."
+            ]
+          },
+          {
+            "country": "DE",
+            "region": "Nordrhein-Westfalen",
+            "evidence": "Current NRW authority guidance states machine-readable digital records from 2027; additional 2026 fields and immediate recording remain.",
+            "citations": [
+              {
+                "source_id": "de-nrw-ppp-guidance",
+                "title": "LWK NRW — plant-protection recording duties",
+                "url": "https://www.landwirtschaftskammer.de/landwirtschaft/pflanzenschutz/genehmigungen/aufzeichnung.htm",
+                "section": "Aufzeichnungspflicht gemäß § 11 Pflanzenschutzgesetz",
+                "version": "Current authority guidance checked 2026-10-16",
+                "retrieved_at": "2026-10-16"
+              },
+              {
+                "source_id": "de-ppp-retention",
+                "title": "German Plant Protection Act, section 11",
+                "url": "https://www.gesetze-im-internet.de/pflschg_2012/__11.html",
+                "section": "Section 11",
+                "version": "Current official online text",
+                "retrieved_at": "2026-10-16"
+              }
+            ],
+            "limits": [
+              "Regional authority guidance is not treated as exhaustive verification of every Land's implementation."
+            ]
+          }
+        ],
+        "other_countries": "not_verified; no nationwide postponement or absence of one is inferred.",
+        "retention_addendum": [
+          {
+            "country": "DE",
+            "source_id": "de-ppp-retention",
+            "text": "Section 11 counts the minimum three years from the beginning of the year following record creation; do not use a simple 1095-day deletion rule."
+          }
+        ]
+      }
+    },
+    {
+      "id": "eu-ppp-surface-use",
+      "title": "Surface-treatment record details",
+      "country": null,
+      "region": null,
+      "workflow_id": "inputs",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.uses_professional_plant_protection",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field": "fact.ppp_use_type",
+            "operator": "in",
+            "value": [
+              "surface"
+            ]
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "surface-use-fields",
+          "label": "Record each surface treatment",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "product",
+              "label": "Product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "product_authorisation",
+              "label": "Product authorisation number",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "date",
+              "label": "Actual use date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "start_time",
+              "label": "Start hour",
+              "required": "conditional",
+              "condition": "The use restriction or context makes time relevant.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "dose",
+              "label": "Product dose",
+              "required": "always",
+              "unit_options": [
+                "kg/ha",
+                "L/ha"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "parcel_id",
+              "label": "IACS unit or nationally provided alternative location",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treated_fraction",
+              "label": "Treated fraction",
+              "required": "conditional",
+              "condition": "Only part of the unit or area is treated.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treated_area",
+              "label": "Treated area",
+              "required": "always",
+              "unit_options": [
+                "ha"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "crop",
+              "label": "Crop or land-use name / applicable EPPO code",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "growth_stage",
+              "label": "Relevant BBCH stage",
+              "required": "conditional",
+              "condition": "The use restriction or context makes crop stage relevant.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "pesticide_application"
+          ],
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "No universally applicable national calendar deadline is established by this catalogue."
+      },
+      "citations": [
+        {
+          "source_id": "eu-ppp-detail",
+          "title": "Implementing Regulation (EU) 2023/564",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02023R0564-20251123",
+          "section": "Article 1 and Annex: treatment of surface areas, footnotes 1–7",
+          "version": "2025-11-23",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Record completeness and evidence review, not legal compliance or authority acceptance.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2026-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Dose per hectare is not total product quantity. Keep both meanings distinct; do not convert without a reviewed area and compatible units.",
+        "The Annex permits appropriate unit adjustments. IACS location has a nationally defined alternative when unavailable.",
+        "The field keys are internal review labels, not an accepted national import schema."
+      ]
+    },
+    {
+      "id": "eu-ppp-closed-space-use",
+      "title": "Closed-space treatment record details",
+      "country": null,
+      "region": null,
+      "workflow_id": "inputs",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.uses_professional_plant_protection",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field": "fact.ppp_use_type",
+            "operator": "in",
+            "value": [
+              "closed_space"
+            ]
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "closed-space-fields",
+          "label": "Record storage/facility or permanent-greenhouse treatment",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "product",
+              "label": "Product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "product_authorisation",
+              "label": "Product authorisation number",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "date",
+              "label": "Actual use date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "dose",
+              "label": "Dose per facility volume or area",
+              "required": "always",
+              "unit_options": [
+                "kg/m3",
+                "L/m3",
+                "kg/m2",
+                "L/m2"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "facility_id",
+              "label": "Store/greenhouse number and nationally defined location",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treated_extent",
+              "label": "Treated facility volume or surface",
+              "required": "always",
+              "unit_options": [
+                "m3",
+                "m2"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "crop",
+              "label": "Crop or situation / applicable EPPO code",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "growth_stage",
+              "label": "Relevant BBCH stage",
+              "required": "conditional",
+              "condition": "Relevant to the use or restriction.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "pesticide_application"
+          ],
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "No universally applicable national calendar deadline is established by this catalogue."
+      },
+      "citations": [
+        {
+          "source_id": "eu-ppp-detail",
+          "title": "Implementing Regulation (EU) 2023/564",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02023R0564-20251123",
+          "section": "Annex: treatment of or in closed spaces, footnotes 1–3 and 8",
+          "version": "2025-11-23",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Record completeness and evidence review, not legal compliance or authority acceptance.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2026-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "For multi-layer facilities record the total treated area. Appropriate unit adjustments are permitted.",
+        "Do not use hectare-based surface fields as a complete closed-space record."
+      ]
+    },
+    {
+      "id": "eu-ppp-seed-treatment-use",
+      "title": "Seed or plant-reproductive-material treatment details",
+      "country": null,
+      "region": null,
+      "workflow_id": "inputs",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.uses_professional_plant_protection",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field": "fact.ppp_use_type",
+            "operator": "in",
+            "value": [
+              "seed_treatment"
+            ]
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "seed-treatment-fields",
+          "label": "Record actual treatment of seeds or reproductive material",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "product",
+              "label": "Product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "product_authorisation",
+              "label": "Product authorisation number",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "date",
+              "label": "Actual use date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "dose",
+              "label": "Dose per treated material quantity",
+              "required": "always",
+              "unit_options": [
+                "kg/kg",
+                "L/kg",
+                "kg/t",
+                "L/t",
+                "amount/seed_count"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "treated_unit_id",
+              "label": "Nationally provided identification of treated unit/location",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treated_quantity",
+              "label": "Treated quantity",
+              "required": "always",
+              "unit_options": [
+                "kg",
+                "t",
+                "seed_count"
+              ],
+              "temporal_basis": "calendar_date",
+              "unit_options_are_examples": true,
+              "preserve_other_recorded_units": true
+            },
+            {
+              "key": "crop",
+              "label": "Crop name / applicable EPPO code",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "batch_number",
+              "label": "Batch number",
+              "required": "conditional",
+              "condition": "Where applicable.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "pesticide_application"
+          ],
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "No universally applicable national calendar deadline is established by this catalogue."
+      },
+      "citations": [
+        {
+          "source_id": "eu-ppp-detail",
+          "title": "Implementing Regulation (EU) 2023/564",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02023R0564-20251123",
+          "section": "Annex: treatment of seeds or plant reproductive material, footnotes 1–3 and 9",
+          "version": "2025-11-23",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Record completeness and evidence review, not legal compliance or authority acceptance.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2026-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Appropriate dose and treated-quantity unit adjustments are permitted.",
+        "Sowing previously treated seed is not automatically a new product-treatment event. Any national sowing-record duty needs its own source."
+      ]
+    },
+    {
+      "id": "eu-cap-application",
+      "title": "Review and submit the actual aid application",
+      "country": null,
+      "region": null,
+      "workflow_id": "cap",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.cap_applicant",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "cap-application",
+          "label": "Reviewed application for the selected scheme and campaign",
+          "kind": "document",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "beneficiary_identity",
+              "label": "Beneficiary identity",
+              "required": "always",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "interventions",
+              "label": "Interventions applied for",
+              "required": "always",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "eligibility_support",
+              "label": "Required supporting documents",
+              "required": "conditional",
+              "condition": "The intervention requires supporting evidence.",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "conditionality_information",
+              "label": "Relevant conditionality information",
+              "required": "always",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "parcel_identifiers",
+              "label": "Unique parcel / eligible-land identifiers",
+              "required": "conditional",
+              "condition": "The application includes an area-based intervention.",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "claimed_geometry",
+              "label": "Clear delineation of each claimed intervention area",
+              "required": "conditional",
+              "condition": "The application includes an area-based intervention.",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "landscape_features",
+              "label": "Relevant feature type, location and applicable size",
+              "required": "conditional",
+              "condition": "Required for conditionality or the intervention.",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "crop",
+              "label": "Relevant crop",
+              "required": "conditional",
+              "condition": "Required by the application.",
+              "temporal_basis": "campaign_year"
+            },
+            {
+              "key": "organic_status",
+              "label": "Relevant organic-production status",
+              "required": "conditional",
+              "condition": "Relevant to the intervention or conditionality.",
+              "temporal_basis": "campaign_year"
+            }
+          ],
+          "key": "cap_application",
+          "temporal_basis": "campaign_year"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-cap-base",
+          "title": "Regulation (EU) 2021/2116",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02021R2116-20260818",
+          "section": "Articles 65–69",
+          "version": "2026-08-18",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-cap-applications",
+          "title": "Implementing Regulation (EU) 2022/1173",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+          "section": "Articles 3–8",
+          "version": "2026-08-06",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2023-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "LPIS is the authority's reference system; a locally drawn field or image is not automatically an eligible payment parcel.",
+        "Prefill or registry updates do not themselves file or amend the application. The beneficiary remains responsible, including automatic-claim systems.",
+        "National scheme choices, supporting documents, declarations and deadlines are not exhaustively mapped. No payment eligibility is determined."
+      ],
+      "legal_timing": {
+        "frequency": "annual_for_covered_interventions",
+        "filing_deadline": "national_unknown",
+        "amendment_deadline": "national_unknown; Article 7 has intervention- and control-stage conditions",
+        "submission": "Use the competent authority's application route; keep the actual acknowledgement separately."
+      }
+    },
+    {
+      "id": "eu-animal-establishment-records",
+      "title": "Maintain the applicable livestock establishment records",
+      "country": null,
+      "region": null,
+      "workflow_id": "annual",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.keeps_livestock",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "animal-register",
+          "label": "Establishment animal register or permitted database-backed equivalent",
+          "kind": "document",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "species",
+              "label": "Species and categories",
+              "required": "always",
+              "temporal_basis": "static"
+            },
+            {
+              "key": "animal_count",
+              "label": "Number kept",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "animal_identifiers",
+              "label": "Animal identification codes",
+              "required": "conditional",
+              "condition": "Individual identification is required for the species/category.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "origin_establishment",
+              "label": "Origin establishment registration/approval number",
+              "required": "conditional",
+              "condition": "Animals arrive from another establishment.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "destination_establishment",
+              "label": "Destination establishment registration/approval number",
+              "required": "conditional",
+              "condition": "Animals leave for another establishment.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "movement_date",
+              "label": "Actual movement date",
+              "required": "conditional",
+              "condition": "A movement occurs.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "movement_documents",
+              "label": "Required accompanying documents",
+              "required": "conditional",
+              "condition": "Required for that species and movement.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "mortality",
+              "label": "Mortality record",
+              "required": "conditional",
+              "condition": "Deaths occur.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "health_records",
+              "label": "Relevant biosecurity, surveillance, treatment, test and health-visit records",
+              "required": "conditional",
+              "condition": "Appropriate to the species/category and applicable animal-health duties.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "key": "animal_establishment_register"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-animal-health",
+          "title": "Regulation (EU) 2016/429",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02016R0429-20210421",
+          "section": "Article 102(1)–(4)",
+          "version": "2021-04-21",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-animal-detail",
+          "title": "Delegated Regulation (EU) 2019/2035",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02019R2035-20260422",
+          "section": "Articles 22–25; species-specific additions",
+          "version": "2026-04-22",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2021-04-21",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Scope is establishments subject to registration or approval; low-risk exemptions require a Member State decision.",
+        "An accessible, up-to-date official database may replace duplicate records only under Article 102(4) conditions.",
+        "Species-specific identification, birth/death details and movement-document exemptions require authority review; this is not a universal ear-tag validator."
+      ],
+      "retention": {
+        "status": "eu_minimum_subject_to_authority_period",
+        "minimum_years": 3,
+        "national_longer_period": "confirm_with_competent_authority"
+      },
+      "legal_timing": {
+        "authority_access": "immediately_available_on_request",
+        "record_format": "paper_or_electronic_unless_more_specific_rule_applies"
+      }
+    },
+    {
+      "id": "eu-animal-movement-reporting",
+      "title": "Check species-specific animal registry notifications",
+      "country": null,
+      "region": null,
+      "workflow_id": "annual",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.keeps_livestock",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field": "fact.registry_species",
+            "operator": "in",
+            "value": [
+              "bovine",
+              "ovine",
+              "caprine",
+              "porcine"
+            ]
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "registry-events",
+          "label": "Actual events and evidence of the required registry notification",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "date",
+              "label": "Actual event date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "animal_identifiers",
+              "label": "Applicable animal or group identifiers",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "origin_establishment",
+              "label": "Origin registration number",
+              "required": "conditional",
+              "condition": "Relevant to a movement.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "destination_establishment",
+              "label": "Destination registration number",
+              "required": "conditional",
+              "condition": "Relevant to a movement.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "registry_notification",
+              "label": "Official notification/reference",
+              "required": "conditional",
+              "condition": "The event must be notified for this species and national route.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "animal_birth",
+            "animal_death",
+            "animal_movement",
+            "animal_purchase",
+            "animal_sale"
+          ],
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-animal-health",
+          "title": "Regulation (EU) 2016/429",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02016R0429-20210421",
+          "section": "Articles 112–115",
+          "version": "2021-04-21",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-animal-transmission",
+          "title": "Implementing Regulation (EU) 2021/520",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02021R0520-20210702",
+          "section": "Article 3(1)–(3), Articles 13–17",
+          "version": "2021-07-02",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-animal-detail",
+          "title": "Delegated Regulation (EU) 2019/2035",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02019R2035-20260422",
+          "section": "Articles 49 and 56; species-specific database content",
+          "version": "2026-04-22",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2021-04-21",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Bovine births, deaths and movements are not the same notification set as sheep/goat/pig movements. Do not apply every event to every species.",
+        "Seven days is an EU upper bound for the ordinary national transmission period, not a verified national deadline for every event.",
+        "Birth reporting may use identification date as its national clock start. The mountain-pasture bovine movement exception may permit up to 14 days.",
+        "Animal identification has separate age/before-departure rules and derogations. Recording an animal purchase does not itself notify the registry."
+      ],
+      "legal_timing": {
+        "ordinary_transmission": {
+          "maximum_days": 7,
+          "status": "national_period_required",
+          "anchor": "applicable_event_or_nationally_permitted_birth_identification_clock"
+        },
+        "special_mountain_bovine_movement": {
+          "maximum_days": 14,
+          "status": "only_if_competent_authority_uses_the_derogation"
+        },
+        "identification": "Check species-specific period and before-departure requirement; no universal calculated deadline."
+      }
+    },
+    {
+      "id": "eu-veterinary-treatment-records",
+      "title": "Keep food-animal medicinal-treatment records",
+      "country": null,
+      "region": null,
+      "workflow_id": "inputs",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.keeps_food_producing_animals",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "veterinary-treatment",
+          "label": "Actual medicinal treatment and existing supporting records",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "first_administration_date",
+              "label": "First administration date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "medicinal_product",
+              "label": "Medicinal product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "quantity_administered",
+              "label": "Quantity administered, with its actual unit",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "supplier_name",
+              "label": "Supplier name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "supplier_address",
+              "label": "Supplier permanent address or registered place of business",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "acquisition_evidence",
+              "label": "Evidence of acquisition",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "animal_or_group_id",
+              "label": "Animal or group treated",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "prescribing_veterinarian",
+              "label": "Prescribing veterinarian name/contact",
+              "required": "conditional",
+              "condition": "A prescribing veterinarian is applicable.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "prescription",
+              "label": "Prescription copy",
+              "required": "conditional",
+              "condition": "A veterinary prescription is applicable.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "withdrawal_period",
+              "label": "Withdrawal period, including an explicit zero",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "treatment_duration",
+              "label": "Treatment duration",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "animal_treatment"
+          ],
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-veterinary-medicines",
+          "title": "Regulation (EU) 2019/6",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02019R0006-20220128",
+          "section": "Article 108(1)–(5)",
+          "version": "2022-01-28",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2022-01-28",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "An acquisition invoice is not proof that treatment occurred. Retain administration details separately.",
+        "Information already available in a prescription, farm record or applicable equine lifetime document need not be duplicated.",
+        "National additions, product authorisation and prescribing rules remain outside this completeness check."
+      ],
+      "retention": {
+        "status": "eu_minimum",
+        "minimum_years": 5,
+        "availability": "available_for_competent_authority_inspection"
+      }
+    },
+    {
+      "id": "eu-food-feed-traceability",
+      "title": "Identify food/feed suppliers and business recipients",
+      "country": null,
+      "region": null,
+      "workflow_id": "annual",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.food_or_feed_business",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "traceability-system",
+          "label": "Traceability system and relevant source/dispatch records",
+          "kind": "document",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "supplier_identity",
+              "label": "Identity of the supplying person",
+              "required": "conditional",
+              "condition": "A food, feed, food-producing animal or intended ingredient is received.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "business_recipient_identity",
+              "label": "Identity of the receiving business",
+              "required": "conditional",
+              "condition": "Products are supplied to another business.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "product_identification",
+              "label": "Adequate product identification / relevant documentation",
+              "required": "conditional",
+              "condition": "Food/feed is placed or likely to be placed on the market.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "key": "food_feed_traceability"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-food-traceability",
+          "title": "Regulation (EC) 178/2002",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02002R0178-20260101",
+          "section": "Article 18(1)–(5)",
+          "version": "2026-01-01",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2005-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Article 18 does not prescribe one universal record form, a standard retention period or a complete field list for every sector.",
+        "The downstream duty concerns other businesses; do not invent an obligation to identify every final retail consumer.",
+        "Sector-specific and national rules can add fields and retention. A purchase ledger alone does not establish complete traceability."
+      ],
+      "retention": {
+        "status": "not_specified_by_cited_article",
+        "national_or_sector_review_required": true
+      },
+      "legal_timing": {
+        "authority_access": "information_available_on_demand",
+        "retention_deadline": "not_established_by_Article_18"
+      }
+    },
+    {
+      "id": "eu-nitrates-programme-review",
+      "title": "Confirm the applicable nitrates action programme",
+      "country": null,
+      "region": null,
+      "workflow_id": "sustainability",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.uses_nitrogen_fertiliser",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field": "fact.nitrates_action_programme_applies",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "nitrates-local-rules",
+          "label": "Applicable action programme, local limits and any authorisation",
+          "kind": "document",
+          "source_required": true,
+          "key": "nitrates_action_programme"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-nitrates",
+          "title": "Council Directive 91/676/EEC",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:31991L0676",
+          "section": "Articles 3(5), 4–5; Annexes II–III",
+          "version": "Base directive read together with 2026/288; national transposition required",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-nitrates-amendment",
+          "title": "Commission Directive (EU) 2026/288",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32026L0288",
+          "section": "Articles 1–3 and Annex adding Annex III point 2(c)",
+          "version": "2026-02-10 publication; national authorisation must be established",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "needs_domain_review",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": null,
+        "checked_date": "2026-10-16",
+        "national_transposition_and_authorisation": "must_be_verified_for_the_holding",
+        "amendment_transposition_latest": "2028-03-02",
+        "transposition_deadline_actor": "Member States, not a farmer filing deadline"
+      },
+      "limits": [
+        "Binding programme rules depend on designated vulnerable zones or whole-territory implementation and national measures.",
+        "The 170 kg nitrogen/ha/year figure concerns livestock manure, including animal deposition, not a universal limit on all fertiliser.",
+        "2026/288 permits national authorisation of specified processed-manure materials up to a separate additional 80 kg N/ha/year under conditions. It is not automatic permission to apply 250 kg N.",
+        "Do not infer closure periods, storage capacity, nutrient balance, derogations or record formats from this EU reference alone."
+      ],
+      "retention": {
+        "status": "national_unknown"
+      },
+      "national_options": {
+        "action_programme_location": "unknown_until_verified",
+        "derogation": "unknown_until_verified",
+        "processed_manure_authorisation": "unknown_until_verified"
+      }
+    },
+    {
+      "id": "eu-organic-operator-records",
+      "title": "Keep activity and input evidence for organic production",
+      "country": null,
+      "region": null,
+      "workflow_id": "sustainability",
+      "authority_scope": "eu_baseline",
+      "applicability": {
+        "all": [
+          {
+            "field": "fact.organic_operator",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      },
+      "requirements": [
+        {
+          "id": "organic-control-records",
+          "label": "Activity records and control-body evidence",
+          "kind": "document",
+          "source_required": true,
+          "key": "organic_activity_records"
+        },
+        {
+          "id": "organic-plant-inputs",
+          "label": "Records for relevant organic plant-production inputs",
+          "kind": "operation",
+          "source_required": true,
+          "fields": [
+            {
+              "key": "date",
+              "label": "Use date",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "product",
+              "label": "Product name",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "quantity",
+              "label": "Actual amount applied with its unit",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "crop",
+              "label": "Crop concerned",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "parcel_id",
+              "label": "Parcels concerned",
+              "required": "always",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "active_substances",
+              "label": "Active substances",
+              "required": "conditional",
+              "condition": "Plant-protection or cleaning/disinfection record.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "pest_or_disease",
+              "label": "Pest/disease and evidence of need",
+              "required": "conditional",
+              "condition": "Plant-protection products are used.",
+              "temporal_basis": "calendar_date"
+            },
+            {
+              "key": "input_derogation",
+              "label": "Documentary evidence of a derogation",
+              "required": "conditional",
+              "condition": "A production-rule derogation is used.",
+              "temporal_basis": "calendar_date"
+            }
+          ],
+          "operation_types": [
+            "fertiliser_application",
+            "pesticide_application",
+            "input_application"
+          ],
+          "condition": "Applies to the relevant plant-production activity; animal-only operators need species-specific records instead.",
+          "temporal_basis": "calendar_date"
+        }
+      ],
+      "deadline": {
+        "type": "unknown",
+        "reason": "Check the competent authority, campaign and applicable national rules; no universal filing date is established here."
+      },
+      "citations": [
+        {
+          "source_id": "eu-organic",
+          "title": "Regulation (EU) 2018/848",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02018R0848-20250325",
+          "section": "Articles 34(5), 39(1)(a); Annex II Part I points 1.9.3, 1.10.2 and 1.12",
+          "version": "2025-03-25",
+          "retrieved_at": "2026-10-16"
+        },
+        {
+          "source_id": "eu-organic-record-amendment",
+          "title": "Delegated Regulation (EU) 2021/1691",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32021R1691",
+          "section": "Annex point 1(a), (b) and (d)",
+          "version": "2021-09-22 publication; applies 2022-01-01",
+          "retrieved_at": "2026-10-16"
+        }
+      ],
+      "review_status": "sourced_baseline",
+      "scope": {
+        "assessment": "Evidence and applicability review only.",
+        "national_review_required": true
+      },
+      "effective": {
+        "applies_from": "2022-01-01",
+        "checked_date": "2026-10-16"
+      },
+      "limits": [
+        "Organic status is not inferred from a farm type, a green image or a purchase label.",
+        "These are selected record duties, not certification, product eligibility or a complete organic audit.",
+        "Livestock, processing, aquaculture, wild collection and control-body requirements need their own applicable records; no general retention period is invented."
+      ],
+      "retention": {
+        "status": "not_established_here",
+        "control_body_and_national_review_required": true
+      }
+    }
+  ]
+}
