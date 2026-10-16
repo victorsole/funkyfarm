@@ -43,6 +43,24 @@ def create_app():
     if urlsplit(endpoint).hostname != "127.0.0.1":
         raise RuntimeError("Authored STAC fixture must use loopback.")
 
+    actual_transport = httpx.HTTPTransport.handle_request
+
+    def public_parcel_transport(transport, request):
+        if request.url.host == "api.pdok.nl":
+            if request.url.scheme != "https" or request.url.path != "/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items":
+                raise RuntimeError("Only the reviewed PDOK public parcel request may use the fixture.")
+            local = httpx.URL(endpoint).copy_with(path="/pdok", query=request.url.query)
+            forwarded = httpx.Request(request.method, local, headers=request.headers,
+                                      stream=request.stream, extensions=request.extensions)
+            return actual_transport(transport, forwarded)
+        if request.url.host not in {"127.0.0.1", "localhost"}:
+            raise RuntimeError("Acceptance HTTP must stay at an authored local provider.")
+        return actual_transport(transport, request)
+
+    # Keep configured_base, the real streaming/parser limits and every request
+    # header. Change only the socket destination of this reviewed public URL.
+    httpx.HTTPTransport.handle_request = public_parcel_transport
+
     def authored_provider(payload):
         with httpx.Client(timeout=5, trust_env=False, follow_redirects=False) as client:
             response = client.post(endpoint, json=payload)

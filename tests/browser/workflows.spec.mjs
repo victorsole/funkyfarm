@@ -40,6 +40,33 @@ async function chooseWorkspace(page, workspaceId) {
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(workspaceId);
 }
 
+async function authoredMapTiles(page) {
+  const state = { calls: [], fail: false };
+  const tile = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#dfe8d1"/><path d="M0 128H256M128 0V256" stroke="#b9c7a8"/><text x="12" y="24" font-size="12">Authored local map fixture</text></svg>';
+  await page.route('**/*', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const query = Object.fromEntries([...url.searchParams].map(([key, value]) => [key.toLowerCase(), value]));
+    if (['127.0.0.1', 'localhost'].includes(url.hostname)) return route.continue();
+    const osm = url.hostname === 'tile.openstreetmap.org' && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname) && !url.search;
+    const pdok = url.hostname === 'service.pdok.nl' && /^\/hwh\/luchtfotorgb\/wmts\/v1_0\/Actueel_ortho25\/EPSG:3857\/(?:0\d|1\d|2[01])\/\d+\/\d+\.jpeg$/.test(url.pathname) && !url.search;
+    const wms = url.hostname === 'www.wms.nrw.de' && url.pathname === '/geobasis/wms_nw_dop'
+      && query.request?.toLowerCase() === 'getmap' && query.version === '1.3.0'
+      && query.format === 'image/jpeg' && query.crs === 'EPSG:3857';
+    if (url.protocol !== 'https:' || !(osm || pdok || wms)) {
+      await route.abort('blockedbyclient');
+      throw new Error(`Unreviewed external browser request was blocked: ${url.origin}${url.pathname}`);
+    }
+    state.calls.push({ url: request.url(), headers: await request.allHeaders() });
+    await route.fulfill({ status: state.fail ? 503 : 200, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'image/svg+xml', body: state.fail ? '' : tile });
+  });
+  return state;
+}
+
+async function cornerLabels(workspace) {
+  return workspace.getByRole('button', { name: /^Corner \d+; longitude / }).evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')));
+}
+
 test('new farmer onboards and records a purchase separately from actual use', async ({ page }) => {
   await signIn(page, 'onboarding');
   await page.getByLabel('Farm name', { exact: true }).fill('Browser authored smallholding');
@@ -235,6 +262,12 @@ test('crop sale is read back, confirmed and credited without inventing farm move
 });
 
 test('field draft survives reload after invalid geometry and requires comparison before applying', async ({ page }) => {
+  const tiles = await authoredMapTiles(page);
+  const browserErrors = [];
+  page.on('pageerror', error => browserErrors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: 48, longitude: 11, accuracy: 15 });
   await signIn(page, 'seller');
   await page.goto(`/app/fields/${fixture.sales_farm.id}`);
   const workspace = page.getByRole('region', { name: 'Change boundaries', exact: true });
@@ -243,8 +276,44 @@ test('field draft survives reload after invalid geometry and requires comparison
   await workspace.getByLabel('Field name', { exact: true }).fill('Authored recoverable field draft');
   const note = 'Authored outline, retained after an error and page reload; not an official LPIS update.';
   await workspace.getByLabel('What changed, or where did this outline come from?', { exact: true }).fill(note);
+  await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  await workspace.getByRole('button', { name: 'Use my location', exact: true }).click();
+  await expect(workspace.getByText(/Device location shown with about 15 metres accuracy/)).toBeVisible();
+  expect((await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items).toHaveLength(0);
+  const map = workspace.getByRole('group', { name: 'Field boundary map', exact: true });
+  await expect(map).toBeVisible();
+  for (const [x, y] of [[0.25, 0.25], [0.65, 0.25], [0.65, 0.65], [0.25, 0.65]]) {
+    const box = await map.boundingBox();
+    expect(box).not.toBeNull();
+    await map.click({ position: { x: box.width * x, y: box.height * y } });
+  }
+  await workspace.getByRole('button', { name: 'Close boundary', exact: true }).click();
+  await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
+  const drawn = await cornerLabels(workspace);
+  await workspace.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Move north', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
+  expect(await cornerLabels(workspace)).toEqual(drawn);
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('osm');
+  expect(tiles.calls).toHaveLength(0);
+  await workspace.getByRole('checkbox', { name: 'Show background map', exact: true }).check();
+  await expect.poll(() => tiles.calls.length).toBeGreaterThan(0);
+  await expect(workspace.getByText('The chosen background is enabled. Its imagery date may be unknown.', { exact: true })).toBeVisible();
+  tiles.fail = true;
+  await workspace.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await expect(workspace.getByText('Background unavailable; editing remains available on the neutral map.', { exact: true })).toBeVisible();
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('');
+  await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  expect(await cornerLabels(workspace)).toEqual(drawn);
+  await page.reload();
+  await workspace.getByRole('button', { name: 'Open boundary tools', exact: true }).click();
+  await expect(workspace.getByLabel('Field name', { exact: true })).toHaveValue('Authored recoverable field draft');
+  await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
+  expect(await cornerLabels(workspace)).toEqual(drawn);
+  await workspace.getByText('Locate this field or load its outline', { exact: true }).click();
   const crossed = { type: 'Polygon', coordinates: [[[11, 48], [11.002, 48.001], [11.002, 48], [11, 48.001], [11, 48]]] };
   await workspace.getByLabel('Existing boundary file', { exact: true }).setInputFiles({ name: 'authored-crossed.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(JSON.stringify(crossed)) });
+  await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
   await expect(workspace.getByRole('button', { name: 'Corner 2; longitude 11.002, latitude 48.001', exact: true })).toBeVisible();
   await expect(workspace.getByText('Your unfinished draft is kept privately on this device. Save for comparison to keep it in the shared farm workspace.', { exact: true })).toBeVisible();
   let rejected = page.waitForResponse(response => response.url().endsWith(`/farms/${fixture.sales_farm.id}/field-proposals`) && response.request().method() === 'POST');
@@ -258,11 +327,34 @@ test('field draft survives reload after invalid geometry and requires comparison
   await workspace.getByRole('button', { name: 'Save for comparison', exact: true }).click();
   expect((await rejected).status()).toBe(422);
   expect((await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items).toHaveLength(0);
-  const repaired = { type: 'Polygon', coordinates: [[[11, 48], [11.002, 48], [11.002, 48.001], [11, 48.001], [11, 48]]] };
+  const repaired = { type: 'MultiPolygon', coordinates: [
+    [[[11, 48], [11.002, 48], [11.002, 48.001], [11, 48.001], [11, 48]],
+      [[11.0003, 48.0003], [11.0006, 48.0003], [11.0006, 48.0006], [11.0003, 48.0006], [11.0003, 48.0003]]],
+    [[[11.003, 48], [11.004, 48], [11.004, 48.001], [11.003, 48.001], [11.003, 48]]],
+  ] };
+  await workspace.getByText('Locate this field or load its outline', { exact: true }).click();
   await workspace.getByLabel('Existing boundary file', { exact: true }).setInputFiles({ name: 'authored-repaired.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(JSON.stringify(repaired)) });
+  await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
   await expect(workspace.getByRole('button', { name: 'Corner 2; longitude 11.002, latitude 48', exact: true })).toBeVisible();
-  await workspace.getByRole('button', { name: 'Save for comparison', exact: true }).click();
+  await workspace.getByLabel('Part to edit', { exact: true }).selectOption('1');
+  await workspace.getByRole('button', { name: 'Corner 2; longitude 11.004, latitude 48', exact: true }).press('ArrowRight');
+  await workspace.getByRole('button', { name: 'Undo last boundary adjustment', exact: true }).click();
+  await workspace.getByLabel('Part to edit', { exact: true }).selectOption('0');
+  await expect(workspace.getByRole('button', { name: 'Corner 2; longitude 11.002, latitude 48', exact: true })).toBeVisible();
+  const savePath = `**/api/v1/farms/${fixture.sales_farm.id}/field-proposals`;
+  let releaseSave;
+  const holdSave = new Promise(resolve => { releaseSave = resolve; });
+  await page.route(savePath, async route => { await holdSave; await route.continue(); });
+  const pendingSave = page.waitForRequest(request => request.url().endsWith(`/farms/${fixture.sales_farm.id}/field-proposals`) && request.method() === 'POST');
+  try {
+    await workspace.getByRole('button', { name: 'Save for comparison', exact: true }).click();
+    await pendingSave;
+    await expect(workspace.locator('.parcel-map-editor')).toHaveAttribute('inert', '');
+  } finally {
+    releaseSave();
+  }
   await expect(workspace.getByText('Your boundary change is saved in the workspace. Compare the old and proposed fields below before confirming.', { exact: true })).toBeVisible();
+  await page.unroute(savePath);
   expect((await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items).toHaveLength(0);
   await page.reload();
   await expect(workspace.getByRole('heading', { name: 'Authored recoverable field draft', exact: true })).toBeVisible();
@@ -272,6 +364,10 @@ test('field draft survives reload after invalid geometry and requires comparison
   const current = (await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items;
   expect(current).toHaveLength(1);
   expect(current[0].name).toBe('Authored recoverable field draft');
+  expect(current[0].geometry).toEqual(repaired);
+  expect(browserErrors).toEqual([]);
+  expect(tiles.calls.every(call => !call.url.includes(fixture.sales_farm.id) && !call.url.includes(fixture.accounts.seller.email)
+    && !String(call.headers.referer || '').includes(fixture.sales_farm.id) && !call.headers.authorization && !call.headers.cookie)).toBe(true);
 });
 
 test('Dutch dairy bookkeeper reviews a receipt and mapped CSV without losing uncertain source cells', async ({ page }) => {
@@ -569,6 +665,7 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
 });
 
 test('Dutch arable farmer compares historical LPIS evidence, exports a draft and reviews a private split', async ({ page }) => {
+  const tiles = await authoredMapTiles(page);
   await signIn(page, 'land');
   const farm = fixture.land_farm;
   const originalField = farm.data.parcels[0];
@@ -579,6 +676,42 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await workspace.getByRole('button', { name: 'Open boundary tools', exact: true }).click();
   await workspace.getByRole('button', { name: 'Adjust a field', exact: true }).click();
   await expect(workspace.getByLabel('Which field?', { exact: true })).toHaveValue(originalField.id);
+  await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
+  const beforeMapNavigation = await cornerLabels(workspace);
+  const publicReads = [];
+  page.on('request', request => { if (/\/api\/v1\/connections\/[^/]+\/read$/.test(request.url()) && request.method() === 'POST') publicReads.push(request.postDataJSON()); });
+  await workspace.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Move east', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
+  expect(await cornerLabels(workspace)).toEqual(beforeMapNavigation);
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('nl-pdok-aerial');
+  expect(tiles.calls).toHaveLength(0);
+  await workspace.getByRole('checkbox', { name: 'Show background map', exact: true }).check();
+  await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(0);
+  await expect(workspace.getByText('The chosen background is enabled. Its imagery date may be unknown.', { exact: true })).toBeVisible();
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('osm');
+  await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'tile.openstreetmap.org').length).toBeGreaterThan(0);
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('');
+  expect(await cornerLabels(workspace)).toEqual(beforeMapNavigation);
+  expect(publicReads).toHaveLength(0);
+  await expect(workspace.getByRole('button', { name: 'Find reference parcels in this view', exact: true })).toBeDisabled();
+  await workspace.getByRole('checkbox', { name: 'I want to read public parcel references for this map view.', exact: true }).check();
+  const publicResponse = page.waitForResponse(response => /\/api\/v1\/connections\/[^/]+\/read$/.test(response.url()) && response.request().method() === 'POST');
+  await workspace.getByRole('button', { name: 'Find reference parcels in this view', exact: true }).click();
+  const publicRecord = await (await publicResponse).json();
+  expect(publicRecord.data.status).toBe('unreviewed_candidates');
+  expect(publicRecord.data.result.features.map(item => item.properties.jaar)).toEqual([2025, 2025]);
+  expect(publicRecord.data.result.features[1].properties.category).toBe('Sloot');
+  expect(publicReads).toHaveLength(1);
+  expect(publicReads[0].bbox[0]).toBeLessThan(5.001);
+  expect(publicReads[0].bbox[2]).toBeGreaterThan(5.001);
+  const publicCandidate = workspace.getByRole('region', { name: 'Public Dutch parcel references', exact: true }).locator('article').filter({ hasText: 'Wintertarwe' });
+  await publicCandidate.getByRole('button', { name: 'Compare with this reference', exact: true }).click();
+  await expect(workspace.getByLabel('Reference on that document', { exact: true })).toHaveValue('authored-crop-007');
+  await expect(workspace.getByLabel('Year on the comparison source, if known', { exact: true })).toHaveValue('2025');
+  await expect(workspace.getByLabel('Crop after this change, if known', { exact: true })).toHaveValue('Current wheat');
+  expect(await cornerLabels(workspace)).toEqual(beforeMapNavigation);
+  expect((await (await page.request.get(`/api/v1/farms/${farm.id}`)).json()).data.parcels).toEqual(farm.data.parcels);
   await workspace.getByText('Compare with another supplied outline or reference', { exact: true }).click();
   await workspace.getByText('Advanced: compare a small historical IACS export', { exact: true }).click();
   const source = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: originalField.geometry, properties: {
@@ -694,4 +827,6 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   expect(observation.data.date ?? null).toBeNull();
   expect(observation.data.type).toBe('observation');
   expect((await collection(page, 'facts'))).toHaveLength(0);
+  expect(tiles.calls.every(call => !call.url.includes(farm.id) && !call.url.includes(fixture.accounts.land.email)
+    && !String(call.headers.referer || '').includes(farm.id) && !call.headers.authorization && !call.headers.cookie)).toBe(true);
 });

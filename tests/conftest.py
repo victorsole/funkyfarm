@@ -50,9 +50,27 @@ def browser_origin():
 @pytest.fixture(scope="session")
 def authored_stac():
     calls = []
+    public_calls = []
     outline = {"type": "Polygon", "coordinates": [[[11.0, 48.0], [11.001, 48.0], [11.001, 48.001], [11.0, 48.001], [11.0, 48.0]]]}
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            public_calls.append({"path": self.path, "headers": dict(self.headers)})
+            crop_outline = {"type": "Polygon", "coordinates": [[[5, 52], [5.002, 52], [5.002, 52.001], [5, 52.001], [5, 52]]]}
+            ditch_outline = {"type": "Polygon", "coordinates": [[[5.0021, 52], [5.0022, 52], [5.0022, 52.001], [5.0021, 52.001], [5.0021, 52]]]}
+            features = [
+                {"type": "Feature", "id": "authored-crop-007", "geometry": crop_outline,
+                 "properties": {"category": "Gewasperceel", "gewas": "Wintertarwe", "gewascode": "011", "jaar": 2025, "status": "Actueel", "bron": "Authored PDOK transport fixture"}},
+                {"type": "Feature", "id": "authored-ditch-008", "geometry": ditch_outline,
+                 "properties": {"category": "Sloot", "gewas": None, "gewascode": None, "jaar": 2025, "status": "Actueel", "bron": "Authored PDOK transport fixture"}},
+            ]
+            payload = json.dumps({"type": "FeatureCollection", "features": features, "numberMatched": 2, "links": []}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/geo+json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
         def do_POST(self):
             calls.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
             scenes = []
@@ -75,7 +93,7 @@ def authored_stac():
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
     try:
-        yield {"url": f"http://127.0.0.1:{server.server_port}/search", "calls": calls}
+        yield {"url": f"http://127.0.0.1:{server.server_port}/search", "calls": calls, "public_calls": public_calls}
     finally:
         server.shutdown()
         server.server_close()
@@ -220,7 +238,7 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
         "FUNKYFARM_ALLOWED_ORIGINS": browser_origin + ",http://127.0.0.1:5189,http://localhost:5189",
         "PYTHONPATH": os.pathsep.join([str(PROJECT / "services" / "api"), str(PROJECT / "tests")]),
         "FUNKYFARM_TEST_STAC_URL": authored_stac["url"],
-        "FUNKYFARM_PDOK_BASE_URL": authored_stac["url"],
+        "FUNKYFARM_PDOK_BASE_URL": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1",
         "FUNKYFARM_TEST_REGULATORY_SOURCE": json.dumps(authored_regulatory["source"]),
         "FUNKYFARM_TEST_REGULATORY_URL": authored_regulatory["url"],
         "FUNKYFARM_REGULATORY_MONITOR_ENABLED": "false",

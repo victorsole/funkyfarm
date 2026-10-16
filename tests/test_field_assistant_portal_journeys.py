@@ -3,6 +3,8 @@
 from conftest import confirm, fact_data, farm_data, human_browser
 from concurrent.futures import ThreadPoolExecutor
 import httpx
+import pytest
+from urllib.parse import parse_qs, urlsplit
 
 
 def test_field_satellite_context_and_assistant_proposals_need_fresh_human_permission(farmers, service_url, authored_stac):
@@ -132,7 +134,7 @@ def test_field_satellite_context_and_assistant_proposals_need_fresh_human_permis
     assert owner.get("/tasks").json()["total"] == 1
 
 
-def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_handoff(farmers, service_url, authored_stac):
+def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_handoff(farmers, service_url, authored_stac, monkeypatch):
     owner = farmers("Connection owner")
     outsider = farmers("Unrelated connection user")
     farm = owner.create("farms", {**farm_data(), "country": "NL", "region": None})
@@ -143,12 +145,33 @@ def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_ha
     assert connection["data"]["status"] == "not_connected"
     outsider.get(f"/connections/{connection['id']}", expected=404)
     ready = owner.post(f"/connections/{connection['id']}/activate", json={"expected_revision": connection["revision"]}).json()
-    # The isolated service's configured PDOK URL is deliberately loopback. The
-    # real connector must reject it before making any request to the spy server.
-    denied = owner.post(f"/connections/{connection['id']}/read", json={"bbox": [5.0, 52.0, 5.01, 52.01], "limit": 5}, expected=503).json()
-    assert denied["error"]["code"] == "connector_configuration"
+    from funkyfarm.connectors.pdok import configured_base
+    from funkyfarm.models import ApiError
+    with monkeypatch.context() as invalid_configuration:
+        invalid_configuration.setenv("FUNKYFARM_PDOK_BASE_URL", authored_stac["url"])
+        with pytest.raises(ApiError) as rejected:
+            configured_base()
+        assert rejected.value.status == 503 and rejected.value.code == "connector_configuration"
+    original_farm = owner.get(f"/farms/{farm['id']}").json()
+    public_before = len(authored_stac["public_calls"])
+    read_body = {"bbox": [5.0, 52.0, 5.01, 52.01], "limit": 5}
+    outsider.post(f"/connections/{connection['id']}/read", json=read_body, expected=404)
+    assert len(authored_stac["public_calls"]) == public_before
+    candidates = owner.post(f"/connections/{connection['id']}/read", json=read_body).json()
+    assert candidates["data"]["status"] == "unreviewed_candidates"
+    result = candidates["data"]["result"]
+    assert result["source_url"] == "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items"
+    assert [feature["id"] for feature in result["features"]] == ["authored-crop-007", "authored-ditch-008"]
+    assert result["features"][0]["properties"] == {"category": "Gewasperceel", "gewas": "Wintertarwe", "gewascode": "011", "jaar": 2025, "status": "Actueel", "bron": "Authored PDOK transport fixture"}
+    assert result["features"][1]["properties"]["category"] == "Sloot"
+    sent = authored_stac["public_calls"][-1]
+    assert parse_qs(urlsplit(sent["path"]).query) == {"f": ["json"], "bbox": ["5.0,52.0,5.01,52.01"], "limit": ["5"]}
+    assert sent["headers"]["Host"] == "api.pdok.nl" and "Authorization" not in sent["headers"] and "Cookie" not in sent["headers"]
+    assert farm["id"] not in str(sent) and owner.email not in str(sent)
+    assert owner.get(f"/farms/{farm['id']}").json() == original_farm
     assert len(authored_stac["calls"]) == before
     assert owner.get("/facts").json()["total"] == 0
+    assert owner.get("/operations").json()["total"] == 0
     assert owner.get(f"/connections/{ready['id']}").json()["data"]["automatic_filing"] is False
     handoff_connection = owner.post("/connections", json={"farm_id": farm["id"], "capability_id": "country-NL-inspection-handoff"}, expected=201).json()
     fact = confirm(owner, owner.create("facts", fact_data(farm["id"], value="3.75", basis="static", period=None)))
