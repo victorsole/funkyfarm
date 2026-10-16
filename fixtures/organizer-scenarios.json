@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "dataset_status": "Original organizer synthetic dataset examples, not real farmer records; raw subsets copied directly from the organizer ZIP. Error mutations below are newly constructed scenarios.",
+  "source": {
+    "archive_relative_to_project": "../EU-Agri-Hackathon-2026/all-datasets.zip",
+    "member": "dg-agri-hackathon-datasets/combined/combined_challenge1_farm_reporting_ready.csv",
+    "member_sha256": "57ce44f9078dc11b4ebfe49d9d4c0071c1c4f48bb8d5230a6e3015a7fb31ec9c",
+    "grain": [
+      "holding_id",
+      "year"
+    ],
+    "row_numbering": "CSV record number including header as record 1; not a physical-line offset"
+  },
+  "normal_examples": [
+    {
+      "country": "ES",
+      "source_row": 41,
+      "source_key": {
+        "holding_id": "FARM-00004",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00004",
+        "year": "2026",
+        "country": "ES",
+        "uaa_ha": "3.8",
+        "payment_total_eur": "1439.75",
+        "subsidies_excl_investment_eur": "1439.75",
+        "static_labour_awu": "0.88",
+        "yield_wheat_t_ha": "\\N",
+        "total_livestock_units": "32.48",
+        "main_livestock_category": "POULTRY",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    },
+    {
+      "country": "IT",
+      "source_row": 91,
+      "source_key": {
+        "holding_id": "FARM-00009",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00009",
+        "year": "2026",
+        "country": "IT",
+        "uaa_ha": "2.7",
+        "payment_total_eur": "827.42",
+        "subsidies_excl_investment_eur": "827.42",
+        "static_labour_awu": "0.34",
+        "yield_wheat_t_ha": "\\N",
+        "total_livestock_units": "79.08",
+        "main_livestock_category": "DAIRY_COWS",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    },
+    {
+      "country": "FR",
+      "source_row": 411,
+      "source_key": {
+        "holding_id": "FARM-00041",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00041",
+        "year": "2026",
+        "country": "FR",
+        "uaa_ha": "3.2",
+        "payment_total_eur": "926.64",
+        "subsidies_excl_investment_eur": "926.64",
+        "static_labour_awu": "0.95",
+        "yield_wheat_t_ha": "\\N",
+        "total_livestock_units": "44.86",
+        "main_livestock_category": "SHEEP",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    },
+    {
+      "country": "DE",
+      "source_row": 701,
+      "source_key": {
+        "holding_id": "FARM-00070",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00070",
+        "year": "2026",
+        "country": "DE",
+        "uaa_ha": "4.1",
+        "payment_total_eur": "1751.08",
+        "subsidies_excl_investment_eur": "1751.08",
+        "static_labour_awu": "0.91",
+        "yield_wheat_t_ha": "\\N",
+        "total_livestock_units": "68.74",
+        "main_livestock_category": "SHEEP",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    },
+    {
+      "country": "NL",
+      "source_row": 901,
+      "source_key": {
+        "holding_id": "FARM-00090",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00090",
+        "year": "2026",
+        "country": "NL",
+        "uaa_ha": "3.5",
+        "payment_total_eur": "2013.71",
+        "subsidies_excl_investment_eur": "2013.71",
+        "static_labour_awu": "0.96",
+        "yield_wheat_t_ha": "8.45",
+        "total_livestock_units": "64.25",
+        "main_livestock_category": "POULTRY",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    },
+    {
+      "country": "PL",
+      "source_row": 1411,
+      "source_key": {
+        "holding_id": "FARM-00141",
+        "year": "2026"
+      },
+      "raw": {
+        "holding_id": "FARM-00141",
+        "year": "2026",
+        "country": "PL",
+        "uaa_ha": "2.5",
+        "payment_total_eur": "723.1600000000001",
+        "subsidies_excl_investment_eur": "723.16",
+        "static_labour_awu": "0.53",
+        "yield_wheat_t_ha": "\\N",
+        "total_livestock_units": "0.0",
+        "main_livestock_category": "",
+        "farm_value_status": "synthetic_not_regionally_recalibrated"
+      },
+      "expected": {
+        "below_5ha": true,
+        "review_status": "proposed",
+        "uaa_temporal_basis": "static",
+        "labour_temporal_basis": "static",
+        "payment_temporal_basis": "campaign_year",
+        "not_dated_events": true
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "null_zero_empty_string",
+      "origin": "Unmodified PL source subset",
+      "country": "PL",
+      "source_row": 1411,
+      "expected": {
+        "yield_wheat_t_ha": {
+          "raw": "\\N",
+          "value_json": "null"
+        },
+        "total_livestock_units": {
+          "raw": "0.0",
+          "value_json": "0.0"
+        },
+        "main_livestock_category": {
+          "raw": "",
+          "value_json": "\"\""
+        }
+      },
+      "assertion": "Never collapse absent, zero and empty string into one value."
+    },
+    {
+      "id": "separate_annual_totals",
+      "origin": "Unmodified PL source subset",
+      "country": "PL",
+      "source_row": 1411,
+      "expected": {
+        "subsidies_excl_investment_eur": "723.16",
+        "payment_total_eur": "723.1600000000001"
+      },
+      "assertion": "Keep both named source measures and their precision. Neither add the totals nor silently overwrite either with a rounded reconciliation."
+    },
+    {
+      "id": "high_density_diagnostic",
+      "origin": "Unmodified IT source subset",
+      "country": "IT",
+      "source_row": 91,
+      "expected": {
+        "stocking_density_lu_ha": "29.289",
+        "review_required": true
+      },
+      "assertion": "Organizer density flags are diagnostics, not automatic invalidity thresholds."
+    },
+    {
+      "id": "static_repeated_in_years",
+      "origin": "New scenario derived from organizer static-source metadata",
+      "arguments": [
+        "--years",
+        "2025",
+        "2026",
+        "--countries",
+        "PL"
+      ],
+      "expected": {
+        "source_grain": [
+          "holding_id",
+          "year"
+        ],
+        "uaa_period": null,
+        "labour_period": null,
+        "payment_periods": [
+          "2025",
+          "2026"
+        ]
+      },
+      "assertion": "Static values remain undated reference snapshots; no operation dates or annual herd/labour observations are invented."
+    },
+    {
+      "id": "unavailable_country",
+      "origin": "New CLI error scenario",
+      "arguments": [
+        "--countries",
+        "FI"
+      ],
+      "expected": {
+        "exit_code": 2,
+        "output_file_created": false
+      }
+    },
+    {
+      "id": "unavailable_year",
+      "origin": "New CLI error scenario",
+      "arguments": [
+        "--years",
+        "2030"
+      ],
+      "expected": {
+        "exit_code": 2,
+        "output_file_created": false
+      }
+    },
+    {
+      "id": "duplicate_grain",
+      "origin": "New corruption scenario; never represented as original organizer data",
+      "mutation": "Repeat an already selected (holding_id,year) source row.",
+      "expected": {
+        "exit_code": 2,
+        "output_file_created": false
+      },
+      "assertion": "Refuse duplicate holding/year rows before producing a file."
+    },
+    {
+      "id": "unknown_column",
+      "origin": "New CLI error scenario",
+      "arguments": [
+        "--columns",
+        "invented_annual_event"
+      ],
+      "expected": {
+        "exit_code": 2,
+        "output_file_created": false
+      }
+    },
+    {
+      "id": "existing_output",
+      "origin": "New CLI error scenario",
+      "mutation": "Request output path that already exists.",
+      "expected": {
+        "exit_code": 2,
+        "existing_file_unchanged": true
+      }
+    },
+    {
+      "id": "identifier_preservation",
+      "origin": "Unmodified selected holding IDs",
+      "expected": {
+        "first_es_holding": "FARM-00004",
+        "string_preserved": true
+      },
+      "assertion": "Do not convert identifiers or code-list values into numeric measurements."
+    }
+  ],
+  "limitations": [
+    "Examples validate adapter semantics only; they do not validate national forms, CAP eligibility, real farmer time savings or source representativeness.",
+    "The CLI writes reviewable CSV only. Import metadata maps source columns explicitly, and a person supplies typed value_json/provenance when promoting an import row into a proposed fact.",
+    "No automatic review, approval, reconciliation, filing or upload occurs.",
+    "No fixture expectations here constitute executed test results."
+  ]
+}
