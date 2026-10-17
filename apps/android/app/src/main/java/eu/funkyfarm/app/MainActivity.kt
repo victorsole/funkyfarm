@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModelProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
@@ -29,11 +30,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        model = FarmModel(applicationContext)
+        model = ViewModelProvider(this)[FarmModel::class.java]
         cameraFile = savedInstanceState?.getString("camera_path")?.let { path -> File(path).takeIf { it.parentFile == File(cacheDir, "camera") } }
         if (savedInstanceState == null) receive(intent)
         setContent { FarmerApp(model, ::pickFiles, ::takePhoto, ::assemblePages, ::shareFile, ::shareDownloadedFile) }
-        if (model.session != null) model.refresh()
     }
     override fun onSaveInstanceState(outState: Bundle) { cameraFile?.let { outState.putString("camera_path", it.absolutePath) }; super.onSaveInstanceState(outState) }
     override fun onDestroy() { if (::model.isInitialized) model.cancelReportExport(); super.onDestroy() }

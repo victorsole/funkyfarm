@@ -1,6 +1,8 @@
 package eu.funkyfarm.app
 
+import android.app.Application
 import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,23 +13,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import kotlin.coroutines.coroutineContext
 
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 fun JSONObject.data(): JSONObject = optJSONObject("data") ?: this
 fun JSONObject.title(): String = data().let { it.optString("title").ifBlank { it.optString("name").ifBlank { it.optString("filename").ifBlank { it.optString("label").ifBlank { it.optString("key", "Record") } } } } }
 fun obj(vararg values: Pair<String, Any?>) = JSONObject().apply { values.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
 
-class FarmModel(val context: Context) {
+class FarmModel(application: Application) : AndroidViewModel(application) {
+    val context: Context = application.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val bootstrap = PrivateStore(context, "session")
     private val intake = PrivateStore(context, "intake")
     private var vault: PrivateStore? = null
     private var state = JSONObject()
     private var generation = 0
+    private var detailGeneration = 0
     var session by mutableStateOf<JSONObject?>(null); private set
     var origin by mutableStateOf("https://funkyfarm.elfeel.me"); private set
     var tab by mutableStateOf("Home")
@@ -52,6 +58,7 @@ class FarmModel(val context: Context) {
     var exporting by mutableStateOf(false); private set
     private var reportTransfer: ReportFileTransfer? = null
     private var exportJob: Job? = null
+    private var originalJob: Job? = null
     private val sending = mutableSetOf<String>()
     init {
         runCatching {
@@ -59,6 +66,13 @@ class FarmModel(val context: Context) {
             if (stored.has("session")) activate(stored.getJSONObject("session"), stored.getString("origin"), restoring = true)
             shared = intake.json("items.json").optJSONArray("items")?.objects().orEmpty()
         }.onFailure { message = "Private saved data could not be unlocked. Sign in again; no data has been sent." }
+        if (session != null) refresh()
+    }
+    override fun onCleared() {
+        generation++
+        cancelReportExport()
+        scope.cancel()
+        super.onCleared()
     }
     fun api() = Api(origin, session?.optString("token").orEmpty(), session?.optJSONObject("workspace")?.optString("id").orEmpty())
     private fun activate(auth: JSONObject, endpoint: String, restoring: Boolean = false) {
@@ -83,7 +97,7 @@ class FarmModel(val context: Context) {
         val expected = generation
         scope.launch {
             busy = true
-            try { block() } catch (error: Throwable) {
+            try { block() } catch (error: CancellationException) { throw error } catch (error: Throwable) {
                 if (generation == expected) {
                     message = error.message ?: "The action could not finish. Your draft is retained."
                     if (error is ApiFailure && error.status == 401) message = "Your session has expired. Sign out, then sign in again. Saved drafts remain encrypted until sign-out."
@@ -138,17 +152,75 @@ class FarmModel(val context: Context) {
         }
     }
     fun open(kind: String, id: String) {
+        val wanted = ++detailGeneration
         detail = kind to id; item = null
         action {
             val expected = generation; val client = api()
             try {
                 val value = withContext(Dispatchers.IO) { client.request("/$kind/$id") }
-                if (generation == expected && detail == (kind to id)) { item = value; offline = false }
+                if (generation == expected && detailGeneration == wanted && detail == (kind to id)) { item = value; offline = false }
             } catch (error: Throwable) {
-                if (generation != expected) return@action
+                if (error is CancellationException) throw error
+                if (generation != expected || detailGeneration != wanted || detail != (kind to id)) return@action
                 if (error is ApiFailure && error.status in listOf(401, 403, 404)) { item = null; records = records + (kind to records[kind].orEmpty().filterNot { it.optString("id") == id }); state.optJSONObject("cache")?.put(kind, JSONArray(records[kind])); persist(); throw error }
                 item = records[kind]?.find { it.optString("id") == id }; offline = true
                 message = "Showing a saved copy. A server revision check is required for changes."
+            }
+        }
+    }
+    fun openHomeReview(kind: String, farmId: String, recordId: String? = null, excludePortugueseJournal: Boolean = false) {
+        if (kind !in listOf("facts", "operations", "purchases", "sales") ||
+            runCatching { UUID.fromString(farmId).toString() == farmId.lowercase() }.getOrDefault(false).not() ||
+            (recordId != null && runCatching { UUID.fromString(recordId).toString() == recordId.lowercase() }.getOrDefault(false).not())) {
+            message = "Reload Home before opening this review. Its farm or record link is incomplete."
+            return
+        }
+        val expected = generation; val client = api(); val wanted = ++detailGeneration
+        detail = null; item = null
+        fun current() = generation == expected && detailGeneration == wanted && tab == "Home" && detail == null
+        fun eligible(value: JSONObject): Boolean {
+            require(value.optString("kind") == kind && value.data().optString("farm_id") == farmId) { "This record does not belong to the farm shown on Home. Reload Home." }
+            return value.data().optString("review_status", "proposed") == "proposed" &&
+                !(excludePortugueseJournal && kind == "facts" && value.data().optString("key") == "pt.ppp.surface_journal")
+        }
+        action {
+            try {
+                val farm = withContext(Dispatchers.IO) { client.request("/farms/$farmId") }
+                if (!current()) return@action
+                require(farm.optString("id") == farmId && farm.optString("kind") == "farms") { "The farm changed. Reload Home before continuing." }
+                if (recordId != null) {
+                    val value = withContext(Dispatchers.IO) { client.request("/$kind/$recordId") }
+                    if (!current()) return@action
+                    require(value.optString("id") == recordId && eligible(value)) { "This record is no longer waiting for this review. Reload Home." }
+                    detail = kind to recordId; item = value; offline = false
+                    return@action
+                }
+                var offset = 0
+                val pageSize = recordPageSize(kind)
+                repeat(20) {
+                    val response = withContext(Dispatchers.IO) { client.request("/$kind?farm_id=$farmId&limit=$pageSize&offset=$offset") }
+                    if (!current()) return@action
+                    val page = response.optJSONArray("items")?.objects().orEmpty()
+                    val candidate = page.firstOrNull(::eligible)
+                    if (candidate != null) {
+                        detail = kind to candidate.getString("id"); item = candidate; offline = false
+                        return@action
+                    }
+                    offset += page.size
+                    val total = response.optInt("total", -1)
+                    if (total >= 0 && offset >= total) {
+                        message = "No $kind are waiting for review on this farm now. Refresh Home to update its count."
+                        return@action
+                    }
+                    if (page.isEmpty()) {
+                        message = "The record list was incomplete. Refresh Home and try this review again."
+                        return@action
+                    }
+                }
+                message = "This farm has more records than the quick review can check. Open its records on the website to find the remaining proposals."
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (current()) throw error
             }
         }
     }
@@ -365,7 +437,7 @@ class FarmModel(val context: Context) {
         directory.listFiles()?.filter { it.isFile && it.canonicalFile.parentFile == directory && (!incompleteOnly || it.name.endsWith(".partial")) }?.forEach { it.delete() }
     }
     fun cancelReportExport(tellUser: Boolean = false) {
-        reportTransfer?.cancel(); exportJob?.cancel(); reportTransfer = null; exportJob = null; exporting = false
+        reportTransfer?.cancel(); exportJob?.cancel(); originalJob?.cancel(); reportTransfer = null; exportJob = null; originalJob = null; exporting = false
         if (tellUser) message = "Export cancelled. Incomplete private file removed."
     }
     fun export(record: JSONObject, format: String, completed: (File) -> Unit) {
@@ -400,9 +472,14 @@ class FarmModel(val context: Context) {
         } catch (error: Throwable) { cancelReportExport(); message = error.message ?: "The private export could not be prepared. No file was shared." }
     }
     fun original(record: JSONObject, completed: (ByteArray) -> Unit) = action {
+        originalJob?.cancel()
+        val downloadJob = coroutineContext[Job]
+        originalJob = downloadJob
         val expected = generation; val client = api()
-        val bytes = withContext(Dispatchers.IO) { client.download("/documents/${record.getString("id")}/file") }
-        if (generation == expected) completed(bytes)
+        try {
+            val bytes = withContext(Dispatchers.IO) { client.download("/documents/${record.getString("id")}/file") }
+            if (generation == expected) { originalJob = null; completed(bytes) }
+        } finally { if (originalJob === downloadJob) originalJob = null }
     }
     fun exportCaseField(path: String, completed: (File, String) -> Unit) {
         if (exporting) { message = "Finish or cancel the current private download first."; return }

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +38,7 @@ private val Ink = Color(0xFF24312B)
 private val Paper = Color(0xFFF8F6EE)
 private val Lilac = Color(0xFFE5DDF0)
 private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Documents")
+private val tabLabels = listOf("Home", "Work", "Fields", "Forms", "Files")
 
 @Composable fun FarmerApp(model: FarmModel, chooseFiles: () -> Unit, camera: () -> Unit, assemble: () -> Unit, share: (ByteArray, String, String) -> Unit, shareExport: (File, String) -> Unit) {
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, onPrimary = Color.White, background = Paper, surface = Paper, onSurface = Ink, secondaryContainer = Lilac)) {
@@ -51,10 +53,11 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
         var questions by remember { mutableStateOf<JSONObject?>(null) }
         val session = model.session
         if (session == null) { Login(model); return@MaterialTheme }
+        var portugueseJournal by remember(session) { mutableStateOf<Pair<String, String?>?>(null) }
         BackHandler(model.detail != null) { model.detail = null }
         Scaffold(
             topBar = { TopAppBar(title = { Column { Text("funkyfarm", fontWeight = FontWeight.Bold); Text("A little less paperwork.", style = MaterialTheme.typography.labelSmall) } }, navigationIcon = { if (model.detail != null) TextButton(onClick = { model.detail = null }) { Text("Back") } }, actions = { TextButton(onClick = { account = true }) { Text("Account") } }) },
-            bottomBar = { NavigationBar(containerColor = Paper) { tabs.forEachIndexed { index, tab -> NavigationBarItem(selected = model.tab == tab, onClick = { model.tab = tab; model.detail = null }, icon = { Text(listOf("⌂", "≡", "▤", "◇", "▥")[index], style = MaterialTheme.typography.titleLarge) }, label = { Text(tab, maxLines = 2) }, alwaysShowLabel = true) } } }
+            bottomBar = { NavigationBar(containerColor = Paper) { tabs.forEachIndexed { index, tab -> NavigationBarItem(selected = model.tab == tab, onClick = { model.tab = tab; model.detail = null }, icon = { Text(listOf("⌂", "≡", "▤", "◇", "▥")[index], style = MaterialTheme.typography.titleLarge) }, label = { Text(tabLabels[index], maxLines = 1, softWrap = false) }, modifier = Modifier.semantics { contentDescription = tab }, alwaysShowLabel = true) } } }
         ) { padding ->
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (model.busy) WorkingIndicator()
@@ -80,20 +83,36 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                         OutlinedButton(onClick = model::refresh, enabled = !model.busy) { Text("Refresh workspace") }
                         CaseStarts(model)
                         val home = model.extras["home"]
+                        val homeFarm = home?.optJSONObject("farm")
+                        val homeFarmId = homeFarm?.text("id").orEmpty()
                         home?.optJSONObject("task_preview")?.let { preview ->
                             Text("${preview.optInt("total")} open tasks · ${preview.optInt("overdue_total")} overdue · ${preview.optInt("due_today_total")} due today. These counts cover this farm, not just the next-step preview.")
                             OutlinedButton(onClick = { openNativeTaskHref(model, preview.text("href")) }) { Text("See all this farm's tasks and questions") }
                         }
                         home?.optJSONArray("next_actions")?.objects()?.take(5)?.forEach { action ->
-                            val id = action.optString("record_id")
+                            val id = action.text("record_id")
                             Card(onClick = {
                                 if (!openNativeTaskHref(model, action.text("href"))) when (action.optString("kind")) {
                                     "onboarding" -> onboarding = true
                                     "capture" -> model.tab = "Record work"
                                     "request" -> if (id.isNotBlank()) model.open("requests", id)
                                     "task" -> if (id.isNotBlank()) model.open("tasks", id)
-                                    "review" -> { val target = if (action.optString("href").contains("operations")) "operations" else if (action.optString("href").contains("purchases")) "purchases" else if (action.optString("href").contains("sales")) "sales" else "facts"; model.records[target].orEmpty().firstOrNull { it.data().optString("review_status") == "proposed" }?.let { model.open(target, it.getString("id")) } ?: run { model.tab = "Record work" } }
-                                    "annual_review" -> model.records["farms"].orEmpty().firstOrNull()?.let { questions = it }
+                                    "review" -> {
+                                        val target = when (action.text("id")) {
+                                            "review-facts" -> "facts"
+                                            "review-operations" -> "operations"
+                                            "review-purchases" -> "purchases"
+                                            "review-sales" -> "sales"
+                                            else -> null
+                                        }
+                                        when {
+                                            homeFarmId.isBlank() -> model.notify("Refresh Home before opening this farm's review.")
+                                            action.text("id") == "review-portuguese-journals" -> portugueseJournal = homeFarmId to id.takeIf(String::isNotBlank)
+                                            target != null -> model.openHomeReview(target, homeFarmId, id.takeIf(String::isNotBlank), excludePortugueseJournal = target == "facts")
+                                            else -> model.notify("This review action is not supported in this app version. Refresh Home before continuing.")
+                                        }
+                                    }
+                                    "annual_review" -> if (homeFarm != null) questions = homeFarm else model.notify("Refresh Home before checking this farm's answers.")
                                     "compliance", "preparation" -> model.administration = "preparation" to null
                                     "regulatory", "updates" -> model.administration = "updates" to null
                                     "adviser" -> model.administration = "adviser" to null
@@ -102,18 +121,19 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                                 }
                             }, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text(action.optString("title"), fontWeight = FontWeight.Bold); Text(action.optString("message")) } }
                         }
-                        val pendingFacts = model.records["facts"].orEmpty().filter { it.data().optString("review_status") == "proposed" }
-                        val pendingSales = model.records["sales"].orEmpty().filter { it.data().optString("review_status") == "proposed" }
-                        val draftReports = model.records["reports"].orEmpty().filter { it.data().optString("status") == "draft" }
-                        val activeRequests = model.records["requests"].orEmpty().filter { it.data().optString("status") !in listOf("responded", "closed") }
+                        val pendingFacts = model.records["facts"].orEmpty().filter { it.data().text("farm_id") == homeFarmId && it.data().optString("review_status") == "proposed" }
+                        val pendingSales = model.records["sales"].orEmpty().filter { it.data().text("farm_id") == homeFarmId && it.data().optString("review_status") == "proposed" }
+                        val draftReports = model.records["reports"].orEmpty().filter { it.data().text("farm_id") == homeFarmId && it.data().optString("status") == "draft" }
+                        val activeRequests = model.records["requests"].orEmpty().filter { it.data().text("farm_id") == homeFarmId && it.data().optString("status") !in listOf("responded", "closed") }
                         Heading("Ready for your attention")
+                        if (homeFarm != null) Text("Saved records for ${homeFarm.title()}. This list only includes records loaded on this device.", style = MaterialTheme.typography.bodySmall)
                         pendingFacts.take(3).forEach { RecordRow(it, "Check proposed fact") { model.open("facts", it.getString("id")) } }
                         pendingSales.take(3).forEach { RecordRow(it, "Check recorded sale") { model.open("sales", it.getString("id")) } }
                         draftReports.take(3).forEach { RecordRow(it, "Preview and approve") { model.open("reports", it.getString("id")) } }
                         activeRequests.sortedBy { it.data().optString("deadline", "9999") }.take(5).forEach { RecordRow(it, status(it)) { model.open("requests", it.getString("id")) } }
-                        if (pendingFacts.isEmpty() && pendingSales.isEmpty() && draftReports.isEmpty() && activeRequests.isEmpty()) Text("Nothing else in the saved records needs your attention right now.")
+                        if (pendingFacts.isEmpty() && pendingSales.isEmpty() && draftReports.isEmpty() && activeRequests.isEmpty()) Text(if (homeFarm == null) "Refresh Home to see which farm needs attention." else "No other loaded records for this farm need attention. The next steps above also check records not loaded on this device.")
                         home?.optJSONArray("missing_information")?.objects()?.forEach { missing -> Notice(missing.optString("label") + ". " + missing.optString("message")) }
-                        model.records["farms"].orEmpty().firstOrNull()?.let { farm -> OutlinedButton(onClick = { questions = farm }) { Text("Check what is missing for this year") } }
+                        homeFarm?.let { farm -> OutlinedButton(onClick = { questions = farm }) { Text("Check what is missing for this year") } }
                         TextButton(onClick = { support = "imports" }) { Text("Bring in existing records") }
                         AdministrationEntryPoints(model)
                         PendingChanges(model)
@@ -158,6 +178,7 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
         if (onboarding) FarmOnboarding(model, { onboarding = false }, { support = it; onboarding = false })
         capture?.let { type -> GuidedCapture(model, type) { capture = null } }
         questions?.let { farm -> GuidedQuestions(model, farm) { questions = null } }
+        portugueseJournal?.let { route -> PortugueseJournal(model, initialFarmId = route.first, initialFactId = route.second) { portugueseJournal = null } }
         support?.let { section -> SupportHandoff(model, section) { support = null } }
         AdministrationDestination(model)
         model.sourceImports?.let { route -> key(route.toString()) { SourceImportsScreen(model, route) { model.sourceImports = null } } }
