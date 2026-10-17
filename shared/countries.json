@@ -4121,7 +4121,7 @@
         "fr",
         "de"
       ],
-      "checked_date": "2026-10-16",
+      "checked_date": "2026-10-17",
       "reporting_year": 2026,
       "portal": {
         "authority": "Service d'économie rurale (SER) / Institut viti-vinicole (IVV)",
@@ -4136,13 +4136,13 @@
           "common_pack_id": "farm-evidence",
           "task": "Collect and review farm facts and the records behind them.",
           "availability": "common_workflow",
-          "mapping_status": "reference_only",
+          "mapping_status": "partial_mapping",
           "pack_ids": [
             "LU-annual-2026"
           ],
-          "coverage_limit": "Coverage gap: the Luxembourg annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form. The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping. Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established.",
+          "coverage_limit": "Selected 2026 vineyard quota-register export rows are mapped for review: domestic and foreign quota subparcels. This is not general annual accounts, a complete national application, an authority-import file or a quota-balance decision. Original source identifiers, units and unknown values remain unchanged; no mapped field is created.",
           "source_editions": [
-            "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+            "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
           ],
           "farm_type_filter": "not_inferred",
           "country": "LU",
@@ -4152,7 +4152,7 @@
             {
               "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
               "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-              "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+              "edition": "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
             }
           ]
         },
@@ -4162,13 +4162,13 @@
           "common_pack_id": "cap-evidence",
           "task": "Prepare an evidence folder for the selected scheme and campaign; finish the application with the paying agency.",
           "availability": "common_workflow",
-          "mapping_status": "reference_only",
+          "mapping_status": "partial_mapping",
           "pack_ids": [
             "LU-cap-2026"
           ],
-          "coverage_limit": "Coverage gap: the Luxembourg cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form. The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping. Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established.",
+          "coverage_limit": "Selected 2026 agricultural and vineyard export columns are mapped for review. Source areas stay in ares; a_eligible is the declared-area column, not an eligibility determination. Previous crop remains prior-year evidence and bio remains source status, not certification. This is not a complete application, accepted upload format or official LPIS correction.",
           "source_editions": [
-            "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+            "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
           ],
           "farm_type_filter": "not_inferred",
           "country": "LU",
@@ -4178,7 +4178,7 @@
             {
               "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
               "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-              "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+              "edition": "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
             }
           ]
         },
@@ -4194,7 +4194,7 @@
           ],
           "coverage_limit": "Coverage gap: the Luxembourg input-use records form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form. The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping. Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established.",
           "source_editions": [
-            "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+            "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
           ],
           "farm_type_filter": "not_inferred",
           "country": "LU",
@@ -4204,7 +4204,7 @@
             {
               "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
               "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-              "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+              "edition": "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
             }
           ]
         },
@@ -4253,7 +4253,7 @@
           "mode": "portal_handoff",
           "availability": "handoff_only",
           "evidence_status": "official_reference",
-          "checked_date": "2026-10-16",
+          "checked_date": "2026-10-17",
           "reporting_year": 2026,
           "setup_requirements": [
             "Confirm the correct authority, region, scheme and campaign in this official reference."
@@ -4280,7 +4280,7 @@
           "mode": "portal_handoff",
           "availability": "handoff_only",
           "evidence_status": "documented_operation_not_account_tested",
-          "checked_date": "2026-10-16",
+          "checked_date": "2026-10-17",
           "reporting_year": 2026,
           "setup_requirements": [
             "Use LuxTrust or another accepted official identity and the appropriate professional space.",
@@ -4314,7 +4314,7 @@
         {
           "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
           "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-          "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+          "edition": "2026 manual v2.0, 103 PDF pages; Annex III PDF pages 101-103; checked 2026-10-17"
         }
       ],
       "mandate_requirement": {
@@ -4338,14 +4338,14 @@
       "regions": [],
       "coverage": {
         "common_workflows": "available",
-        "official_mapping": "not_implemented",
+        "official_mapping": "selected_fields_only",
         "official_import_schema": "not_verified",
         "official_api": "not_verified",
         "adviser_authorisation": "documented_scoped_authorisation"
       },
       "source_review": {
-        "checked_date": "2026-10-16",
-        "method": "Official-source inventory and documented-operation review; no authenticated authority-account test.",
+        "checked_date": "2026-10-17",
+        "method": "Read the actual 103-page 2026 v2.0 manual export instructions and Annex III; selected CSV source columns mapped. No authenticated authority-account or upload test.",
         "live_account_tested": false
       }
     },

@@ -6,9 +6,10 @@ import { Button, Field, Notice, PageHeader } from '../components';
 import { useRecords } from '../hooks';
 import { usePrivateDraft } from '../offline';
 import type { Pack, Page, RecordItem } from '../types';
+import { ReportAnswer } from './Reports';
 
 type Requirement = { id?: string; key: string; label: string; required: boolean; unit?: string | null; temporal_basis?: string; period?: string | null; parcel_id?: string | null; physical_label?: string | null; value_type?: string; choices?: { value: unknown; label: string }[]; prompt?: string; state?: string; proposals?: RecordItem<FactData>[]; confirmed?: RecordItem<FactData>[] };
-type GuidedQuestions = { questions: Requirement[]; completed_count: number; total_count: number; blocked_reasons: string[] };
+type GuidedQuestions = { questions: Requirement[]; completed_count: number; total_count: number; blocked_reasons: string[]; source_tables?: { profile_id: string; label: string; confirmed_count: number; proposed_count: number; import_url: string; review_url: string }[] };
 type CaptureCheck = { issues: { code: string; severity: string; message: string }[]; can_save: boolean; requires_acknowledgement: string[]; check_token: string };
 type RequestData = {
   farm_id: string; title: string; recipient: string; country: string; region: string | null;
@@ -21,7 +22,7 @@ type FactData = {
 };
 type ReportData = {
   request_id?: string; status: string; can_approve?: boolean; approval_blocked_reason?: string;
-  snapshot?: { fields?: { field: string; label: string; value: unknown; unit?: string | null; period?: string | null }[] };
+  snapshot?: { fields?: { field: string; label: string; value: unknown; unit?: string | null; period?: string | null; row_schema?: unknown }[] };
   current_blockers?: { code: string; message: string; fact_id?: string; field?: string }[];
   blockers?: { code: string; message: string; fact_id?: string; field?: string }[];
 };
@@ -364,10 +365,13 @@ export function RequestDetailPage() {
   const relevantFacts = facts.items.filter(fact => fact.data.farm_id === data.farm_id);
   const requirements = new Map<string, Requirement>();
   for (const field of pack?.requirements ?? pack?.fields ?? []) {
+    if (field.fact_key_prefix) continue;
     const key = field.key ?? field.fact_key ?? field.field;
     if (typeof key === 'string') requirements.set(key, { key, label: String(field.label ?? field.question ?? key), required: field.required !== false, unit: field.unit, temporal_basis: field.temporal_basis });
   }
-  for (const field of data.requirements ?? []) requirements.set(field.key, field);
+  for (const field of data.requirements ?? []) {
+    if (!(pack?.fields ?? []).some(item => item.fact_key_prefix === field.key)) requirements.set(field.key, field);
+  }
   const requestReports = reports.items.filter(report => report.data.request_id === request.id);
   const questions = guided?.questions ?? [];
   const allRequirements = [...requirements.values()].filter(requirement => !questions.some(question => question.key === requirement.key)).concat(questions);
@@ -394,14 +398,15 @@ export function RequestDetailPage() {
     </section>
     <section className="panel" id="answers"><span id="questions" aria-hidden="true" /><h2>What needs your attention</h2><p>Saved answers are reused. Work through missing answers and changes, one question at a time; the final server check determines whether the response can be approved.</p>
       {guidedLoading && <p role="status">Checking which answers are still needed…</p>}{guidedError && <Notice kind="error">{guidedError}<Button variant="ghost" onClick={() => void loadQuestions()}>Retry questions</Button></Notice>}
-      {guided && <><p role="status">{guided.completed_count} of {guided.total_count} questions have confirmed answers according to the server’s current checks.</p><progress max={Math.max(1, guided.total_count)} value={guided.completed_count} aria-label="Questions with a confirmed answer" /></>}
+      {guided && guided.total_count > 0 && <><p role="status">{guided.completed_count} of {guided.total_count} questions have confirmed answers according to the server’s current checks.</p><progress max={Math.max(1, guided.total_count)} value={guided.completed_count} aria-label="Questions with a confirmed answer" /></>}
+      {!!guided?.source_tables?.length && <section aria-label="Original source tables"><h3>Review your original rows</h3><p>Bring the tables that apply to your farm. Check the rows before confirming them; these counts do not establish eligibility or a complete application.</p>{guided.source_tables.map(table => <article className="panel" key={table.profile_id}><h4>{table.label}</h4><p>{table.confirmed_count} confirmed rows · {table.proposed_count} rows waiting for review</p><div className="actions"><Link to={table.import_url}>Bring in this table</Link><Link to={table.review_url}>Review saved rows</Link></div></article>)}</section>}
       {!!guided?.blocked_reasons.length && <Notice kind="warning"><ul>{guided.blocked_reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></Notice>}
       {!!questions.length && <div className="actions"><Button variant="ghost" disabled={questionIndex === 0} onClick={() => setQuestionIndex(value => Math.max(0, value - 1))}>Previous question</Button><span>Question {Math.min(questionIndex + 1, questions.length)} of {questions.length}</span><Button variant="ghost" disabled={questionIndex >= questions.length - 1} onClick={() => setQuestionIndex(value => Math.min(questions.length - 1, value + 1))}>Next question</Button></div>}
       {guided && !questions.length && guided.total_count > 0 && <Notice>Saved answers are available for these questions. Check the response below for source conflicts, required evidence and other remaining conditions.</Notice>}
       <Button variant="ghost" onClick={() => setShowAllAnswers(value => !value)}>{showAllAnswers ? 'Return to guided questions' : 'Review all saved answers'}</Button>
       {facts.loading && <p role="status">Loading farm answers…</p>}{facts.error && <Notice kind="error">{facts.error}<Button variant="ghost" onClick={() => void facts.reload()}>Retry answers</Button></Notice>}
       {documents.error && <Notice kind="warning">Source documents could not be loaded: {documents.error}<Button variant="ghost" onClick={() => void documents.reload()}>Retry documents</Button></Notice>}
-      {!requirements.size && <Notice>The request has no additional questions and its pack questions have not loaded. Use the server check below to identify missing requirements.</Notice>}
+      {!requirements.size && !guided?.source_tables?.length && <Notice>The request has no additional questions and its pack questions have not loaded. Use the server check below to identify missing requirements.</Notice>}
       {(showAllAnswers ? allRequirements : activeQuestion ? [activeQuestion] : []).map(requirement => <article id={`question-${requirement.id ?? requirement.key}`} key={requirement.id ?? requirement.key} className="evidence-card"><h3>{requirement.prompt ?? requirement.label}</h3>{(requirement.physical_label || requirement.period) && <p><strong>{requirement.physical_label}</strong>{requirement.period ? ` · ${requirement.period}` : ''}</p>}<p className="muted">{requirement.required ? 'Required' : 'Optional'}{requirement.unit ? ` · Expected unit: ${requirement.unit}` : ''}{requirement.state === 'conflict' ? ' · Sources disagree; review the existing answers.' : ''}</p>
         {matchingFacts(requirement).map(fact => <div className="panel inset" key={fact.id}><div className="section-heading"><strong>{literal(fact.data.value)}{fact.data.unit ? ` ${fact.data.unit}` : ''}</strong><span className="badge">{fact.data.review_status}</span></div><p>Period: {fact.data.period === null ? 'None supplied' : fact.data.period} · {fact.data.temporal_basis.replaceAll('_', ' ')} · Revision {fact.revision}</p>
           {fact.data.temporal_basis !== 'static' && fact.data.period !== String(data.reporting_year) && <Notice kind="warning">This answer has a different period or an exact date. Review its applicability; the report’s checks decide whether it can be used.</Notice>}
@@ -417,7 +422,7 @@ export function RequestDetailPage() {
       <fieldset><legend>Include selected evidence</legend><p className="muted">Choose the documents relevant to this request. The response retains their references; original files remain private.</p>{documents.items.filter(document => !document.data.farm_id || document.data.farm_id === data.farm_id).map(document => <label className="checkbox-field" key={document.id}><input type="checkbox" checked={selectedDocumentIds.includes(document.id)} onChange={event => { setSelectedDocumentIds(previous => event.target.checked ? [...previous, document.id] : previous.filter(value => value !== document.id)); setCheck(null); }} /><span>{document.data.name ?? document.data.filename ?? document.data.title ?? document.id}</span></label>)}{!documents.loading && !documents.items.length && <p>No evidence documents yet. <Link to="/app/documents">Add a document</Link> when one is available.</p>}</fieldset>
       {reviewer && <Button loading={busy} onClick={() => void prepare()}>Check & prepare response</Button>}
       {check && <div className="stack"><h3>Preview the response</h3>{blockers?.length ? <Notice kind="warning"><p>These checks need attention before approval:</p><ul>{blockers.map((blocker, index) => <li key={`${blocker.code}-${index}`}>{blocker.message}{blocker.field ? ` (${blocker.field})` : ''}</li>)}</ul></Notice> : blockers ? <Notice kind="success">The server found no blocking requirements in this draft. Review the values before approving.</Notice> : <Notice>Open the response to inspect its server checks.</Notice>}
-        {!!check.data.snapshot?.fields?.length && <div className="table-scroll"><table><thead><tr><th>Field</th><th>Value</th><th>Unit</th><th>Period</th></tr></thead><tbody>{check.data.snapshot.fields.map((field, index) => <tr key={`${field.field}-${index}`}><th scope="row">{field.label}</th><td>{literal(field.value)}</td><td>{field.unit ?? '—'}</td><td>{field.period ?? 'Static / not supplied'}</td></tr>)}</tbody></table></div>}
+        {!!check.data.snapshot?.fields?.length && <div className="table-scroll"><table><thead><tr><th>Field</th><th>Value</th><th>Unit</th><th>Period</th></tr></thead><tbody>{check.data.snapshot.fields.map((field, index) => <tr key={`${field.field}-${index}`}><th scope="row">{field.label}</th><td><ReportAnswer field={field}/></td><td>{field.unit ?? 'Not specified'}</td><td>{field.period ?? 'Standing detail / not supplied'}</td></tr>)}</tbody></table></div>}
         <div className="actions">{check.data.status === 'draft' && check.data.can_approve && reviewer && <Button loading={busy} onClick={() => void approve()}>Approve this response</Button>}<Link className="button button-secondary" to={`/app/reports/${check.id}`}>{check.data.status === 'issued' ? 'Download & record response receipt' : 'Open full response & evidence'}</Link>{check.data.status === 'issued' && <Link className="button button-primary" to={`/app/connections?farm_id=${data.farm_id}&report_id=${check.id}`}>Continue to official route</Link>}</div>
         {check.data.status === 'issued' && <Notice>Approved locally. Complete the authority’s own filing steps, then record its actual reference or receipt.</Notice>}
       </div>}

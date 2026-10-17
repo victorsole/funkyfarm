@@ -10,6 +10,17 @@ type Data = Record<string, unknown>;
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {};
 const text = (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback;
 const show = (value: unknown): string => value === undefined || value === null ? 'Not recorded' : value === '' ? 'Blank entry' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : typeof value === 'string' ? value : JSON.stringify(value) ?? 'Not recorded';
+export function ReportAnswer({ field }: { field: Data }) {
+  const schema = object(field.row_schema);
+  if (!Array.isArray(schema.row_columns) || field.missing === true) return <strong>{field.missing === true ? 'Not available - no matching record' : show(field.value)}</strong>;
+  const value = object(field.value);
+  const columns = schema.row_columns.map(object);
+  const keys = [...columns.map(column => text(column.key)).filter(key => Object.hasOwn(value, key)), ...Object.keys(value).filter(key => !columns.some(column => column.key === key))];
+  return <dl className="evidence-list">{keys.map(key => {
+    const column = columns.find(item => item.key === key);
+    return <div key={key}><dt>{column ? text(column.label, key) : 'Additional source column'} <small className="muted">({key})</small></dt><dd>{value[key] === '' ? 'Empty source cell' : show(value[key])}{column?.unit ? ` ${text(column.unit)}` : ''}</dd></div>;
+  })}</dl>;
+}
 const failure = (error: unknown) => error instanceof Error ? error.message : 'The report could not be loaded or saved. Please try again.';
 const reportName = (item: RecordItem) => {
   const pack = object(object(item.data.snapshot).pack);
@@ -276,7 +287,7 @@ export function ReportDetailPage() {
       <p className="muted">{capabilityLabel(pack)}{pack.version ? ` · format version ${show(pack.version)}` : ''}{pack.country ? ` · ${show(pack.country)}` : ''}</p>
       {data.status !== 'issued' && missing.length > 0 && <Notice kind="error"><strong>Still needed</strong><ul>{missing.map((item, index) => <li key={index}>{typeof item === 'string' ? item : text(object(item).label, show(item))}</li>)}</ul></Notice>}
       {warnings.length > 0 && <Notice><strong>Before you use this report</strong><ul>{warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : text(object(warning).message, show(warning))}</li>)}</ul></Notice>}
-      {fields.length ? <dl className="evidence-list">{fields.map((field, index) => <div key={index}><dt>{text(field.group_label) && <small className="muted">{text(field.group_label)} · </small>}{text(field.label, text(field.key, text(field.field, `Answer ${index + 1}`)))}</dt><dd><strong>{field.missing === true ? 'Not available — no matching record' : show(field.value)}</strong> {text(field.unit)}
+      {fields.length ? <dl className="evidence-list">{fields.map((field, index) => <div key={index}><dt>{text(field.group_label) && <small className="muted">{text(field.group_label)} · </small>}{text(field.label, text(field.key, text(field.field, `Answer ${index + 1}`)))}</dt><dd><ReportAnswer field={field}/> {text(field.unit)}
         <p className="muted">{periodLabel(field)}</p>
         {field.fact_id ? <p><SourceLink source={{ fact_id: field.fact_id, revision: field.fact_revision, label: 'Reviewed farm fact' }} farmId={text(data.farm_id)} /></p> : null}
         {Array.isArray(field.sources) && field.sources.some(hasSource) && <ul className="source-links">{field.sources.filter(hasSource).map((source, sourceIndex) => <li key={sourceIndex}><SourceLink source={source} farmId={text(data.farm_id)} /></li>)}</ul>}

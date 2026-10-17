@@ -421,6 +421,10 @@ def _question_items(requirements, facts, request_data, farm_data, excluded, pack
     active = [fact for fact in facts if fact["data"].get("review_status") != "rejected" and fact["id"] not in excluded]
     questions, completed, seen = [], 0, set()
     for requirement in requirements:
+        if requirement.get("fact_key_prefix"):
+            # A source table is reviewed row by row, never answered as one
+            # scalar fact under the bare namespace prefix.
+            continue
         key = requirement.get("key") or requirement.get("fact_key")
         if not isinstance(key, str) or not key:
             continue
@@ -492,7 +496,7 @@ def _question_items(requirements, facts, request_data, farm_data, excluded, pack
 
 
 def _question_context(conn, request_id):
-    from .reporting import _pack_year_matches, get_pack
+    from .reporting import _matches_requirement, _pack_year_matches, get_pack
     from .reconciliation import selected_fact_ids
     request = fetch_record(conn, "requests", str(request_id))
     data = request["data"]
@@ -520,8 +524,18 @@ def _question_context(conn, request_id):
     facts = _farm_records(conn, farm["id"], ["facts"])
     excluded = selected_fact_ids(conn, farm["id"])["excluded_fact_ids"]
     questions, completed = _question_items(requirements, facts, data, farm["data"], excluded, pack)
+    source_tables = []
+    for requirement in requirements:
+        if not requirement.get("fact_key_prefix") or not requirement.get("import_profile"):
+            continue
+        matching = [fact for fact in facts if fact["id"] not in excluded and _matches_requirement(fact, requirement, data["reporting_year"])]
+        source_tables.append({"profile_id": requirement["import_profile"], "label": requirement["label"],
+            "confirmed_count": sum(fact["data"].get("review_status") == "confirmed" for fact in matching),
+            "proposed_count": sum(fact["data"].get("review_status") == "proposed" for fact in matching),
+            "import_url": f"/app/imports?profile={requirement['import_profile']}&farm_id={farm['id']}",
+            "review_url": f"/app/fields/{farm['id']}#facts"})
     return {"request": request, "questions": questions, "completed_count": completed,
-            "total_count": completed + len(questions), "blocked_reasons": blocked}
+            "total_count": completed + len(questions), "blocked_reasons": blocked, "source_tables": source_tables}
 
 
 @router.get("/questions")

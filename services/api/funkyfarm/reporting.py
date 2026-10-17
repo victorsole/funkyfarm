@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ from .models import ApiError
 from .records import matches_reporting_period, physical_identity as _physical_identity
 from .reconciliation import selected_fact_ids, reconciliation_for_farm
 from .report_render import csv_bytes, literal, pdf_bytes, readable, xlsx_bytes
+from .parcel_formats import row_issues
 
 
 router = APIRouter(tags=["reporting"])
@@ -179,7 +181,9 @@ def _matches_requirement(fact, requirement, year):
     key = requirement.get("fact_key", requirement.get("key"))
     group = _physical_identity(requirement)
     basis = requirement.get("temporal_basis")
-    return data.get("key") == key and (group is None or _physical_identity(data) == group) and matches_reporting_period(data, year, basis=basis, period=requirement.get("period"))
+    prefix = requirement.get("fact_key_prefix")
+    matches_key = bool(re.fullmatch(re.escape(prefix) + r"[a-f0-9]{64}", str(data.get("key", "")))) if prefix else data.get("key") == key
+    return matches_key and (group is None or _physical_identity(data) == group) and matches_reporting_period(data, year, basis=basis, period=requirement.get("period"))
 
 
 def _source_refs(data, selected, record_kinds=None):
@@ -195,7 +199,7 @@ def _source_refs(data, selected, record_kinds=None):
         if document_id is not None and str(document_id) not in selected:
             continue
         # A report carries source locations, never file paths, access URLs or raw documents.
-        allowed = ("document_id", "record_id", "record_kind", "source_id", "source_kind", "file_name", "row", "row_number", "sheet", "column", "page", "line_start", "line_end", "quote", "location", "source_key", "adapter", "revision", "origin")
+        allowed = ("document_id", "record_id", "record_kind", "source_id", "source_kind", "file_name", "row", "row_number", "sheet", "column", "page", "line_start", "line_end", "quote", "location", "source_key", "adapter", "revision", "origin", "import_id", "row_id", "source_name", "sha256", "grain", "adapter_profile", "decimal_separator", "source_year")
         retained = {key: deepcopy(value[key]) for key in allowed if key in value and (key != "quote" or document_id is not None)}
         if record_kind:
             retained["record_kind"] = record_kind
@@ -330,15 +334,24 @@ def _prepare(conn, body, actor, correction_of=None):
         for spec in specs:
             matching = [fact for fact in snapshot_facts if _matches_requirement(fact, spec, body.reporting_year)]
             if not matching:
+                if spec.get("fact_key_prefix") and not spec["required"]:
+                    continue
                 fields.append({"field": spec["field"], "label": spec["label"], "required": spec["required"], "missing": True, "fact_key": spec["fact_key"], "physical_group_id": _physical_identity(spec)})
             seen_values = set()
             for fact in matching:
                 data = fact["data"]
-                signature = canonical([data.get("value"), data.get("unit"), data.get("period"), data.get("temporal_basis"), _physical_identity(data)])
+                signature = canonical([data.get("key") if spec.get("fact_key_prefix") else None, data.get("value"), data.get("unit"), data.get("period"), data.get("temporal_basis"), _physical_identity(data)])
                 if signature in seen_values:
                     continue
                 seen_values.add(signature)
-                fields.append({"field": spec["field"], "label": spec["label"], "required": spec["required"], "fact_key": spec["fact_key"], "fact_id": fact["id"], "fact_revision": fact["revision"], "value": deepcopy(data.get("value")), "unit": data.get("unit"), "period": data.get("period"), "temporal_basis": data.get("temporal_basis"), "sources": deepcopy(data.get("sources", []))})
+                field = {"field": spec["field"], "label": spec["label"], "required": spec["required"], "fact_key": data.get("key") if spec.get("fact_key_prefix") else spec["fact_key"], "fact_id": fact["id"], "fact_revision": fact["revision"], "value": deepcopy(data.get("value")), "unit": data.get("unit"), "period": data.get("period"), "temporal_basis": data.get("temporal_basis"), "sources": deepcopy(data.get("sources", []))}
+                if spec.get("import_profile") and spec.get("row_columns"):
+                    # An issued document must render from its retained definitions,
+                    # never from a later country-profile file.
+                    field["row_schema"] = {"id": spec["import_profile"], **{key: deepcopy(spec[key]) for key in ("row_columns", "holding_column", "identity_columns", "minimum_headers")}}
+                    field["label"] = data.get("label") or spec["label"]
+                    field["group_label"] = spec["label"]
+                fields.append(field)
     else:
         for fact in snapshot_facts:
             data = fact["data"]
@@ -424,6 +437,10 @@ def _blockers(conn, data):
         if field.get("required") and (field.get("missing") or field.get("value") is None or field.get("value") == ""):
             add("missing_fact", f"Provide {field['label']} before approval.", field=field["field"])
     specs = _field_specs(snapshot["pack"])
+    if minimum := snapshot["pack"].get("minimum_mapped_rows"):
+        mapped = sum(not field.get("missing") and bool(field.get("row_schema")) for field in snapshot["fields"])
+        if mapped < minimum:
+            add("mapped_rows_required", "Add and confirm at least one source row for this preparation format. This is an app check, not a government filing requirement.")
     all_facts = _records(conn, "facts", data["farm_id"])
     excluded = selected_fact_ids(conn, data["farm_id"])["excluded_fact_ids"]
     for fact in snapshot["facts"]:
@@ -456,6 +473,18 @@ def _blockers(conn, data):
             add("wrong_unit", "The recorded unit differs from the reporting field. Review it without guessing a conversion.", field=field["field"])
         if spec.get("temporal_basis") and not field.get("missing") and field.get("temporal_basis") != spec["temporal_basis"]:
             add("wrong_temporal_basis", "This reporting field needs a different temporal basis.", field=field["field"])
+        if field.get("row_schema") and not field.get("missing"):
+            schema = field["row_schema"]
+            reviews = [source for source in field.get("sources", []) if source.get("adapter_profile") == schema["id"]]
+            separators = {source.get("decimal_separator") for source in reviews}
+            separator = next(iter(separators)) if len(separators) == 1 else None
+            if not reviews or any(source.get("source_year") != data["reporting_year"] for source in reviews):
+                add("source_format_review_required", "Review the original source format and year before using this row.", fact_id=field["fact_id"])
+            if field.get("unit") is not None or field.get("physical_group_id") is not None:
+                add("source_row_scope", "Keep this source row separate from a mapped farm field and retain its units on the original columns.", fact_id=field["fact_id"])
+            for issue in row_issues(schema, field.get("value"), separator):
+                if issue["severity"] == "error":
+                    add(issue["code"], issue["message"], field=issue.get("field"), fact_id=field["fact_id"])
     for document in snapshot["evidence"]:
         current = fetch_record(conn, "documents", document["id"])
         source_checksum = validation_sources.get("documents", {}).get(document["id"], document.get("data_checksum"))

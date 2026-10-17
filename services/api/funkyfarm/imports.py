@@ -7,7 +7,7 @@ import json
 import math
 import re
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
@@ -15,6 +15,7 @@ from pydantic import Field
 
 from .db import fetch_record, idempotent, insert_record, json_safe, list_records, transaction, update_record
 from .models import ApiError, StrictModel
+from .parcel_formats import profiles, profile_for_key, profile_row, validate_headers
 from .records import FIELDS, validate_data
 from .security import Session, require_roles, require_session
 
@@ -24,6 +25,7 @@ MAX_ROWS = 50_000
 MAX_COLUMNS = 256
 MAX_WORKSPACE_ROWS = 200_000
 MAX_CELL_CHARS = 256_000
+MAX_PROFILE_RECORD_BYTES = 512_000
 
 
 class ColumnMapping(StrictModel):
@@ -43,6 +45,14 @@ class MappingReview(StrictModel):
     columns: list[ColumnMapping] = Field(max_length=MAX_COLUMNS)
     target: Literal["facts", "purchases", "sales", "operations"] | None = None
     defaults: dict[str, Any] | None = None
+
+
+class ProfileReview(StrictModel):
+    expected_revision: int = Field(ge=1, strict=True)
+    expected_farm_revision: int = Field(ge=1, strict=True)
+    holding_reference: str = Field(min_length=1, max_length=500)
+    decimal_separator: Literal[".", ","]
+    confirm_source: bool = Field(strict=True)
 
 
 class RowDraft(StrictModel):
@@ -178,6 +188,8 @@ def _parse_cell(raw, column):
 
 
 def _mapped_data(imported, original):
+    if imported["data"].get("format_profile"):
+        return profile_row(imported, original)
     target = imported["data"].get("target", "facts")
     data = dict(imported["data"].get("defaults", {}))
     issues = []
@@ -236,6 +248,12 @@ def _row_record(conn, import_id, row_number, lock=False):
 
 
 def _preview_result(conn, imported, original, target, data, mapping_issues=None):
+    if imported["data"].get("format_profile"):
+        _require_profile_review(conn, imported)
+        profile_target, profile_data, profile_issues = profile_row(imported, original)
+        if target != profile_target or data != profile_data:
+            raise ApiError(422, "profile_mapping_locked", "Keep this profile's exact source row and proposed fact target; re-upload corrected source data instead of silently changing its meaning.")
+        mapping_issues = profile_issues
     if target == "sales":
         data = _sales_date_period(data)
     try:
@@ -301,7 +319,34 @@ def _preview_result(conn, imported, original, target, data, mapping_issues=None)
             "preview_token": token}
 
 
+def _import_source(imported, original):
+    return {"kind": "import", "import_id": imported["id"], "row_id": original["id"],
+            "row_number": original["data"]["row_number"], "source_name": imported["data"]["source_name"],
+            "sha256": imported["data"]["sha256"], "grain": imported["data"]["grain"]}
+
+
+def _check_profile_row_size(imported, values, row_number, profile, stored_row):
+    # The eventual source-row UUID has the same 36-character serialized size.
+    # An unreviewed decimal separator is null (one byte larger than "."/",").
+    temporary = {"id": "00000000-0000-0000-0000-000000000000",
+                 "data": {"original_row": values, "row_number": row_number}}
+    _, proposed, _ = profile_row(imported, temporary, profile=profile)
+    raw_bytes = len(json.dumps(proposed["value"], ensure_ascii=False, allow_nan=False).encode("utf-8"))
+    stored_bytes = len(json.dumps(stored_row, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+    proposed["sources"].append(_import_source(imported, temporary))
+    # Match validate_data's actual serialization, including Unicode escaping,
+    # every metadata field and the trusted source linkage used by promotion.
+    promoted_bytes = len(json.dumps(proposed, allow_nan=False).encode("utf-8"))
+    if max(raw_bytes, stored_bytes, promoted_bytes) > MAX_PROFILE_RECORD_BYTES:
+        raise ApiError(422, "profile_row_too_large", "This source row cannot fit in a complete proposed fact with its provenance. Use a smaller source row; no imports or rows were saved and nothing was truncated.",
+                       {"row": row_number, "limit": MAX_PROFILE_RECORD_BYTES, "raw_value_bytes": raw_bytes,
+                        "stored_row_bytes": stored_bytes, "promoted_fact_bytes": promoted_bytes})
+
+
 def _save_review(conn, imported, original, body, actor_id, mapping_issues=None):
+    if imported["data"].get("format_profile"):
+        conn.execute("SELECT id FROM records WHERE id=%s AND kind='imports' FOR SHARE", (imported["id"],))
+        imported = fetch_record(conn, "imports", imported["id"])
     if original["revision"] != body.expected_revision:
         raise ApiError(409, "revision_conflict", "The row changed. Review it again before saving it.",
                        {"current_revision": original["revision"]})
@@ -322,9 +367,7 @@ def _save_review(conn, imported, original, body, actor_id, mapping_issues=None):
         raise ApiError(422, "review_warnings_required", "Review and acknowledge the warnings before saving this proposed record.",
                        {"issues": preview["issues"], "requires_acknowledgement": sorted(missing_ack)})
     data = dict(preview["normalized_data"])
-    source = {"kind": "import", "import_id": imported["id"], "row_id": original["id"],
-              "row_number": original["data"]["row_number"], "source_name": imported["data"]["source_name"],
-              "sha256": imported["data"]["sha256"], "grain": imported["data"]["grain"]}
+    source = _import_source(imported, original)
     data.update({"sources": [*data.get("sources", []), source], "review_status": "proposed"})
     data = validate_data(conn, body.target, data)
     promoted = insert_record(conn, body.target, data)
@@ -343,14 +386,67 @@ def imports_list(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge
         return list_records(conn, "imports", limit, offset)
 
 
+@router.get("/imports/profiles")
+def import_profiles(session: Session = Depends(require_session)):
+    items = profiles()
+    return {"items": items, "total": len(items), "limit": len(items), "offset": 0}
+
+
+def _require_profile_review(conn, imported):
+    data = imported["data"]
+    profile = profile_for_key(data["format_profile"])
+    review = data.get("profile_review") or {}
+    farm = fetch_record(conn, "farms", data["farm_id"])
+    conn.execute("SELECT id FROM records WHERE id=%s AND kind='farms' FOR SHARE", (farm["id"],))
+    farm = fetch_record(conn, "farms", farm["id"])
+    if (profile is None or farm["data"].get("country") != "LU" or data.get("source_year") != 2026
+            or review.get("profile_id") != data["format_profile"] or review.get("confirmed_source") is not True
+            or review.get("definition_hash") != profile["definition_hash"]
+            or review.get("source_year") != data.get("source_year")
+            or review.get("farm_revision") != farm["revision"]
+            or review.get("holding_reference") != data.get("holding_reference")
+            or not str(review.get("holding_reference", "")).strip()):
+        raise ApiError(409, "profile_review_required", "Confirm this source profile, holding number, source year and current farm revision before reviewing source rows.", {"farm_revision": farm["revision"]})
+    return profile, farm
+
+
+def _profile_delimiter(text, profile, selected):
+    if selected != "auto":
+        if selected not in (",", ";", "\t"):
+            raise ApiError(422, "invalid_delimiter", "Choose comma, semicolon, tab, or an unambiguous profile header match.")
+        return selected
+    if profile is None:
+        raise ApiError(422, "profile_required_for_auto", "Automatic delimiter detection requires an explicitly selected source profile.")
+    matches = []
+    for candidate in (",", ";", "\t"):
+        text.seek(0)
+        try:
+            headers = next(csv.reader(text, delimiter=candidate, strict=True), [])
+        except csv.Error:
+            continue
+        if headers and len(headers) <= MAX_COLUMNS and set(profile["minimum_headers"]).issubset(headers):
+            matches.append(candidate)
+    text.seek(0)
+    if len(matches) != 1:
+        raise ApiError(422, "profile_delimiter_ambiguous", "The source headers do not uniquely identify comma, semicolon or tab. Choose the delimiter explicitly; no source format was guessed.")
+    return matches[0]
+
+
 @router.post("/imports", status_code=201)
 def upload_import(file: UploadFile = File(...), grain: str = Form(..., min_length=1, max_length=200),
                         farm_id: str | None = Form(None), mapping: str | None = Form(None),
+                        format_profile: str | None = Form(None), source_year: int | None = Form(None),
+                        delimiter: str = Form(","),
                         idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
                         session: Session = Depends(require_session)):
     require_roles(session, "owner", "adviser", "worker")
     if not grain.strip():
         raise ApiError(422, "missing_grain", "Describe what one source row represents.")
+    profile = profile_for_key(format_profile) if format_profile else None
+    if format_profile and (profile is None or profile["id"] != format_profile):
+        raise ApiError(422, "invalid_import_profile", "Choose one of the four documented Luxembourg 2026 source profiles.")
+    if profile and (source_year != 2026 or not farm_id or mapping is not None):
+        raise ApiError(422, "profile_source_required", "This profile requires a Luxembourg farm, explicit source year 2026 and no generic column mapping.")
     try:
         mappings = [ColumnMapping.model_validate(item) for item in json.loads(mapping)] if mapping else []
     except (ValueError, TypeError) as error:
@@ -376,17 +472,23 @@ def upload_import(file: UploadFile = File(...), grain: str = Form(..., min_lengt
         try:
             # csv.field_size_limit is process-global; keep it fixed, never derived from client input.
             csv.field_size_limit(MAX_CELL_CHARS)
-            reader = csv.reader(text, strict=True)
+            selected_delimiter = _profile_delimiter(text, profile, delimiter)
+            reader = csv.reader(text, delimiter=selected_delimiter, strict=True)
             headers = next(reader, None)
             if not headers or len(headers) > MAX_COLUMNS:
                 raise ApiError(422, "invalid_columns", "Use a CSV header with between 1 and 256 columns.")
+            if profile:
+                validate_headers(profile, headers)
             columns = _columns(headers, mappings)
             with transaction(session) as conn:
                 acquired = conn.execute("SELECT pg_try_advisory_xact_lock(hashtextextended(current_setting('app.workspace_id')||':imports',0)) AS acquired").fetchone()["acquired"]
                 if not acquired:
                     raise ApiError(429, "import_busy", "Another import in this workspace is running. Retry after it finishes.")
                 if farm_id:
-                    farm_id = fetch_record(conn, "farms", farm_id)["id"]
+                    farm = fetch_record(conn, "farms", farm_id)
+                    farm_id = farm["id"]
+                    if profile and farm["data"].get("country") != "LU":
+                        raise ApiError(422, "profile_country_mismatch", "These Luxembourg source profiles require an explicitly selected Luxembourg farm.")
 
                 def save():
                     stored_count = conn.execute("SELECT count(*) AS count FROM records WHERE kind='import_rows' AND deleted_at IS NULL").fetchone()["count"]
@@ -395,13 +497,16 @@ def upload_import(file: UploadFile = File(...), grain: str = Form(..., min_lengt
                     record = insert_record(conn, "imports", {
                         "source_name": (file.filename or "upload.csv")[:255], "sha256": digest.hexdigest(),
                         "source_bytes": size, "grain": grain, "farm_id": farm_id, "columns": columns,
-                        "encoding": "UTF-8", "delimiter": ",", "row_count": 0,
+                        "encoding": "UTF-8", "delimiter": selected_delimiter, "row_count": 0,
                         "unit": None, "period": None, "temporal_basis": None,
                         "null_semantics": "All source cells remain strings. Blank, NULL and zero are distinct original values.",
                         "review_status": "preview", "created_by": str(session.user_id),
                         "duplicate_source_import_ids": [str(item["id"]) for item in duplicate_sources],
+                        **({"format_profile": profile["id"], "profile_definition_hash": profile["definition_hash"],
+                            "source_year": source_year, "holding_reference": None, "profile_review": None} if profile else {}),
                     })
                     seen_ids, seen_rows = set(), set()
+                    holding_numbers, profile_ids = set(), set()
                     count = 0
                     for count, values in enumerate(reader, 1):
                         if count > MAX_ROWS or stored_count + count > MAX_WORKSPACE_ROWS:
@@ -409,28 +514,95 @@ def upload_import(file: UploadFile = File(...), grain: str = Form(..., min_lengt
                                            {"file_limit": MAX_ROWS, "workspace_limit": MAX_WORKSPACE_ROWS})
                         if len(values) > MAX_COLUMNS:
                             raise ApiError(422, "too_many_cells", "A source row exceeds the column limit.", {"row": count})
+                        if profile:
+                            raw = dict(zip(headers, values))
+                            holding = raw.get(profile["holding_column"], "")
+                            if holding.strip():
+                                holding_numbers.add(holding)
+                            if len(holding_numbers) > 1:
+                                raise ApiError(422, "profile_mixed_holdings", "This source contains more than one nonblank holding number. Separate holdings before importing; no rows were saved.")
+                            identity = tuple(raw.get(key, "") for key in profile["identity_columns"])
+                            if identity and all(part.strip() and part.strip().upper() not in {"NULL", "UNKNOWN"} for part in identity):
+                                if identity in profile_ids:
+                                    raise ApiError(422, "profile_duplicate_identity", "This source repeats a complete parcel or quota identity. Review the original export; no rows were saved.", {"row": count})
+                                profile_ids.add(identity)
                         fingerprint, diagnostics = _diagnostics(conn, values, columns, seen_ids, seen_rows)
                         diagnostics["column_count_mismatch"] = len(values) != len(headers)
-                        insert_record(conn, "import_rows", {
+                        row_data = {
                             "import_id": record["id"], "farm_id": farm_id, "row_number": count,
                             "source_line_end": reader.line_num, "original_row": values,
                             "row_sha256": fingerprint, "source_sha256": digest.hexdigest(),
                             "source_name": record["data"]["source_name"], "grain": grain,
                             "unit": None, "period": None, "temporal_basis": None,
                             "diagnostics": diagnostics, "review_status": "unreviewed", "promoted_record": None,
-                        })
+                        }
+                        if profile:
+                            _check_profile_row_size(record, values, count, profile, row_data)
+                        insert_record(conn, "import_rows", row_data)
                     if count == 0:
                         raise ApiError(422, "empty_import", "The CSV contains a header but no source rows.")
-                    data = {**record["data"], "row_count": count}
+                    data = {**record["data"], "row_count": count,
+                            **({"holding_reference": next(iter(holding_numbers)) if len(holding_numbers) == 1 else None} if profile else {})}
                     return update_record(conn, "imports", record["id"], record["revision"], data)
 
                 return idempotent(conn, idempotency_key, "imports", {
                     "sha256": digest.hexdigest(), "grain": grain, "farm_id": farm_id, "columns": columns,
+                    **({"delimiter": selected_delimiter} if selected_delimiter != "," else {}),
+                    **({"format_profile": format_profile, "source_year": source_year,
+                        "profile_definition_hash": profile["definition_hash"]} if profile else {}),
                 }, save)
         except (UnicodeDecodeError, csv.Error) as error:
             raise ApiError(422, "invalid_csv", "Use a valid comma-separated UTF-8 CSV. No rows were saved.") from error
         finally:
             text.detach()
+
+
+@router.post("/imports/{import_id}/profile-review")
+def review_profile(import_id: str, body: ProfileReview, session: Session = Depends(require_session),
+                   idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    require_roles(session, "owner", "adviser")
+    with transaction(session) as conn:
+        def perform():
+            imported = fetch_record(conn, "imports", import_id)
+            conn.execute("SELECT id FROM records WHERE id=%s AND kind='imports' FOR UPDATE", (imported["id"],))
+            imported = fetch_record(conn, "imports", import_id)
+            data = imported["data"]
+            if imported["revision"] != body.expected_revision:
+                raise ApiError(409, "revision_conflict", "This source import changed. Review its current profile details.")
+            if not data.get("format_profile"):
+                raise ApiError(422, "profile_import_required", "This source has no selected authority CSV profile; use its existing generic mapping review.")
+            profile = profile_for_key(data["format_profile"])
+            farm = fetch_record(conn, "farms", data["farm_id"])
+            conn.execute("SELECT id FROM records WHERE id=%s AND kind='farms' FOR SHARE", (farm["id"],))
+            farm = fetch_record(conn, "farms", farm["id"])
+            if farm["revision"] != body.expected_farm_revision:
+                raise ApiError(409, "revision_conflict", "The farm changed. Review the current farm before confirming this source.", {"farm_revision": farm["revision"]})
+            if profile is None or farm["data"].get("country") != "LU" or data.get("source_year") != 2026:
+                raise ApiError(422, "profile_source_required", "Confirm a Luxembourg farm and the explicit 2026 source export; the upload date does not establish its year.")
+            if (body.confirm_source is not True or not body.holding_reference.strip()
+                    or body.holding_reference.strip().upper() in {"NULL", "UNKNOWN"}):
+                raise ApiError(422, "profile_source_confirmation_required", "Explicitly confirm the selected source and its nonblank holding number.")
+            holding_index = next(column["source_index"] for column in data["columns"] if column["header"] == profile["holding_column"])
+            holdings = set()
+            with conn.cursor(name="profile_source_holdings") as cursor:
+                cursor.execute("SELECT data FROM records WHERE kind='import_rows' AND data->>'import_id'=%s "
+                               "AND deleted_at IS NULL ORDER BY (data->>'row_number')::integer", (imported["id"],))
+                for source in cursor:
+                    values = source["data"]["original_row"]
+                    value = values[holding_index] if holding_index < len(values) else ""
+                    if value.strip():
+                        holdings.add(value)
+                    if len(holdings) > 1:
+                        break
+            if holdings != {body.holding_reference} or data.get("holding_reference") != body.holding_reference:
+                raise ApiError(422, "profile_holding_mismatch", "Confirm exactly the single nonblank holding number present in the original source rows.")
+            review = {"profile_id": profile["id"], "definition_hash": profile["definition_hash"],
+                      "source_year": 2026, "farm_revision": farm["revision"], "holding_reference": body.holding_reference,
+                      "decimal_separator": body.decimal_separator, "confirmed_source": True,
+                      "reviewed_by": str(session.user_id), "reviewed_at": datetime.now(timezone.utc).isoformat()}
+            return update_record(conn, "imports", imported["id"], body.expected_revision,
+                                 {**data, "profile_definition_hash": profile["definition_hash"], "profile_review": review})
+        return idempotent(conn, idempotency_key, f"import-profile-review:{import_id}:{session.user_id}", body.model_dump(), perform)
 
 
 @router.get("/imports/{import_id}")
@@ -454,6 +626,8 @@ def review_mapping(import_id: str, body: MappingReview, session: Session = Depen
     require_roles(session, "owner", "adviser")
     with transaction(session) as conn:
         record = fetch_record(conn, "imports", import_id)
+        if record["data"].get("format_profile"):
+            raise ApiError(422, "profile_mapping_locked", "This import's selected source profile is fixed. Use its profile review, or upload a different source with the correct profile.")
         columns = _columns([column["header"] for column in record["data"]["columns"]], body.columns)
         target = body.target or record["data"].get("target", "facts")
         defaults = body.defaults if body.defaults is not None else record["data"].get("defaults", {})

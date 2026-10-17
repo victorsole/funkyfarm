@@ -1,65 +1,784 @@
 [
   {
     "id": "LU-annual-2026",
-    "inventory_checked_date": "2026-10-16",
+    "inventory_checked_date": "2026-10-17",
     "common_pack_id": "farm-evidence",
-    "mapping_status": "reference_only",
+    "mapping_status": "partial_mapping",
     "authority_ready": false,
     "applicability_review_required": true,
     "country": "LU",
     "region": null,
     "workflow_id": "annual",
     "reporting_year": 2026,
-    "version": "1.0.0",
-    "capability": "reference_only",
-    "title": "Luxembourg: Annual farm reporting — mapping unavailable",
-    "fields": [],
+    "version": "2026.2.0",
+    "capability": "sourced_draft_mapping",
+    "title": "Luxembourg: Weinbaukarteierhebung 2026 - selected quota-register export rows",
+    "fields": [
+      {
+        "key": "lu.fa.quota_lu_row.",
+        "fact_key_prefix": "lu.fa.quota_lu_row.",
+        "import_profile": "lu-quota-lu-2026",
+        "label": "Domestic vineyard quota subparcel",
+        "official_field": "Annex III, Teilparzellen (Quoten) in Luxemburg, printed page 102 / PDF page 103",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year",
+        "holding_column": "explCode",
+        "identity_columns": [
+          "idParcel",
+          "idVine"
+        ],
+        "minimum_headers": [
+          "explCode",
+          "idParcel",
+          "idVine"
+        ],
+        "row_columns": [
+          {
+            "key": "explCode",
+            "label": "Holding number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "town",
+            "label": "Municipality name",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "section",
+            "label": "Municipal section",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "idParcel",
+            "label": "Vineyard number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "assurHarv",
+            "label": "2026 crop-loss insurance selected",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "a_quota",
+            "label": "Quota area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "name",
+            "label": "Location name",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "idVine",
+            "label": "Quota subparcel number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "explMode",
+            "label": "Recorded tenure",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Pacht",
+              "Besitz",
+              "Andere"
+            ]
+          },
+          {
+            "key": "variety",
+            "label": "Grape variety or fallow",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "aVine",
+            "label": "Variety or fallow area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "yPlant",
+            "label": "Planting year",
+            "type": "integer",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "grubUp",
+            "label": "Grubbing date in original source format",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "meca",
+            "label": "Mechanisation",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Direktzug",
+              "Handarbeit",
+              "Seilzug"
+            ]
+          },
+          {
+            "key": "training",
+            "label": "Training system",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Draht",
+              "Pfahl"
+            ]
+          },
+          {
+            "key": "width",
+            "label": "Row spacing",
+            "type": "decimal",
+            "unit": "cm",
+            "required": false
+          },
+          {
+            "key": "rootstock",
+            "label": "Rootstock",
+            "type": "text",
+            "unit": null,
+            "required": false
+          }
+        ]
+      },
+      {
+        "key": "lu.fa.quota_foreign_row.",
+        "fact_key_prefix": "lu.fa.quota_foreign_row.",
+        "import_profile": "lu-quota-foreign-2026",
+        "label": "Foreign vineyard quota subparcel",
+        "official_field": "Annex III, Teilparzellen (Quoten) im Ausland, printed page 102 / PDF page 103",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year",
+        "holding_column": "explCode",
+        "identity_columns": [],
+        "minimum_headers": [
+          "explCode"
+        ],
+        "row_columns": [
+          {
+            "key": "explCode",
+            "label": "Holding number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "country",
+            "label": "Country name as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "section",
+            "label": "Municipal section",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "idParcel",
+            "label": "Vineyard number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "a_quota",
+            "label": "Quota area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "explMode",
+            "label": "Recorded tenure",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Pacht",
+              "Besitz",
+              "Andere"
+            ]
+          },
+          {
+            "key": "variety",
+            "label": "Grape variety or fallow",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "aVine",
+            "label": "Variety or fallow area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "yPlant",
+            "label": "Planting year",
+            "type": "integer",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "grubUp",
+            "label": "Grubbing date in original source format",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "meca",
+            "label": "Mechanisation",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Direktzug",
+              "Handarbeit",
+              "Seilzug"
+            ]
+          },
+          {
+            "key": "training",
+            "label": "Training system",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "Draht",
+              "Pfahl"
+            ]
+          },
+          {
+            "key": "width",
+            "label": "Row spacing",
+            "type": "decimal",
+            "unit": "cm",
+            "required": false
+          }
+        ]
+      }
+    ],
     "sources": [
       {
-        "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
-        "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-        "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+        "url": "https://agriculture.public.lu/dam-assets/veroeffentlichungen/dokumentationen/beihilfen/gap-2023-2027/flaechenantrag-weinbaukarteierhebung-2026-benutzerhandbuch-v20.pdf",
+        "title": "SER / IVV - Flächenantrag/Weinbaukarteierhebung 2026, Benutzerhandbuch",
+        "edition": "2026 manual v2.0 filename; cover Fassung 2026; 103 PDF pages; Annex III printed pages 100-102 / PDF pages 101-103; retrieved 2026-10-17",
+        "sha256": "4b82f8313ab9773103c61370f98307aa0dbf44b931f57973d28c2f7b5d4bd31d"
       }
     ],
     "limitations": [
-      "Coverage gap: the Luxembourg annual farm reporting form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
-      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
-      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+      "Selected-field preparation for the annual vineyard quota register, not general annual accounts or a complete national application.",
+      "One mapped row is an app preparation gate only, not a government minimum or proof that all applicable rows have been supplied. Neither export table is universally required by this mapping.",
+      "Each proposed fact contains one flat source row with original cell strings, unit null, campaign_year basis and period 2026. Its stable prefixed identity hash is not a physical farm parcel ID or proof of ownership.",
+      "Profile minimum headers are app recognition requirements, not official mandatory-column rules. All column required flags are false because the manual does not supply those requirements.",
+      "The manual documents authority CSV/Shapefile exports, not an accepted import schema, upload payload or filing API. A generated draft PDF is not a paper application.",
+      "CSV dialect, encoding, nulls, numeric precision, composite-cell delimiters, geometry CRS and complete code lists remain unspecified. Unknown columns remain original source evidence.",
+      "Authority filing remains the separate MyGuichet review, electronic signature, attachment and transmission workflow. App review is not authority acceptance. The manual's 2026 filing deadlines are historical campaign dates.",
+      "All documented quota area units are Ar (a), not hectares; width is centimetres. Preserve source units without an implicit conversion.",
+      "Domestic quota IDs and foreign rows have different schemas. The foreign export does not document idVine, town, name, assurHarv or rootstock. Do not invent these fields or infer an ISO code from its country-name cell.",
+      "grubUp retains its original date text because no serialization is specified. Planting year is a year value, not the reporting period or an application date.",
+      "Recorded tenure is a source declaration, not independently verified ownership. Quota area, variety area and net premium area are distinct. No eligibility or yield-limit decision is made here."
     ],
-    "checks": []
+    "checks": [],
+    "minimum_mapped_rows": 1
   },
   {
     "id": "LU-cap-2026",
-    "inventory_checked_date": "2026-10-16",
+    "inventory_checked_date": "2026-10-17",
     "common_pack_id": "cap-evidence",
-    "mapping_status": "reference_only",
+    "mapping_status": "partial_mapping",
     "authority_ready": false,
     "applicability_review_required": true,
     "country": "LU",
     "region": null,
     "workflow_id": "cap",
     "reporting_year": 2026,
-    "version": "1.0.0",
-    "capability": "reference_only",
-    "title": "Luxembourg: CAP application preparation — mapping unavailable",
-    "fields": [],
+    "version": "2026.2.0",
+    "capability": "sourced_draft_mapping",
+    "title": "Luxembourg: Flächenantrag/Weinbaukarteierhebung 2026 - selected parcel export rows",
+    "fields": [
+      {
+        "key": "lu.fa.agriculture_row.",
+        "fact_key_prefix": "lu.fa.agriculture_row.",
+        "import_profile": "lu-agriculture-2026",
+        "label": "Agricultural parcel export row",
+        "official_field": "Annex III, Bereich Landwirtschaft, printed page 100 / PDF page 101",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year",
+        "holding_column": "expl_code",
+        "identity_columns": [
+          "id_parcel"
+        ],
+        "minimum_headers": [
+          "expl_code",
+          "id_parcel"
+        ],
+        "row_columns": [
+          {
+            "key": "id_parcel",
+            "label": "Parcel number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "field_name",
+            "label": "Field name",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "expl_code",
+            "label": "Holding number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "pa_status",
+            "label": "Source parcel edit status",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "N",
+              "M",
+              "A"
+            ]
+          },
+          {
+            "key": "assoc_flik",
+            "label": "Associated FLIK reference parcels",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "sens_zone",
+            "label": "Sensitive-zone codes as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "crop_code",
+            "label": "2026 crop code",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "prev_crop",
+            "label": "Previous crop code (2025)",
+            "type": "text",
+            "unit": null,
+            "required": false,
+            "previous_year": true
+          },
+          {
+            "key": "a_parcel",
+            "label": "Measured parcel area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_deposit",
+            "label": "Storage area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_eligible",
+            "label": "Declared parcel area, not verified eligibility",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "bio",
+            "label": "Authority-recorded organic status, not certification",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "CONV_0",
+              "CONV_1",
+              "CONV_2",
+              "CONV_3",
+              "BIO",
+              "IN_BEARBEITUNG"
+            ]
+          },
+          {
+            "key": "assur_harv",
+            "label": "2026 crop-loss insurance selected",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "activ_FLIK",
+            "label": "FLIK activation requested",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "comments",
+            "label": "Parcel comments",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "tree_class",
+            "label": "Tree-count interval as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "counter_pp",
+            "label": "Permanent-grassland year counter",
+            "type": "integer",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "measures",
+            "label": "Selected measure codes as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          }
+        ]
+      },
+      {
+        "key": "lu.fa.vineyard_row.",
+        "fact_key_prefix": "lu.fa.vineyard_row.",
+        "import_profile": "lu-vineyard-2026",
+        "label": "Vineyard parcel export row",
+        "official_field": "Annex III, Weinbauparzellen, printed pages 101-102 / PDF pages 102-103",
+        "required": false,
+        "unit": null,
+        "temporal_basis": "campaign_year",
+        "holding_column": "expl_code",
+        "identity_columns": [
+          "id_parcel"
+        ],
+        "minimum_headers": [
+          "expl_code",
+          "id_parcel"
+        ],
+        "row_columns": [
+          {
+            "key": "id_parcel",
+            "label": "Vineyard number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "Name",
+            "label": "Location name",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "expl_code",
+            "label": "Holding number",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "pa_status",
+            "label": "Source parcel edit status",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "N",
+              "M",
+              "A"
+            ]
+          },
+          {
+            "key": "assoc_flik",
+            "label": "Associated FLIK reference parcels",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "sens_zone",
+            "label": "Sensitive-zone codes as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "crop_code",
+            "label": "2026 crop code",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "prev_crop",
+            "label": "Previous crop code (2025)",
+            "type": "text",
+            "unit": null,
+            "required": false,
+            "previous_year": true
+          },
+          {
+            "key": "a_parcel",
+            "label": "Measured vineyard area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_quota",
+            "label": "Quota area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "activ_FLIK",
+            "label": "FLIK activation requested",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "comments",
+            "label": "Vineyard comments",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "Pente",
+            "label": "Slope",
+            "type": "decimal",
+            "unit": "%",
+            "required": false
+          },
+          {
+            "key": "Terrasse",
+            "label": "Terraced vineyard",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "no_direct",
+            "label": "Not directly tractor-accessible",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "bio",
+            "label": "Authority-recorded organic status, not certification",
+            "type": "enum",
+            "unit": null,
+            "required": false,
+            "values": [
+              "CONV_0",
+              "CONV_1",
+              "CONV_2",
+              "CONV_3",
+              "BIO",
+              "IN_BEARBEITUNG"
+            ]
+          },
+          {
+            "key": "assur_harv",
+            "label": "2026 crop-loss insurance selected",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "opt_ero",
+            "label": "Landscape premium: erosion protection option",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "opt_herb",
+            "label": "Landscape premium: no-herbicide option",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "opt_biodiv",
+            "label": "Landscape premium: biodiversity option",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "opt_org",
+            "label": "Landscape premium: organic fertilisation option",
+            "type": "boolean",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "corg_pourc",
+            "label": "Soil organic content from soil analysis",
+            "type": "decimal",
+            "unit": "%",
+            "required": false
+          },
+          {
+            "key": "town",
+            "label": "Municipality name",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "section",
+            "label": "Municipal section",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "measures",
+            "label": "Selected measure codes as recorded",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "a_513_spont",
+            "label": "Measure 513: spontaneous cover area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_513_veg",
+            "label": "Measure 513: simple plant cover area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_513_melli",
+            "label": "Measure 513: flowering mixture area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "a_516",
+            "label": "Measure 516 area",
+            "type": "decimal",
+            "unit": "a",
+            "required": false
+          },
+          {
+            "key": "542",
+            "label": "LPP vineyard variants (542)",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "553",
+            "label": "Biodiversity contract (553)",
+            "type": "text",
+            "unit": null,
+            "required": false
+          },
+          {
+            "key": "554",
+            "label": "Vineyard agroforestry variant (554)",
+            "type": "text",
+            "unit": null,
+            "required": false
+          }
+        ]
+      }
+    ],
     "sources": [
       {
-        "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
-        "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-        "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+        "url": "https://agriculture.public.lu/dam-assets/veroeffentlichungen/dokumentationen/beihilfen/gap-2023-2027/flaechenantrag-weinbaukarteierhebung-2026-benutzerhandbuch-v20.pdf",
+        "title": "SER / IVV - Flächenantrag/Weinbaukarteierhebung 2026, Benutzerhandbuch",
+        "edition": "2026 manual v2.0 filename; cover Fassung 2026; 103 PDF pages; Annex III printed pages 100-102 / PDF pages 101-103; retrieved 2026-10-17",
+        "sha256": "4b82f8313ab9773103c61370f98307aa0dbf44b931f57973d28c2f7b5d4bd31d"
       }
     ],
     "limitations": [
-      "Coverage gap: the Luxembourg cap application preparation form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
-      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
-      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+      "Selected parcel-export fields from the real 2026 combined application, not a complete CAP application, eligibility check or accepted filing payload.",
+      "One mapped row is an app preparation gate only, not a government minimum or proof that all applicable rows have been supplied. Neither export table is universally required by this mapping.",
+      "Each proposed fact contains one flat source row with original cell strings, unit null, campaign_year basis and period 2026. Its stable prefixed identity hash is not a physical farm parcel ID or proof of ownership.",
+      "Profile minimum headers are app recognition requirements, not official mandatory-column rules. All column required flags are false because the manual does not supply those requirements.",
+      "The manual documents authority CSV/Shapefile exports, not an accepted import schema, upload payload or filing API. A generated draft PDF is not a paper application.",
+      "CSV dialect, encoding, nulls, numeric precision, composite-cell delimiters, geometry CRS and complete code lists remain unspecified. Unknown columns remain original source evidence.",
+      "Authority filing remains the separate MyGuichet review, electronic signature, attachment and transmission workflow. App review is not authority acceptance. The manual's 2026 filing deadlines are historical campaign dates.",
+      "Parcel IDs, holding IDs and crop/measure codes remain strings. Mixed-case headers and numeric headers 542, 553 and 554 retain their exact documented spelling. The agriculture variants row has no documented header; do not invent one.",
+      "prev_crop denotes the previous crop year 2025 inside the 2026 dataset; it must not become the 2026 crop. Campaign provenance is not inferred from upload time.",
+      "bio is the authority-recorded parcel status, not app certification or editable authority truth. The manual states it is authority-prefilled and cannot be changed in the application; app confirmation only reviews imported evidence.",
+      "pa_status records the source parcel edit status N/M/A and is unrelated to the app's proposed/confirmed/rejected review status.",
+      "Areas use Ar (a), not hectares. a_eligible denotes declared area after the documented wood/sewage-sludge-storage deduction, not verified eligibility. Preserve source areas; do not recalculate them from app geometry.",
+      "Slope percentages must not be silently limited to 100 or treated as degrees."
     ],
-    "checks": []
+    "checks": [],
+    "minimum_mapped_rows": 1
   },
   {
     "id": "LU-inputs-2026",
-    "inventory_checked_date": "2026-10-16",
+    "inventory_checked_date": "2026-10-17",
     "common_pack_id": "input-evidence",
     "mapping_status": "reference_only",
     "authority_ready": false,
@@ -68,21 +787,22 @@
     "region": null,
     "workflow_id": "inputs",
     "reporting_year": 2026,
-    "version": "1.0.0",
+    "version": "1.0.1",
     "capability": "reference_only",
     "title": "Luxembourg: Input-use records — mapping unavailable",
     "fields": [],
     "sources": [
       {
-        "url": "https://agriculture.public.lu/de/veroeffentlichungen/beihilfen/handbuch-flaechenantrag.html",
-        "title": "SER — Benutzerhandbuch Elektronischer Flächenantrag/Weinbaukarteierhebung 2026",
-        "edition": "2026 manual landing page updated 2026-02-27; retrieved 2026-10-16; linked 153-page PDF not yet mapped"
+        "url": "https://agriculture.public.lu/dam-assets/veroeffentlichungen/dokumentationen/beihilfen/gap-2023-2027/flaechenantrag-weinbaukarteierhebung-2026-benutzerhandbuch-v20.pdf",
+        "title": "SER / IVV - Flächenantrag/Weinbaukarteierhebung 2026, Benutzerhandbuch",
+        "edition": "2026 manual v2.0 filename; cover Fassung 2026; 103 PDF pages; retrieved 2026-10-17; not an input-use register specification",
+        "sha256": "4b82f8313ab9773103c61370f98307aa0dbf44b931f57973d28c2f7b5d4bd31d"
       }
     ],
     "limitations": [
-      "Coverage gap: the Luxembourg input-use records form and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific authority form.",
-      "The selected country's regional, scheme-specific and recipient-specific variants still require source inspection and mapping.",
-      "Any linked source is a reference only; no eligibility decision, legal compliance result, filing payload or authority acceptance is established."
+      "Coverage gap: the Luxembourg input-use record format and field mapping for 2026 have not been implemented. This inventory entry cannot prepare a country-specific input-use register.",
+      "The combined application manual supplies parcel-export dictionaries, not an input-use register contract. Those mapped fields do not close this workflow gap.",
+      "Any linked source is a reference only; no legal compliance result, filing payload or authority acceptance is established."
     ],
     "checks": []
   },

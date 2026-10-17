@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError, errorMessage } from '../api';
 import { useSession } from '../auth';
@@ -7,6 +7,7 @@ import { useRecords } from '../hooks';
 import { usePrivateDraft } from '../offline';
 import type { Page, RecordItem } from '../types';
 import { DraftForm, useReviewAccess } from './Core';
+import { LuxembourgSourceReview, LuxembourgUpload, LuxembourgRowValues, useLuxembourgProfiles, type LuxembourgProfile } from './LuxembourgImport';
 
 type Target = 'facts' | 'operations' | 'purchases' | 'sales';
 type Column = { source_index: number; header: string; target_field: string | null; role: 'value' | 'identifier' | 'foreign_key'; reference_kind?: string | null; value_type?: string; decimal_separator?: string; date_format?: string; blank_behavior?: string; null_tokens?: string[] };
@@ -47,18 +48,45 @@ function ImportWorkspace() {
   const imports = useRecords('imports');
   const farms = useRecords('farms');
   const canReview = useReviewAccess();
+  const presets=useLuxembourgProfiles();
+  const sourceChoice=usePrivateDraft('import-source-choice','');
+  const uploadProfile=presets.profiles.find(profile=>profile.id===sourceChoice.value);
   const [params, setParams] = useSearchParams();
   const selected = params.get('import');
+  const linkedProfile=params.get('profile');
+  const linkedFarm=params.get('farm_id')||'';
+  const sourceLinkKey=JSON.stringify([linkedProfile,linkedFarm]);
+  const appliedSourceLink=useRef('');
+  const [sourceLink,setSourceLink]=useState<{key:string;error:string|null}|null>(null);
+  const linkPending=linkedProfile!==null&&sourceLink?.key!==sourceLinkKey;
+  const linkError=linkedProfile!==null&&sourceLink?.key===sourceLinkKey?sourceLink.error:null;
   const [detail, setDetail] = useState<ImportRecord | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
 
-  async function load(id: string) {
+  useEffect(()=>{
+    if(linkedProfile===null){appliedSourceLink.current='';return;}
+    if(!sourceChoice.ready||presets.loading||farms.loading||appliedSourceLink.current===sourceLinkKey)return;
+    const profile=presets.profiles.find(item=>item.id===linkedProfile);
+    const farm=farms.items.find(item=>item.id===linkedFarm);
+    if(!profile){setSourceLink({key:sourceLinkKey,error:'This link names a CSV source that is not available. Choose a source explicitly before uploading.'});return;}
+    if(linkedFarm&&(!farm||farm.data.country!=='LU')){setSourceLink({key:sourceLinkKey,error:'The Luxembourg farm named in this link is not available in this workspace. Choose the source and farm yourself before uploading.'});return;}
+    appliedSourceLink.current=sourceLinkKey;
+    sourceChoice.setValue(profile.id);
+    setSourceLink({key:sourceLinkKey,error:null});
+  },[linkedProfile,linkedFarm,sourceLinkKey,sourceChoice.ready,presets.loading,presets.profiles,farms.loading,farms.items]);
+
+  function chooseSource(value:string) {
+    sourceChoice.setValue(value);
+    if(linkedProfile!==null){const next=new URLSearchParams(params);next.delete('profile');setParams(next);}
+  }
+
+  async function load(id: string, failLoud = false) {
     const current = ++generation.current;
     setBusy(true); setError(null);
     try { const record = await api.get<ImportRecord>(`/imports/${encodeURIComponent(id)}?limit=20`); if (current === generation.current) setDetail(record); }
-    catch (failure) { if (current === generation.current) setError(failure); }
+    catch (failure) { if (current === generation.current) setError(failure); if(failLoud)throw failure; }
     finally { if (current === generation.current) setBusy(false); }
   }
   useEffect(() => {
@@ -73,13 +101,15 @@ function ImportWorkspace() {
     if (!(file instanceof File) || !file.size) { setError(new Error('Choose a CSV file with source rows.')); return; }
     if (file.size > 20 * 1024 * 1024) { setError(new Error('Choose a CSV no larger than 20 MiB. Split larger files while keeping the original row references.')); return; }
     if (!form.get('farm_id')) form.delete('farm_id');
+    const current=++generation.current;
     setBusy(true); setError(null);
     try {
       const uploaded = await api.upload<RecordItem>('/imports', form);
+      if(current!==generation.current)return;
       setParams({ import: uploaded.id });
       await imports.reload();
-    } catch (failure) { setError(failure); }
-    finally { setBusy(false); }
+    } catch (failure) { if(current===generation.current)setError(failure); }
+    finally { if(current===generation.current)setBusy(false); }
   }
 
   return <>
@@ -87,21 +117,21 @@ function ImportWorkspace() {
     <Failure error={error} />
     {imports.error && <Notice kind="error">{imports.error}<Button variant="secondary" onClick={() => void imports.reload()}>Reload imports</Button></Notice>}
     {farms.error && <Notice kind="error">{farms.error}<Button variant="secondary" onClick={() => void farms.reload()}>Reload farms</Button></Notice>}
-    <section className="card"><h2>Add an existing record</h2><p>Use a comma-separated UTF-8 CSV, up to 20 MiB and 50,000 rows. For a photograph, PDF or letter, <Link to="/app/documents">add a document instead</Link>.</p>
+    <section className="card"><h2>Add an existing record</h2><Field label="CSV source"><select disabled={!sourceChoice.ready||busy} value={sourceChoice.value} onChange={event=>chooseSource(event.target.value)}><option value="">Another CSV — choose columns yourself</option>{presets.profiles.map(profile=><option key={profile.id} value={profile.id}>Luxembourg 2026 — {profile.label}</option>)}</select></Field>{sourceChoice.error&&<Notice kind="warning">{sourceChoice.error}</Notice>}{presets.error&&<Notice kind="warning">{presets.error}<Button variant="secondary" onClick={()=>void presets.reload()}>Reload source choices</Button></Notice>}{linkPending?<Notice>Opening the source and farm named in this link…</Notice>:linkError?<Notice kind="error">{linkError}<Button variant="secondary" onClick={()=>chooseSource('')}>Choose a CSV source myself</Button></Notice>:sourceChoice.value?(uploadProfile?<LuxembourgUpload key={uploadProfile.id} profile={uploadProfile} farms={farms.items} initialFarmId={params.get('farm_id')||''} selectionKey={selected||''} onUploaded={async record=>{setParams({import:record.id});await imports.reload();}}/>:<Notice>Opening the selected Luxembourg source definition…</Notice>):<><p>Use a comma-separated UTF-8 CSV, up to 20 MiB and 50,000 rows. For a photograph, PDF or letter, <Link to="/app/documents">add a document instead</Link>.</p>
       <DraftForm draftKey="import-upload" className="stack" onSubmit={upload} aria-busy={busy}>
         <div className="form-grid"><Field label="CSV file"><input name="file" type="file" accept=".csv,text/csv" required /></Field>
           <Field label="What does one source row describe?" hint="Keep the source meaning, such as one parcel per campaign, one application, or one fact per year."><input name="grain" required maxLength={200} placeholder="For example, one purchase" /></Field>
           <Field label="Farm (if the whole file belongs to one farm)"><select name="farm_id" defaultValue=""><option value="">Choose when reviewing</option>{farms.items.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field></div>
         <p className="muted">The file must be uploaded while connected. Form entries are kept privately on this device; after a restart, choose the file again.</p>
         <div><Button type="submit" loading={busy}>Open CSV for review</Button></div>
-      </DraftForm>
+      </DraftForm></>}
     </section>
     <section className="card"><h2>Your imports</h2>{imports.loading && <Notice>Opening imports…</Notice>}{!imports.loading && !imports.items.length && <p className="muted">Your imported files will stay here, with their source rows and review history.</p>}
       <ul className="record-list">{imports.items.map(record => <li key={record.id}><Button variant="ghost" aria-pressed={selected === record.id} onClick={() => setParams({ import: record.id })}>{record.data.source_name} · {record.data.row_count} rows</Button></li>)}</ul>
     </section>
     {selected && busy && !detail && <Notice>Opening the saved source rows…</Notice>}
     {selected && error && <Button variant="secondary" onClick={() => void load(selected)}>Reload selected import</Button>}
-    {detail && <ImportReview key={detail.id} imported={detail} farms={farms.items} canReview={canReview} onSaved={record => setDetail(current => current?.id === record.id ? { ...current, ...record } : current)} />}
+    {detail && <ImportReview key={detail.id} imported={detail} profile={presets.profiles.find(profile=>profile.id===detail.data.format_profile)} farms={farms.items} canReview={canReview} onReload={async()=>{await presets.reload();await load(detail.id,true);}} onSaved={record => setDetail(current => current?.id === record.id && record.revision>=current.revision ? { ...current, ...record } : current)} />}
   </>;
 }
 
@@ -124,7 +154,10 @@ function mappingSignature(config: MappingDraft) {
       blank_behavior: column.blank_behavior || 'preserve', null_tokens: column.null_tokens || [] })) });
 }
 
-function ImportReview({ imported, farms, canReview, onSaved }: { imported: ImportRecord; farms: RecordItem[]; canReview: boolean; onSaved: (record: RecordItem) => void }) {
+function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }: { imported: ImportRecord; profile:LuxembourgProfile|undefined; farms: RecordItem[]; canReview: boolean; onSaved: (record: RecordItem) => void;onReload:()=>Promise<void> }) {
+  const preset=!!imported.data.format_profile;
+  const [sourceReady,setSourceReady]=useState(!preset);
+  const [profileStale,setProfileStale]=useState(false);
   const draft = usePrivateDraft<MappingDraft>(`import-mapping:${imported.id}`, initialMapping(imported));
   const [preview, setPreview] = useState<PreviewPage | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
@@ -135,8 +168,10 @@ function ImportReview({ imported, farms, canReview, onSaved }: { imported: Impor
   const [result, setResult] = useState<BatchResult | null>(null);
   const [manual, setManual] = useState<number | null>(null);
   const config = draft.value;
-  const mappingDirty = mappingSignature(config) !== mappingSignature(initialMapping(imported));
+  const mappingDirty = !preset&&mappingSignature(config) !== mappingSignature(initialMapping(imported));
   const requestNumber = useRef(0);
+  const importedRevision=useRef(imported.revision);importedRevision.current=imported.revision;
+  const sourceState=useCallback((ready:boolean)=>{setSourceReady(ready);if(!ready){requestNumber.current+=1;setPreview(null);setSelected([]);setAcknowledged(false);setManual(null);setBusy(false);}},[]);
   const selectedRows = preview?.items.filter(item => selected.includes(item.row.data.row_number) && item.can_save) || [];
   const needsAcknowledgement = selectedRows.some(item => item.requires_acknowledgement.length > 0);
   const previewCurrent = preview?.import_revision === imported.revision;
@@ -144,11 +179,11 @@ function ImportReview({ imported, farms, canReview, onSaved }: { imported: Impor
   async function loadPreview(offset = 0) {
     const current = ++requestNumber.current;
     setBusy(true); setError(null); setAcknowledged(false);
-    try { const page = await api.get<PreviewPage>(`/imports/${imported.id}/preview?limit=20&offset=${offset}`); if (current === requestNumber.current) { setPreview(page); setSelected([]); setManual(null); } }
-    catch (failure) { if (current === requestNumber.current) setError(failure); }
+    try { const page = await api.get<PreviewPage>(`/imports/${imported.id}/preview?limit=20&offset=${offset}`); if (current === requestNumber.current && page.import_revision===importedRevision.current) { setPreview(page); setSelected([]); setManual(null); } }
+    catch (failure) { if (current === requestNumber.current) {setError(failure);if(preset&&failure instanceof ApiError&&failure.code==='profile_review_required'){setProfileStale(true);setPreview(null);setSelected([]);setAcknowledged(false);}} }
     finally { if (current === requestNumber.current) setBusy(false); }
   }
-  useEffect(() => { if (imported.data.target) void loadPreview(); return () => { requestNumber.current += 1; }; }, [imported.id]);
+  useEffect(() => { setPreview(null);setSelected([]);setAcknowledged(false);if (preset?sourceReady:imported.data.target) void loadPreview(); return () => { requestNumber.current += 1; }; }, [imported.id,imported.revision,preset,sourceReady]);
 
   function change(update: Partial<MappingDraft>) { draft.setValue(previous => ({ ...previous, ...update })); setPreview(null); setSelected([]); setResult(null); }
   function changeColumn(index: number, update: Partial<Column>) { change({ columns: config.columns.map(column => column.source_index === index ? { ...column, ...update } : column) }); }
@@ -181,28 +216,32 @@ function ImportReview({ imported, farms, canReview, onSaved }: { imported: Impor
       const record = await api.post<RecordItem>(`/imports/${imported.id}/mapping`, { expected_revision: imported.revision, target: config.target, columns: config.columns.map(({ header: _header, ...column }) => column), defaults });
       onSaved(record);
       draft.setValue(initialMapping({ ...imported, ...record }));
-      await loadPreview();
     } catch (failure) { setError(failure); } finally { setBusy(false); }
   }
 
   async function saveSelected(event: FormEvent) {
-    event.preventDefault(); if (!preview || !selectedRows.length) return;
+    event.preventDefault(); if (!preview || !selectedRows.length || !previewCurrent || mappingDirty || preset&&!sourceReady) return;
+    const current=++requestNumber.current;
     setBusy(true); setError(null);
     try {
       const saved = await api.post<BatchResult>(`/imports/${imported.id}/rows/review`, {
         expected_revision: preview.import_revision, note: note.value,
         rows: selectedRows.map(item => ({ row_number: item.row.data.row_number, expected_revision: item.row.revision, preview_token: item.preview_token, acknowledged_issues: acknowledged ? item.requires_acknowledgement : [] })),
       });
-      setResult(saved); await loadPreview(preview.offset);
-    } catch (failure) { setError(failure); } finally { setBusy(false); }
+      if(current!==requestNumber.current)return;
+      setResult(saved);
+      if(preset&&saved.items.some(item=>item.error?.code==='profile_review_required')){setProfileStale(true);sourceState(false);return;}
+      await loadPreview(preview.offset);
+    } catch (failure) { if(current===requestNumber.current)setError(failure); } finally { if(current===requestNumber.current)setBusy(false); }
   }
 
   return <section className="card"><h2>{imported.data.source_name}</h2><p>{imported.data.row_count} source rows · {imported.data.grain}</p>
-    <p>Original cells stay unchanged, including blank strings, NULL text and zero. Column choices produce proposals for ordinary review.</p>
-    <details><summary>Original file and traceability</summary><p>{imported.data.null_semantics}</p><p>SHA-256: <code style={{ overflowWrap: 'anywhere' }}>{imported.data.sha256}</code></p><p>{imported.data.encoding} · comma-separated · {imported.data.source_bytes} bytes</p></details>
+    <p>Original cells stay unchanged, including blank strings, NULL text and zero. {preset?'The prepared source format produces proposed answers for your review.':'Column choices produce proposals for ordinary review.'}</p>
+    <details><summary>Original file and traceability</summary><p>{imported.data.null_semantics}</p><p>SHA-256: <code style={{ overflowWrap: 'anywhere' }}>{imported.data.sha256}</code></p><p>{imported.data.encoding} · {imported.data.delimiter===';'?'semicolon':imported.data.delimiter==='\t'?'tab':'comma'}-separated · {imported.data.source_bytes} bytes</p></details>
     <Failure error={error} />{draft.error && <Notice kind="warning">{draft.error}</Notice>}
     {!canReview && <Notice>You can inspect the saved sources. Ask the farm owner for review permission to map columns or save proposals.</Notice>}
-    {canReview && <form className="stack" onSubmit={saveMapping}>
+    {preset&&<LuxembourgSourceReview imported={imported} profile={profile} canReview={canReview} requiresReview={profileStale} onSaved={record=>{setProfileStale(false);onSaved(record);}} onReadyChange={sourceState} onReload={async()=>{await onReload();setProfileStale(false);}}/>}
+    {canReview && !preset && <form className="stack" onSubmit={saveMapping}>
       <fieldset disabled={!draft.ready || busy}><legend>Choose what to reuse</legend><div className="form-grid">
         <Field label="These rows contain"><select value={config.target} onChange={event => change({ target: event.target.value as Target, columns: config.columns.map(column => ({ ...column, target_field: null })), ...(event.target.value === 'sales' ? { temporal_basis: 'calendar_date', period: '' } : {}) })}>{Object.entries(targetNames).map(([target, label]) => <option key={target} value={target}>{label}</option>)}</select></Field>
         <Field label="Use this farm for all rows"><select value={config.farm_id} onChange={event => change({ farm_id: event.target.value })}><option value="">Use the mapped farm column</option>{farms.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field>
@@ -230,26 +269,26 @@ function ImportReview({ imported, farms, canReview, onSaved }: { imported: Impor
       })}</tbody></table></div><div><Button type="submit" loading={busy}>Preview these column choices</Button></div></fieldset>
       {draft.saving && <p className="muted" role="status">Saving column choices privately on this device…</p>}
     </form>}
-    {!preview && imported.data.target && !mappingDirty && <Button variant="secondary" loading={busy} onClick={() => void loadPreview()}>Open saved preview</Button>}
+    {!preview && (preset?sourceReady:imported.data.target) && !mappingDirty && <Button variant="secondary" loading={busy} onClick={() => void loadPreview()}>Open saved preview</Button>}
     {mappingDirty && <p className="muted">Your column choices differ from the saved mapping. Preview these choices before saving rows.</p>}
-    {preview && <><h2>Check the rows together</h2><p>Rows {preview.offset + 1}–{preview.offset + preview.items.length} of {preview.total}. Select rows only after checking their values, dates and units.</p>
-      {(!previewCurrent || mappingDirty) && <Notice kind="warning">The column choices changed. Preview the current choices before saving rows.</Notice>}
+    {preview && <><h2>Check the rows together</h2>{preset&&preview.items.some(item=>!item.can_save&&!item.row.data.promoted_record)&&<Notice kind="warning">Some source rows need attention. Check the original export and upload a corrected file when needed; this prepared format keeps the original cells and does not offer manual replacements.</Notice>}<p>Rows {preview.offset + 1}–{preview.offset + preview.items.length} of {preview.total}. Select rows only after checking their values, dates and units.</p>
+      {(!previewCurrent || mappingDirty) && <Notice kind="warning">{preset?'The source review changed. Open the current rows before saving proposals.':'The column choices changed. Preview the current choices before saving rows.'}</Notice>}
       {canReview && <div className="actions"><Button variant="secondary" disabled={busy} onClick={() => { setSelected(preview.items.filter(item => item.can_save).map(item => item.row.data.row_number)); setAcknowledged(false); }}>Select reviewable rows on this page</Button><Button variant="ghost" disabled={busy} onClick={() => setSelected([])}>Clear selection</Button></div>}
       {preview.items.map(item => <article className="panel" key={`${item.row.id}-${item.row.revision}`}>
         <div className="actions">{canReview && <label><input type="checkbox" disabled={!item.can_save || busy} checked={selected.includes(item.row.data.row_number)} onChange={event => { setSelected(previous => event.target.checked ? [...previous, item.row.data.row_number] : previous.filter(number => number !== item.row.data.row_number)); setAcknowledged(false); }} /> Select row {item.row.data.row_number}</label>}
           <strong>{display(item.normalized_data.label || item.normalized_data.title || `Row ${item.row.data.row_number}`)}</strong><span className="badge">{item.row.data.promoted_record ? 'Proposal saved' : item.can_save ? item.requires_acknowledgement.length ? 'Check warnings' : 'Ready for review' : 'Needs attention'}</span></div>
-        <p>{item.target === 'facts' ? display(item.normalized_data.value) : `${display(item.normalized_data.quantity)} ${display(item.normalized_data.unit)}`} {item.target === 'facts' && item.normalized_data.unit ? item.normalized_data.unit : ''} · {display(item.normalized_data.period)} · {display(item.normalized_data.temporal_basis).replaceAll('_', ' ')}</p>
+        {preset?<LuxembourgRowValues profile={profile} columns={imported.data.columns} row={item.row}/>:<p>{item.target === 'facts' ? display(item.normalized_data.value) : `${display(item.normalized_data.quantity)} ${display(item.normalized_data.unit)}`} {item.target === 'facts' && item.normalized_data.unit ? item.normalized_data.unit : ''} · {display(item.normalized_data.period)} · {display(item.normalized_data.temporal_basis).replaceAll('_', ' ')}</p>}
         <Issues items={item.issues} />
-        <details><summary>Original cells and proposed fields</summary><dl>{imported.data.columns.map((column: Column) => <div key={column.source_index}><dt>{column.header || `Column ${column.source_index + 1}`}</dt><dd style={{ overflowWrap: 'anywhere' }}>{display(item.row.data.original_row[column.source_index])}</dd></div>)}</dl><h3>Proposed fields</h3><dl>{Object.entries(item.normalized_data).filter(([field]) => field !== 'sources').map(([field, value]) => <div key={field}><dt>{labels[field] || field}</dt><dd>{display(value)}</dd></div>)}</dl><p>{item.row.data.diagnostics?.identifiers_assessed ? 'Mapped source references checked.' : 'No source ID check selected.'} {item.row.data.diagnostics?.joins_assessed ? 'Mapped workspace links checked.' : 'No workspace join check selected.'}</p></details>
-        {item.row.data.promoted_record ? <Link to={`/app/farm/${item.normalized_data.farm_id || imported.data.farm_id || ''}#${item.target}`}>Review the saved proposal in My farm</Link> : canReview && <><Button variant="secondary" disabled={busy} onClick={() => setManual(manual === item.row.data.row_number ? null : item.row.data.row_number)}>{manual === item.row.data.row_number ? 'Close row correction' : 'Correct this row'}</Button>{manual === item.row.data.row_number && <ManualRow item={item} imported={imported} farms={farms} onSaved={async () => { setResult(null); await loadPreview(preview.offset); }} />}</>}
+        <details><summary>Original cells and proposed fields</summary><dl>{imported.data.columns.map((column: Column) => <div key={column.source_index}><dt>{column.header || `Column ${column.source_index + 1}`}</dt><dd style={{ overflowWrap: 'anywhere' }}>{display(item.row.data.original_row[column.source_index])}</dd></div>)}</dl><h3>Proposed fields</h3><dl>{Object.entries(item.normalized_data).filter(([field]) => field !== 'sources').map(([field, value]) => <div key={field}><dt>{labels[field] || field}</dt><dd>{display(value)}</dd></div>)}</dl>{!preset&&<p>{item.row.data.diagnostics?.identifiers_assessed ? 'Mapped source references checked.' : 'No source ID check selected.'} {item.row.data.diagnostics?.joins_assessed ? 'Mapped workspace links checked.' : 'No workspace join check selected.'}</p>}</details>
+        {item.row.data.promoted_record ? <Link to={`/app/fields/${item.normalized_data.farm_id || imported.data.farm_id || ''}#${item.target}`}>Review the saved proposal in My fields</Link> : canReview && !preset && <><Button variant="secondary" disabled={busy} onClick={() => setManual(manual === item.row.data.row_number ? null : item.row.data.row_number)}>{manual === item.row.data.row_number ? 'Close row correction' : 'Correct this row'}</Button>{manual === item.row.data.row_number && <ManualRow item={item} imported={imported} farms={farms} onSaved={async () => { setResult(null); await loadPreview(preview.offset); }} />}</>}
       </article>)}
       {canReview && <form className="stack" onSubmit={saveSelected}><Field label="What did you check in the selected rows?"><textarea value={note.value} required maxLength={4000} onChange={event => note.setValue(event.target.value)} placeholder="For example, compared dates and quantities with the original farm log." /></Field>{note.error && <Notice kind="warning">{note.error}</Notice>}
         {needsAcknowledgement && <label><input type="checkbox" checked={acknowledged} required onChange={event => setAcknowledged(event.target.checked)} /> I checked the warnings on each selected row and want to keep these proposed records.</label>}
-        <p className="muted">This saves proposals. Confirm facts and work records in My farm before using them as reviewed evidence.</p><div><Button type="submit" loading={busy} disabled={!previewCurrent || mappingDirty || !selectedRows.length || !note.ready || needsAcknowledgement && !acknowledged}>Save {selectedRows.length || ''} selected {selectedRows.length === 1 ? 'proposal' : 'proposals'}</Button></div>
+        <p className="muted">{preset?'This saves proposed answers. Check and confirm them in My fields before using them for paperwork.':'This saves proposals. Confirm facts and work records in My farm before using them as reviewed evidence.'}</p><div><Button type="submit" loading={busy} disabled={!previewCurrent || mappingDirty || preset&&!sourceReady || !selectedRows.length || !note.ready || needsAcknowledgement && !acknowledged}>Save {selectedRows.length || ''} selected {selectedRows.length === 1 ? 'proposal' : 'proposals'}</Button></div>
       </form>}
       <div className="actions"><Button variant="secondary" disabled={busy || preview.offset === 0} onClick={() => void loadPreview(Math.max(0, preview.offset - 20))}>Previous rows</Button><Button variant="secondary" disabled={busy || preview.offset + preview.items.length >= preview.total} onClick={() => void loadPreview(preview.offset + 20)}>Next rows</Button><Button variant="ghost" disabled={busy} onClick={() => void loadPreview(preview.offset)}>Reload preview</Button></div>
     </>}
-    {result && <Notice kind={result.failed_count ? 'warning' : 'success'}><p>{result.saved_count} {result.saved_count === 1 ? 'proposal saved' : 'proposals saved'}.{result.failed_count ? ` ${result.failed_count} rows still need attention; saved proposals were kept. Review the refreshed rows before retrying.` : ' The original source rows are retained.'}</p>{result.items.filter(item => item.status === 'failed').map(item => <p key={item.row_number}>Row {item.row_number}: {item.error?.message}</p>)}{result.items.filter(item => item.record).map(item => <p key={item.row_number}><Link to={`/app/farm/${item.record!.data.farm_id}#${item.record!.kind}`}>Review row {item.row_number} in My farm</Link></p>)}</Notice>}
+    {result && <Notice kind={result.failed_count ? 'warning' : 'success'}><p>{result.saved_count} {result.saved_count === 1 ? 'proposal saved' : 'proposals saved'}.{result.failed_count ? ` ${result.failed_count} rows still need attention; saved proposals were kept. Review the refreshed rows before retrying.` : ' The original source rows are retained.'}</p>{result.items.filter(item => item.status === 'failed').map(item => <p key={item.row_number}>Row {item.row_number}: {item.error?.message}</p>)}{result.items.filter(item => item.record).map(item => <p key={item.row_number}><Link to={`/app/fields/${item.record!.data.farm_id}#${item.record!.kind}`}>Review row {item.row_number} in My fields</Link></p>)}</Notice>}
   </section>;
 }
 

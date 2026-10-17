@@ -9,7 +9,6 @@ import os
 import re
 import threading
 import zipfile
-from functools import partial
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -47,6 +46,16 @@ def period_text(field):
     return str(period)
 
 
+def source_cells(field):
+    """Read retained source-column definitions, not mutable country packs."""
+    schema, value = field.get("row_schema"), field.get("value")
+    if not schema or not isinstance(value, dict):
+        return []
+    columns = {column["key"]: column for column in schema["row_columns"]}
+    keys = [key for key in columns if key in value] + [key for key in value if key not in columns]
+    return [(key, columns.get(key, {}).get("label", "Additional source column"), value[key], columns.get(key, {}).get("unit")) for key in keys]
+
+
 def export_rows(snapshot):
     rows = [["field", "label", "value_json", "unit_json", "period_json", "temporal_basis", "fact_id", "fact_revision", "availability"]]
     for field in snapshot.get("fields", []):
@@ -55,6 +64,12 @@ def export_rows(snapshot):
             literal(field.get("unit")), literal(field.get("period")), field.get("temporal_basis", ""),
             field.get("fact_id", ""), field.get("fact_revision", ""), "missing" if field.get("missing") else "recorded",
         ])
+        for key, label, value, unit in source_cells(field):
+            rows.append([
+                f"{field['fact_key']}.{key}", f"{field.get('label', field['field'])}: {label} ({key})",
+                literal(value), literal(unit), literal(field.get("period")), field.get("temporal_basis", ""),
+                field.get("fact_id", ""), field.get("fact_revision", ""), "recorded",
+            ])
     for operation in snapshot.get("operations", []):
         data = operation["data"]
         for key in ("title", "type", "date", "quantity", "parcel", "parcel_id", "physical_group_label", "crop", "product", "operator", "hours"):
@@ -142,7 +157,6 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.pdfgen.canvas import Canvas
 
     output = io.BytesIO()
     font = _unicode_font()
@@ -181,6 +195,8 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
         story.append(p(group, heading))
         rows = [[p("Farm detail"), p("Recorded answer"), p("Period / evidence")]]
         for field in group_fields:
+            if field.get("row_schema"):
+                continue
             value = "Not available — no matching record" if field.get("missing") else readable(field.get("value"))
             if field.get("unit") not in (None, ""):
                 value += f" {field['unit']}"
@@ -189,7 +205,21 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
             if references:
                 context += "\nEvidence " + ", ".join(str(number) for number in references)
             rows.append([p(field.get("label", field["field"])), p(value), p(context, small)])
-        story.append(table(rows, [165, 220, 128]))
+        if len(rows) > 1:
+            story.append(table(rows, [165, 220, 128]))
+        for field in group_fields:
+            if not field.get("row_schema"):
+                continue
+            story.extend([p(field.get("label", field["field"]), heading), p(period_text(field), small)])
+            for source in field.get("sources", []):
+                if source.get("source_name") and source.get("row_number") is not None:
+                    story.append(p(f"Source: {source['source_name']}, row {source['row_number']}", small))
+            rows = [[p("Source column"), p("Original value"), p("Source unit")]]
+            for key, label, value, unit in source_cells(field):
+                # NULL, blank and zero remain distinct. Booleans, dates and
+                # authority codes are printed as literal source text.
+                rows.append([p(f"{label}\n{key}"), p("Empty source cell" if value == "" else value), p(unit or "Not specified", small)])
+            story.append(table(rows, [230, 200, 83]))
     if snapshot.get("operations"):
         story.append(p("Selected farm activities", heading))
         rows = [[p("Activity and date"), p("Recorded work"), p("Field / crop")]]
@@ -229,5 +259,7 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
         canvas.setFont(font, 8)
         canvas.drawString(40, 25, f"Report reference {report_id[:8]} · {snapshot['reporting_year']} · Page {doc.page}")
 
-    SimpleDocTemplate(output, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=38, bottomMargin=42, title=pack.get("title", pack.get("name", "Farm report"))).build(story, onFirstPage=footer, onLaterPages=footer, canvasmaker=partial(Canvas, invariant=1))
+    # DocTemplate passes its own invariant value to the canvas. Setting only
+    # a canvas factory default is overridden and leaks download time into bytes.
+    SimpleDocTemplate(output, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=38, bottomMargin=42, invariant=1, title=pack.get("title", pack.get("name", "Farm report"))).build(story, onFirstPage=footer, onLaterPages=footer)
     return output.getvalue()
