@@ -7,6 +7,7 @@ The existing farmers/service_url fixtures retain their dedicated-DB guards.
 """
 
 import json
+from hashlib import sha256
 import os
 from pathlib import Path
 import re
@@ -130,13 +131,17 @@ class AppUI:
 
     def swipe(self, up=True):
         tree = self.hierarchy()
-        bounds = [self.bounds(node) for node in tree.iter("node") if node.get("package") == PACKAGE]
-        width = max((value[2] for value in bounds), default=1080)
-        height = max((value[3] for value in bounds), default=1920)
-        x, upper, lower = width // 2, int(height * 0.25), int(height * 0.78)
+        packages = {PACKAGE, "com.android.documentsui", "com.google.android.documentsui"}
+        viewports = [self.bounds(node) for node in tree.iter("node") if node.get("package") in packages
+                     and node.get("class") in ("android.widget.ScrollView", "androidx.recyclerview.widget.RecyclerView")]
+        viewports = [box for box in viewports if box[2] > box[0] and box[3] > box[1]]
+        assert viewports, "No allowed application scroll viewport is available; refusing a screen-wide gesture."
+        left, top, right, bottom = max(viewports, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
+        x, upper, lower = (left + right) // 2, top + int((bottom - top) * 0.25), top + int((bottom - top) * 0.78)
         self.command("shell", "input", "swipe", str(x), str(lower if up else upper), str(x), str(upper if up else lower), "250")
 
-    def locate(self, label, *, kind=None, prefix=False, scroll=True):
+    def locate(self, label, *, kind=None, prefix=False, scroll=True, interactive=False):
+        packages = {PACKAGE, "com.android.documentsui", "com.google.android.documentsui"}
         # Two bounded passes allow returning from the bottom of a long row
         # review without assuming fixed screen coordinates or font sizes.
         for direction in ([True, False] if scroll else [True]):
@@ -146,6 +151,8 @@ class AppUI:
                 parents = {child: parent for parent in tree.iter() for child in parent}
                 resolved = []
                 for node in tree.iter("node"):
+                    if node.get("package") not in packages:
+                        continue
                     names = [node.get("text", ""), node.get("content-desc", "")]
                     if not any(name.startswith(label) if prefix else name == label for name in names):
                         continue
@@ -153,7 +160,7 @@ class AppUI:
                     scope_size = 1
                     if kind:
                         while candidate is not None:
-                            matches = [item for item in candidate.iter("node") if (
+                            matches = [item for item in candidate.iter("node") if item.get("package") in packages and (
                                 item.get("checkable") == "true" if kind == "check" else
                                 item.get("class") == "android.widget.EditText")]
                             if matches:
@@ -176,7 +183,16 @@ class AppUI:
                         if candidate is None:
                             continue
                     x1, y1, x2, y2 = self.bounds(candidate)
-                    if x2 > x1 >= 0 and y2 > y1 >= 0 and candidate.get("enabled") == "true":
+                    middle_x, middle_y = (x1 + x2) // 2, (y1 + y2) // 2
+                    ancestor, visible = parents.get(candidate), True
+                    while ancestor is not None:
+                        if kind or interactive:
+                            visible &= ancestor.get("enabled") != "false"
+                        if ancestor.get("class") in ("android.widget.ScrollView", "androidx.recyclerview.widget.RecyclerView"):
+                            left, top, right, bottom = self.bounds(ancestor)
+                            visible &= left <= middle_x < right and top <= middle_y < bottom
+                        ancestor = parents.get(ancestor)
+                    if visible and x2 > x1 >= 0 and y2 > y1 >= 0 and candidate.get("enabled") == "true":
                         resolved.append((scope_size, candidate))
                 if resolved:
                     # Warning text appears once as information and once beside
@@ -198,21 +214,42 @@ class AppUI:
         x1, y1, x2, y2 = self.bounds(node)
         self.command("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
+    def dismiss_keyboard(self):
+        def shown():
+            self.foreground()
+            metadata = self.command("shell", "dumpsys", "input_method")
+            values = re.findall(r"\bmInputShown\s*=\s*(true|false)", metadata)
+            assert len(values) == 1, "Keyboard visibility metadata is ambiguous; refusing a Back action."
+            return values[0] == "true"
+        if shown():
+            self.command("shell", "input", "keyevent", "4")
+            eventually(shown, lambda visible: not visible, "The project keyboard did not close.")
+
     def tap(self, label, **options):
-        self.tap_node(self.locate(label, **options))
+        self.dismiss_keyboard()
+        self.tap_node(self.locate(label, interactive=True, **options))
 
     def check(self, label):
+        self.dismiss_keyboard()
         node = self.locate(label, kind="check")
         if node.get("checked") != "true":
             self.tap_node(node)
 
     def fill(self, label, value):
+        self.dismiss_keyboard()
         self.tap_node(self.locate(label, kind="edit"))
-        self.command("shell", "input", "keycombination", "113", "29")
-        self.command("shell", "input", "keyevent", "67")
+        focused = eventually(lambda: self.locate(label, kind="edit", scroll=False), lambda node: node.get("focused") == "true", "Native input did not receive focus: " + label)
+        length = len(focused.get("text", ""))
+        assert length <= 4096, "Refusing an unexpectedly large existing input."
+        if length:
+            self.command("shell", "input", "keyevent", "123")
+            self.command("shell", "input", "keyevent", *(["67"] * length))
+        eventually(lambda: self.locate(label, kind="edit", scroll=False), lambda node: node.get("text", "") == "", "Native input was not cleared: " + label)
         self.command("shell", "input", "text", shlex.quote(value.replace(" ", "%s")))
-        # KEYCODE_ESCAPE hides the IME without navigating away from the app.
-        self.command("shell", "input", "keyevent", "111")
+        eventually(lambda: self.locate(label, kind="edit", scroll=False),
+                   lambda node: len(node.get("text", "")) == len(value) if node.get("password") == "true" else node.get("text", "") == value,
+                   "Native input did not retain the intended value: " + label)
+        self.dismiss_keyboard()
 
 
 def test_android_farmer_reviews_luxembourg_source_rows_and_retained_report(farmers, service_url, tmp_path):
@@ -252,6 +289,7 @@ def test_android_farmer_reviews_luxembourg_source_rows_and_retained_report(farme
         ui.fill("API origin", f"http://10.0.2.2:{address.port}")
         ui.fill("Email", farmer.email)
         ui.fill("Password", farmer.password)
+        assert ui.locate("API origin", kind="edit").get("text") == f"http://10.0.2.2:{address.port}", "The local API address changed while entering credentials; refusing sign-in."
         ui.tap("Sign in")
         ui.locate("A little less to keep in your head.", scroll=False)
         ui.tap("My fields")
@@ -293,11 +331,13 @@ def test_android_farmer_reviews_luxembourg_source_rows_and_retained_report(farme
         for label in ("Measured parcel area (a_parcel)", "Original unit: a · no conversion applied", "125,00", "Empty source cell", "NULL · literal source text", "0"):
             ui.locate(label)
         ui.tap("Hide original cells · source row 1")
+        print("Native source journey: original cells checked; acknowledging row warnings", flush=True)
         for code in preview[0]["requires_acknowledgement"]:
             message = next(issue["message"] for issue in preview[0]["issues"] if issue["code"] == code)
             ui.check(message)
         ui.check("Create a proposed farm fact from this row")
         ui.fill("What did you check in the selected source rows?", "Checked exact original year holding codes decimal comma Ar and source warnings")
+        print("Native source journey: sending explicitly selected row proposal", flush=True)
         ui.tap("Create 1 selected proposed row(s)")
         ui.locate("1 rows saved as proposals · 0 rows not saved")
         facts = eventually(lambda: farmer.get("/facts").json()["items"], lambda items: len(items) == 1, "Selected valid row did not become exactly one proposed fact.")
@@ -324,10 +364,14 @@ def test_android_farmer_reviews_luxembourg_source_rows_and_retained_report(farme
         ui.tap(request["data"]["title"])
         ui.tap("Prepare report from this request")
         draft = eventually(lambda: farmer.get("/reports").json()["items"], lambda items: len(items) == 1, "Native request did not prepare a report.")[0]
-        ui.tap("Open report · draft")
+        ui.locate("Review this report")
+        ui.locate("Showing 1–1 of 1 · Answers and source rows")
+        print("Native report journey: bounded retained-source review and explicit approval", flush=True)
+        ui.tap("Show retained cells · answer 1")
         ui.locate("Measured parcel area (a_parcel)")
         ui.locate("Original unit: a · no conversion applied")
         ui.locate("125,00")
+        ui.tap("Hide retained cells · answer 1")
         ui.check("I reviewed this exact report and its evidence.")
         ui.tap("Approve this report")
         issued = eventually(lambda: farmer.get(f"/reports/{draft['id']}").json(), lambda value: value["data"]["status"] == "issued", "Native report approval did not persist.")
@@ -371,6 +415,54 @@ def test_android_farmer_reviews_luxembourg_source_rows_and_retained_report(farme
         ui.locate("Compare competing evidence")
         visible_text = {node.get("text", "") for node in ui.hierarchy().iter("node")}
         assert "Load more workspace facts for this farm list" not in visible_text
+        print("Native report journey: large retained report and complete file stream", flush=True)
+        area = confirm(farmer, farmer.create("facts", fact_data(farm["id"], key="area_ha", value=3.75, unit="ha", basis="static", period=None)))
+        large_facts = [area]
+        for index in range(32):
+            value = {"entry": f"Fictional notebook appendix {index + 1}", **{f"note_{part}": chr(65 + part) * 149950 for part in range(3)}}
+            proposed = farmer.create("facts", fact_data(farm["id"], key=f"large_notebook_appendix_{index}", value=value, unit=None,
+                                     sources=[{"origin": "Fictional retained notebook text for native transport acceptance."}]))
+            large_facts.append(confirm(farmer, proposed, "Reviewed the complete fictional retained notebook entry, not a derived operation."))
+        creation = farmer.post("/reports", expected=201, params={"view": "summary"}, json={"farm_id": farm["id"], "pack_id": "farm-evidence", "reporting_year": 2026, "fact_ids": [item["id"] for item in large_facts]})
+        large_report = creation.json()
+        binding = farmer.get(f"/reports/{large_report['id']}", params={"view": "review"}).json()["data"]["review"]
+        large_report = farmer.post(f"/reports/{large_report['id']}/approve", params={"view": "summary"},
+                                  json={"expected_revision": large_report["revision"], "snapshot_checksum": binding["snapshot_checksum"], "check_fingerprint": binding["check_fingerprint"]}).json()
+        expected_export = farmer.get(f"/reports/{large_report['id']}/download", params={"format": "json"}).content
+        assert len(expected_export) > 24 * 1024 * 1024
+        expected_size, expected_hash = len(expected_export), sha256(expected_export).hexdigest()
+        print(json.dumps({"large_report_compact_create_bytes": len(creation.content), "approved_export_bytes": expected_size, "approved_export_sha256": expected_hash}), flush=True)
+        del expected_export
+        ui.tap("Home")
+        ui.tap("Refresh workspace")
+        ui.tap("Paperwork")
+        ui.tap("Prepared reports and exports")
+        ui.tap(large_report["data"]["title"])
+        ui.locate("Showing 1–5 of 33 · Answers and source rows")
+        ui.tap("Next page")
+        ui.locate("Showing 6–9 of 33 · Answers and source rows")
+        ui.tap("Export JSON")
+
+        def share_activity():
+            activities = ui.command("shell", "dumpsys", "activity", "activities")
+            return [line for line in activities.splitlines() if "ActivityRecord{" in line and ("mResumedActivity" in line or "topResumedActivity" in line)]
+
+        # Inspect only the expected project's chooser component metadata, never
+        # its UI, suggested contacts, other apps, screenshots or desktop pixels.
+        expected_choosers = (" android/com.android.internal.app.ChooserActivity", " com.android.intentresolver/.ChooserActivity")
+        eventually(share_activity, lambda lines: bool(lines) and all(any(component in line for component in expected_choosers) for line in lines), "Complete report did not reach the explicit Android share chooser.")
+        names = ui.command("shell", "run-as", PACKAGE, "ls", "-1", "cache/exports").splitlines()
+        assert len(names) == 1 and re.fullmatch(r"farm-report-[a-f0-9-]{36}\.json", names[0]), "Only one complete private report file should reach sharing."
+        private_file = "cache/exports/" + names[0]
+        assert ui.command("shell", "run-as", PACKAGE, "sha256sum", private_file).split()[0] == expected_hash
+        assert int(ui.command("shell", "run-as", PACKAGE, "wc", "-c", private_file).split()[0]) == expected_size
+        ui.command("shell", "input", "keyevent", "4")
+        ui.foreground(timeout=30)
+        ui.tap("Account")
+        ui.tap("Sign out and clear this device")
+        ui.tap("Sign out and clear")
+        ui.locate("Sign in", scroll=False)
+        assert ui.command("shell", "run-as", PACKAGE, "ls", "-1", "cache/exports").strip() == "", "Signing out must remove complete and incomplete private exports."
     finally:
         ui.command("shell", "am", "force-stop", PACKAGE)
         ui.command("shell", "rm", "-f", remote)

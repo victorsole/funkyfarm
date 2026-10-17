@@ -128,6 +128,8 @@ struct DocumentDetail: View {
     @State private var selectedProposal: ProposalSelection?
     @State private var original: ExportFile?
     @State private var exported: ExportFile?
+    @State private var downloadTask: Task<Void, Never>?
+    @State private var downloading = false
     private var extraction: [String: JSONValue] { item.data["extraction"]?.object ?? [:] }
     private var documentType: String { item.data["document_type"]?.text ?? extraction["document_type"]?.text ?? "unknown" }
     var body: some View {
@@ -135,8 +137,9 @@ struct DocumentDetail: View {
             Section {
                 Text(item.title).font(.title2.bold())
                 Button("View original privately") {
-                    run { let file = try await store.export("/documents/\(item.id)/file", suffix: UTType(mimeType: item.value("media_type"))?.preferredFilenameExtension ?? "bin"); exported = file; original = file }
+                    downloadOriginal()
                 }.disabled(working || !store.sessionVerified)
+                if downloading { Button("Cancel original-file download", role: .cancel) { downloadTask?.cancel() } }
                 LabeledContent("Pages", value: item.value("page_count"))
                 Button("Review as administrative request") { request = true }
                 if documentType == "receipt" {
@@ -190,6 +193,9 @@ struct DocumentDetail: View {
             }
         }.navigationTitle("Document")
             .onAppear { type = documentType }
+            .onDisappear { downloadTask?.cancel(); if original == nil, let exported { store.removeExport(exported); self.exported = nil } }
+            .onChange(of: store.account?.scope) { _ in downloadTask?.cancel() }
+            .onChange(of: store.sessionVerified) { verified in if !verified { downloadTask?.cancel() } }
             .sheet(isPresented: $request) { NavigationStack { RequestEditor(document: item) }.environmentObject(store) }
             .sheet(item: $selectedProposal) { value in NavigationStack { RecordEditor(collection: "facts", farmID: item.value("farm_id") == "Not supplied" ? nil : item.value("farm_id"), proposal: value.data) }.environmentObject(store) }
             .sheet(item: $original, onDismiss: { if let exported { store.removeExport(exported); self.exported = nil } }) { file in QuickLookEvidence(url: file.url) }
@@ -197,6 +203,16 @@ struct DocumentDetail: View {
     private func run(_ action: @escaping () async throws -> Void) {
         working = true; error = nil
         Task { do { try await action() } catch { self.error = error.localizedDescription }; working = false }
+    }
+    private func downloadOriginal() {
+        working = true; downloading = true; error = nil
+        downloadTask = Task {
+            do {
+                let file = try await store.export("/documents/\(item.id)/file", suffix: UTType(mimeType: item.value("media_type"))?.preferredFilenameExtension ?? "bin")
+                if Task.isCancelled { store.removeExport(file) } else { exported = file; original = file }
+            } catch { self.error = (error is CancellationError || (error as? URLError)?.code == .cancelled) ? "Download cancelled. No partial original is available." : SourceText.error(error) }
+            working = false; downloading = false; downloadTask = nil
+        }
     }
     private struct ProposalSelection: Identifiable { let id = UUID(); let data: [String: JSONValue] }
 }

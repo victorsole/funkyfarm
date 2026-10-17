@@ -3,103 +3,119 @@ import UIKit
 
 struct ReportDetail: View {
     @EnvironmentObject private var store: AppStore
+    @StateObject private var review = ReportReviewModel()
     let item: RecordItem
+    @State private var section: ReportSection = .fields
     @State private var working = false
     @State private var error: String?
     @State private var approve = false
     @State private var export: ExportFile?
     @State private var cleanup: ExportFile?
+    @State private var downloadTask: Task<Void, Never>?
+    @State private var downloading = false
     @State private var receipt = false
     @State private var reissue = false
-    private var snapshot: [String: JSONValue] { item.data["snapshot"]?.object ?? [:] }
-    private var blockers: [JSONValue] { item.data["current_blockers"]?.array ?? item.data["blockers"]?.array ?? [] }
-    private var retainedSaleSources: [JSONValue] {
-        var seen: Set<String> = []
-        return (snapshot["facts"]?.array ?? []).flatMap { $0.object["data"]?.object["sources"]?.array ?? [] }.filter { source in
-            guard let reference = RecordEvidenceReference(source), reference.collection == "sales" else { return false }
-            return seen.insert(reference.id + ":" + (reference.revision ?? "")).inserted
-        }
-    }
+    private var current: RecordItem { review.record ?? item }
+    private var page: ReportReviewPage { review.pages[section] ?? ReportReviewPage() }
+    private var formats: [String] { (review.record?.data["supported_formats"]?.array ?? []).map(\.text).filter { ["pdf", "csv", "json", "xlsx"].contains($0) } }
+    private var canApprove: Bool { review.record?.state == "draft" && review.record?.data["can_approve"] == .bool(true) && review.binding?.scope == store.account?.scope && review.binding?.counts[.blockers] == 0 && review.contentReviewed && review.acknowledged && store.sessionVerified && !working && !review.busy }
+    private var canAmend: Bool { ["owner", "adviser"].contains(store.account?.workspace.role ?? "") && store.sessionVerified && review.binding?.scope == store.account?.scope && !working && !review.busy }
     var body: some View {
         List {
             Section {
-                Text(item.title).font(.title2.bold())
-                LabeledContent("State", value: item.state == "issued" ? "Approved / issued snapshot" : item.state.capitalized)
-                LabeledContent("Reporting year", value: item.value("reporting_year"))
-                if let capability = snapshot["capability_notice"] { Notice(capability.text) }
-                Notice("Approval records your review of this snapshot. Exports and manual receipt references do not establish authority acceptance.")
+                Text(current.title).font(.title2.bold())
+                LabeledContent("State", value: current.state == "issued" ? "Approved / issued snapshot" : current.state.capitalized)
+                LabeledContent("Reporting year", value: current.value("reporting_year"))
+                if let notice = current.data["snapshot"]?.object["capability_notice"] { Notice(notice.text) }
+                Notice("Approval records your review of this snapshot. Sharing a file or recording a response does not establish authority acceptance.")
+                Button("Reload exact report review") { Task { await review.load(id: item.id, store: store) } }.disabled(working || review.busy || !store.sessionVerified)
+                if !store.sessionVerified { Notice("Reconnect to load authorized review pages. Cached summaries cannot authorize approval.", warning: true) }
+                if let problem = review.problem { Notice(problem, warning: true) }
             }
-            Section("Check before approval") {
-                if blockers.isEmpty { Text("The service reports no blocking prerequisites for this snapshot.") }
-                ForEach(Array(blockers.enumerated()), id: \.offset) { _, blocker in Notice(blocker.object["message"]?.text ?? blocker.text, warning: true) }
-            }
-            Section("Values in this snapshot") {
-                let fields = snapshot["fields"]?.array ?? []
-                if fields.isEmpty { Notice("The snapshot has no fields. Inspect the pack and prerequisites before approval.", warning: true) }
-                ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
-                    let data = field.object
-                    DisclosureGroup(data["label"]?.text ?? data["field"]?.text ?? "Report field") {
-                        if let schema = data["row_schema"]?.object, !schema.isEmpty, case .object(let values)? = data["value"] {
-                            Notice("These labels and source units are retained in this report snapshot. No current profile catalogue is used to reinterpret them.")
-                            SourceRowCells(value: values, schema: schema)
-                            if let period = data["period"] { LabeledContent("Retained source period", value: period.text) }
-                            if let id = schema["id"] { LabeledContent("Retained source definition", value: id.text) }
-                        } else { SourceCellValue(value: data["value"]) }
-                        DisclosureGroup("Retained field identity") { JSONFields(data: data.filter { !["value", "label", "row_schema"].contains($0.key) }) }
-                        if let factID = data["fact_id"]?.text, UUID(uuidString: factID) != nil { NavigationLink("Review source fact") { DetailView(collection: "facts", id: factID) } }
+            if let binding = review.binding {
+                Section("Review complete ranges") {
+                    Picker("Section", selection: $section) {
+                        ForEach(ReportSection.allCases, id: \.self) { value in Text(value.title + " (" + String(binding.counts[value] ?? 0) + ")").tag(value) }
+                    }.disabled(review.busy)
+                    if page.loaded {
+                        Text(page.items.isEmpty ? "The service returned an empty section (0 items)." : "Items \(page.offset + 1)–\(page.offset + page.items.count) of \(binding.counts[section] ?? 0)").font(.footnote)
+                        ForEach(Array(page.items.enumerated()), id: \.offset) { index, value in ReportPageItem(section: section, value: value, position: page.offset + index + 1).id(binding.identity + ":" + section.rawValue + ":" + String(page.offset + index)) }
+                        HStack {
+                            Button("Previous range") { Task { await review.move(section, direction: -1, id: item.id, store: store) } }.disabled(review.busy || page.previous.isEmpty)
+                            Spacer()
+                            Button("Next range") { Task { await review.move(section, direction: 1, id: item.id, store: store) } }.disabled(review.busy || page.next == nil)
+                        }
+                        if section.needsHumanReview {
+                            Button(page.items.isEmpty ? "I checked this empty section" : "I reviewed this complete range") { review.markReviewed(section) }.disabled(review.busy || !store.sessionVerified)
+                            Text("Explicitly reviewed: \(review.visited[section]?.count ?? 0) of \(binding.counts[section] ?? 0) items" + ((binding.counts[section] == 0 && review.checkedEmpty.contains(section)) ? " — empty section checked" : "")).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Notice(page.problem ?? "This section has not been loaded. Its contents are not assumed to be empty.", warning: true)
+                        Button("Retry this exact range") { Task { await review.retry(section, id: item.id, store: store) } }.disabled(review.busy || !store.sessionVerified)
                     }
+                    Text("Each range contains at most five complete items and may be smaller to stay within the page budget. Retained source values are not truncated or converted.").font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Your approval") {
+                    if let reason = review.record?.data["approval_blocked_reason"], reason != .null { Notice(reason.text, warning: current.state == "draft") }
+                    if let approval = current.data["approval"], approval != .null { DisclosureGroup("Recorded approval") { SourceRowCells(value: approval.object) } }
+                    if current.state == "draft" {
+                        if !review.reviewAvailable { Notice("Every review section must be available before approval. Retry unavailable ranges or reload the review.", warning: true) }
+                        if !review.contentReviewed { Text("Visit and explicitly review every range in Report values, Recorded work and Selected evidence, including empty sections.").font(.callout) }
+                        Toggle("I checked the values, work and selected evidence in this exact review", isOn: $review.acknowledged).disabled(!review.contentReviewed || review.busy || !store.sessionVerified)
+                        Button("Approve reviewed snapshot") { approve = true }.buttonStyle(.borderedProminent).disabled(!canApprove)
+                    }
+                    if let amendment = current.data["amendment"]?.object, let message = amendment["message"] { Notice(message.text, warning: amendment["needed"] == .bool(true)); if amendment["needed"] == .bool(true) { Button("Review corrections") { section = .changes } } }
+                    if current.state == "issued" {
+                        Menu("Export and share approved report") { ForEach(formats, id: \.self) { format in Button(format.uppercased()) { download(format) } } }.disabled(formats.isEmpty || working || !store.sessionVerified || review.busy)
+                        Button("Record manual response reference") { receipt = true }.disabled(!canAmend)
+                        Button("Prepare correction / reissue") { reissue = true }.disabled(!canAmend)
+                    }
+                    LabeledContent("Reviewed revision", value: String(binding.revision))
+                    DisclosureGroup("Snapshot and current-check identity") { Text(binding.checksum).font(.caption.monospaced()).textSelection(.enabled); Text(binding.fingerprint).font(.caption.monospaced()).textSelection(.enabled) }
                 }
             }
-            Section("Selected source evidence") {
-                ForEach(Array((snapshot["evidence"]?.array ?? []).enumerated()), id: \.offset) { _, source in
-                    let object = source.object
-                    if let id = object["id"]?.text { NavigationLink(object["name"]?.text ?? "Source document") { DetailView(collection: "documents", id: id) } }
-                    else { Text(source.text) }
-                }
-            }
-            if !retainedSaleSources.isEmpty {
-                Section("Retained sale source references") {
-                    ForEach(Array(retainedSaleSources.enumerated()), id: \.offset) { _, source in RecordEvidenceLink(source: source) }
-                    Text("Links open the current sale record. This report retains the source revisions used by its snapshot; opening a source does not rewrite issued values or calculate financial totals.").font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            Section("Your approval") {
-                if let approval = item.data["approval"], approval != .null { Text(approval.text).font(.callout).textSelection(.enabled) }
-                if item.state == "draft" {
-                    Button("Approve reviewed snapshot") { approve = true }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || !blockers.isEmpty || (snapshot["fields"]?.array ?? []).isEmpty)
-                }
-                if item.state == "issued" {
-                    Menu("Export and share approved report") {
-                        ForEach(["pdf", "csv", "json", "xlsx"], id: \.self) { format in Button(format.uppercased()) { download(format) } }
-                    }.disabled(working || !store.sessionVerified)
-                    Button("Record manual response reference") { receipt = true }.disabled(working || !store.sessionVerified)
-                    Button("Prepare correction / reissue") { reissue = true }.disabled(working || !store.sessionVerified)
-                }
-                if working { ProgressView("Waiting for service…") }
-                if let error { Notice(error, warning: true) }
-            }
-            Section("Retained response and reissue history") {
-                if let receipts = item.data["receipts"] { Text(receipts.text).font(.callout).textSelection(.enabled) }
-                if let reissues = item.data["reissues"] { Text(reissues.text).font(.callout).textSelection(.enabled) }
-                LabeledContent("Snapshot checksum", value: item.value("checksum")).font(.caption).textSelection(.enabled)
-                RecordMetadata(item: item)
-            }
+            if review.busy { ProgressView("Loading bounded report review…") }
+            if working { ProgressView(downloading ? "Downloading protected file…" : "Waiting for service…") }
+            if downloading { Button("Cancel download", role: .cancel) { downloadTask?.cancel(); store.cancelExportDownloads() }; Text("Exports use private protected storage, up to 512 MiB while keeping 64 MiB free. A partial file is never shared.").font(.footnote) }
+            if let error { Notice(error, warning: true) }
         }.navigationTitle("Report review")
-            .confirmationDialog("Approve the values and source evidence in this exact revision?", isPresented: $approve, titleVisibility: .visible) {
-                Button("Approve snapshot") {
-                    run { try await store.mutate("/reports/\(item.id)/approve", body: ["expected_revision": .number(Double(item.revision))]); _ = try await store.refreshDetail("reports", item.id) }
-                }
-            }
+            .task(id: item.id) { await review.load(id: item.id, store: store) }
+            .onChange(of: item.revision) { _ in review.invalidate("The report revision changed. Reload and review its complete ranges again."); downloadTask?.cancel() }
+            .onChange(of: item.data["checksum"]) { _ in review.invalidate("The retained snapshot changed. Reload and review its complete ranges again."); downloadTask?.cancel() }
+            .onChange(of: store.account?.scope) { _ in review.invalidate("The account or workspace changed. Reload this review."); downloadTask?.cancel() }
+            .onChange(of: store.sessionVerified) { verified in if !verified { review.invalidate("Reconnect before continuing this review."); downloadTask?.cancel() } }
+            .onDisappear { review.invalidate(); downloadTask?.cancel(); if export == nil, let cleanup { store.removeExport(cleanup); self.cleanup = nil } }
+            .confirmationDialog("Approve this exact revision, snapshot and current checks?", isPresented: $approve, titleVisibility: .visible) { Button("Approve snapshot") { approveCurrent() } }
             .sheet(item: $export, onDismiss: { if let cleanup { store.removeExport(cleanup); self.cleanup = nil } }) { file in ShareSheet(items: [file.url]) }
-            .sheet(isPresented: $receipt) { NavigationStack { ReceiptEditor(report: item) }.environmentObject(store) }
-            .sheet(isPresented: $reissue) { NavigationStack { ReportComposer(reissue: item) }.environmentObject(store) }
+            .sheet(isPresented: $receipt, onDismiss: { Task { await review.load(id: item.id, store: store) } }) { NavigationStack { ReceiptEditor(report: current) }.environmentObject(store) }
+            .sheet(isPresented: $reissue, onDismiss: { Task { await review.load(id: item.id, store: store) } }) { NavigationStack { ReportComposer(reissue: current) }.environmentObject(store) }
     }
-    private func run(_ action: @escaping () async throws -> Void) {
-        working = true; error = nil
-        Task { do { try await action() } catch { self.error = error.localizedDescription }; working = false }
+    private func approveCurrent() {
+        guard canApprove, let binding = review.binding else { return }
+        let body: [String: JSONValue] = ["expected_revision": .number(Double(binding.revision)), "snapshot_checksum": .string(binding.checksum), "check_fingerprint": .string(binding.fingerprint)]
+        let formKey = "report-approval-intent:" + item.id
+        do {
+            let saved = try store.loadForm(formKey)
+            let key = saved?["body"] == .object(body) ? saved?["retry_key"]?.text ?? UUID().uuidString : UUID().uuidString
+            try store.saveForm(formKey, value: ["body": .object(body), "retry_key": .string(key)])
+            working = true; error = nil
+            Task {
+                do { try await store.mutate("/reports/\(item.id)/approve", body: body, idempotency: key); try store.clearForm(formKey); await review.load(id: item.id, store: store) }
+                catch { review.invalidate("Approval was not established on this device. Reload current state before deciding again."); self.error = SourceText.error(error) }
+                working = false
+            }
+        } catch { self.error = SourceText.error(error) }
     }
     private func download(_ format: String) {
-        run { let file = try await store.export("/reports/\(item.id)/download?format=\(format)", suffix: format); cleanup = file; export = file }
+        guard current.state == "issued", review.record != nil, formats.contains(format), store.sessionVerified, !working else { return }
+        working = true; downloading = true; error = nil
+        downloadTask = Task {
+            do {
+                let file = try await store.export("/reports/\(item.id)/download?format=\(format)", suffix: format)
+                if Task.isCancelled { store.removeExport(file) } else { cleanup = file; export = file }
+            } catch { self.error = (error is CancellationError || (error as? URLError)?.code == .cancelled) ? "Download cancelled. No partial file was shared." : SourceText.error(error) }
+            downloading = false; working = false; downloadTask = nil
+        }
     }
 }
 
@@ -115,24 +131,26 @@ struct ReceiptEditor: View {
     let report: RecordItem
     @State private var reference = ""
     @State private var date = Date()
+    @State private var retryKey = UUID()
     @State private var working = false
     @State private var error: String?
     var body: some View {
         Form {
-            Section { Notice("Record a reference from a response you actually sent or received. This manual note does not certify transport or authority acceptance."); TextField("Response reference", text: $reference); DatePicker("Response date", selection: $date, displayedComponents: .date) }
+            Section { Notice("Record a reference from a response you actually sent or received. This manual note does not certify transport or authority acceptance."); TextField("Response reference", text: $reference).disabled(working); DatePicker("Response date", selection: $date, displayedComponents: .date).disabled(working) }
             Section {
                 Button("Record reference") {
                     working = true
                     Task {
                         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
-                        do { try await store.mutate("/reports/\(report.id)/receipts", body: ["expected_revision": .number(Double(report.revision)), "reference": .string(reference), "date": .string(formatter.string(from: date))]); dismiss() }
-                        catch { self.error = error.localizedDescription }
+                        do { try await store.mutate("/reports/\(report.id)/receipts", body: ["expected_revision": .number(Double(report.revision)), "snapshot_checksum": .string(report.value("checksum")), "reference": .string(reference), "date": .string(formatter.string(from: date))], idempotency: retryKey.uuidString); dismiss() }
+                        catch { self.error = SourceText.error(error) }
                         working = false
                     }
-                }.disabled(reference.isEmpty || working)
+                }.disabled(reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working || !store.sessionVerified)
                 if working { ProgressView("Saving reference…") }
                 if let error { Notice(error, warning: true) }
             }
-        }.navigationTitle("Response reference").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() } } }
+        }.navigationTitle("Response reference").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() }.disabled(working) } }
+            .onChange(of: reference) { _ in retryKey = UUID() }.onChange(of: date) { _ in retryKey = UUID() }
     }
 }

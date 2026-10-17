@@ -17,6 +17,8 @@ import UniformTypeIdentifiers
     @Published var sessionVerified = false
     private var storage: PrivateStore?
     private var generation = UUID()
+    private var activeExports: [UUID: ProtectedFileTransfer] = [:]
+    private var completedExports: [UUID: URL] = [:]
     var api: FarmAPI? {
         guard let account, let url = URL(string: account.baseURL) else { return nil }
         return FarmAPI(baseURL: url, token: account.token, workspaceID: account.workspace.id)
@@ -31,8 +33,12 @@ import UniformTypeIdentifiers
     }
     private func install(_ account: Account) throws {
         let store = try PrivateStore(scope: account.scope, accountKey: account.baseURL + "/" + account.user.id)
-        let loaded = try store.load()
+        var loaded = try store.load()
         guard loaded.queue.allSatisfy({ $0.scope == account.scope }), loaded.records.values.joined().allSatisfy({ $0.workspace_id == account.workspace.id }) else { throw ServiceError(status: 0, message: "The saved records do not match this private account.") }
+        // Migrate older caches before displaying or persisting any report records.
+        loaded.records["reports"] = loaded.records["reports"]?.map(ReportTransport.compact)
+        for index in loaded.queue.indices where Self.isReportApproval(loaded.queue[index].path) { loaded.queue[index].state = .review; loaded.queue[index].problem = "Open the exact current report review before making a new explicit approval. Saved approval actions are not synchronized automatically." }
+        try store.save(loaded); try store.clearOldExports(); clearExportFiles()
         generation = UUID(); storage = store; disk = loaded; self.account = account
         sessionVerified = false; packs = []; packCountry = ""; packYear = nil; error = nil
         refreshShared()
@@ -80,7 +86,7 @@ import UniformTypeIdentifiers
                 }
                 guard current == generation else { return }
                 guard items.allSatisfy({ $0.workspace_id == self.account?.workspace.id }) else { throw ServiceError(status: 0, message: "The service returned records outside the selected workspace. They were not saved.") }
-                disk.records[collection] = items
+                disk.records[collection] = collection == "reports" ? items.map(ReportTransport.compact) : items
             } catch {
                 if let failure = error as? ServiceError, failure.status == 401 { sessionVerified = false }
                 failures.append("\(collection.capitalized): \(error.localizedDescription)")
@@ -180,7 +186,8 @@ import UniformTypeIdentifiers
     func refreshDetail(_ collection: String, _ id: String) async throws -> RecordItem {
         guard let api, let account, sessionVerified else { throw ServiceError(status: 0, message: "Connect and verify your session before reviewing server records.") }
         let current = generation
-        let item = try JSONDecoder().decode(RecordItem.self, from: await api.send("/\(collection)/\(id)"))
+        let received = try JSONDecoder().decode(RecordItem.self, from: await api.send("/\(collection)/\(id)"))
+        let item = collection == "reports" ? ReportTransport.compact(received) : received
         guard current == generation, item.workspace_id == account.workspace.id else { throw CancellationError() }
         var records = disk.records[collection] ?? []; records.removeAll { $0.id == item.id }; records.append(item)
         disk.records[collection] = records; try persist()
@@ -198,6 +205,7 @@ import UniformTypeIdentifiers
     }
     func packs(country: String, year: Int) -> [Pack] { packCountry == country && packYear == year ? packs : [] }
     func saveEdit(collection: String, existing: RecordItem? = nil, data: [String: JSONValue], label: String) throws {
+        guard collection != "reports" else { throw ServiceError(status: 0, message: "Prepare or review reports through their dedicated report controls. Full report snapshots cannot be saved as generic device edits.") }
         guard let account else { throw ServiceError(status: 0, message: "Sign in before saving a draft.") }
         guard disk.queue.count < 50 else { throw ServiceError(status: 0, message: "Sync or remove an existing draft before adding more than 50.") }
         let path = "/\(collection)" + (existing.map { "/\($0.id)" } ?? "")
@@ -209,6 +217,7 @@ import UniformTypeIdentifiers
         do { try persist() } catch { disk.queue.removeAll { $0.id == edit.id }; throw error }
     }
     func saveAction(path: String, label: String, payload: [String: JSONValue], replacing editID: UUID? = nil) throws {
+        guard !Self.isReportApproval(path) else { throw ServiceError(status: 0, message: "Report approval requires the current authorized report review and explicit acknowledgement; it cannot be queued as a background action.") }
         guard let account else { throw ServiceError(status: 0, message: "Sign in before saving a draft.") }
         guard !syncing else { throw ServiceError(status: 0, message: "Wait for synchronization before changing a queued action.") }
         if let editID, !disk.queue.contains(where: { $0.id == editID && $0.scope == account.scope && $0.path == path }) { throw ServiceError(status: 0, message: "The saved action changed. Reopen the device outbox before replacing it.") }
@@ -251,6 +260,7 @@ import UniformTypeIdentifiers
             do { try persist() } catch { self.error = "Sync paused: the sending state could not be saved."; return }
             let edit = disk.queue[index]
             do {
+                guard !Self.isReportApproval(edit.path) else { throw ServiceError(status: 409, message: "Open the exact current report review and acknowledge its complete ranges. This saved approval was not sent.") }
                 if edit.path == "/workflow/capture" || edit.path == "/workflow/answer" {
                     if let approved = edit.approvedRequest {
                         // Replaying this unchanged body/key reaches the server's committed-response cache
@@ -308,6 +318,7 @@ import UniformTypeIdentifiers
     }
     // Never silently rebase: the caller displays both versions before this action.
     func resolve(_ edit: PendingEdit, against latest: RecordItem) throws {
+        guard !edit.path.hasPrefix("/reports/") else { throw ServiceError(status: 0, message: "Report actions cannot be rebased from an outbox comparison. Reload the exact report review and make a fresh explicit decision.") }
         guard !syncing, let account, latest.workspace_id == account.workspace.id,
               let index = disk.queue.firstIndex(where: { $0.id == edit.id }), edit.state == .conflict else { return }
         var body = edit.payload; body["expected_revision"] = .number(Double(latest.revision))
@@ -321,20 +332,38 @@ import UniformTypeIdentifiers
         _ = try await api.send(path, method: "POST", body: body, idempotency: idempotency)
         guard current == generation else { throw CancellationError() }
         await refresh()
-        let components = path.split(separator: "/")
+        guard current == generation else { throw CancellationError() }
+        let components = (URLComponents(string: path)?.path ?? path).split(separator: "/")
         if current == generation, components.count >= 2, UUID(uuidString: String(components[1])) != nil {
             _ = try await refreshDetail(String(components[0]), String(components[1]))
         }
+        guard current == generation else { throw CancellationError() }
     }
     func export(_ path: String, suffix: String) async throws -> ExportFile {
         guard let api, let storage, sessionVerified else { throw ServiceError(status: 0, message: "Connect to download the authorized file.") }
+        guard activeExports.isEmpty else { throw ServiceError(status: 0, message: "Finish or cancel the current file download before starting another.") }
         let current = generation
-        let bytes = try await api.send(path)
-        guard current == generation else { throw CancellationError() }
-        let name = try storage.stage(bytes, extension: suffix)
-        return ExportFile(url: try storage.safeURL(name))
+        let file = ExportFile(url: try storage.exportURL(suffix: suffix))
+        let transfer = try ProtectedFileTransfer(request: api.fileRequest(path), destination: file.url)
+        activeExports[file.id] = transfer
+        do {
+            try await transfer.run()
+            guard current == generation, sessionVerified else { try? FileManager.default.removeItem(at: file.url); throw CancellationError() }
+            activeExports.removeValue(forKey: file.id); completedExports[file.id] = file.url
+            return file
+        } catch {
+            activeExports.removeValue(forKey: file.id); transfer.cancel(); try? FileManager.default.removeItem(at: file.url)
+            if current == generation, (error as? ServiceError)?.status == 401 { sessionVerified = false }
+            throw error
+        }
     }
-    func removeExport(_ file: ExportFile) { try? storage?.removeAttachment(file.url.lastPathComponent) }
+    func removeExport(_ file: ExportFile) {
+        guard let url = completedExports.removeValue(forKey: file.id), url == file.url else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+    func cancelExportDownloads() { let transfers = Array(activeExports.values); activeExports = [:]; for transfer in transfers { transfer.cancel() } }
+    private func clearExportFiles() { cancelExportDownloads(); let files = Array(completedExports.values); completedExports = [:]; for file in files { try? FileManager.default.removeItem(at: file) } }
+    private static func isReportApproval(_ path: String) -> Bool { let parts = (URLComponents(string: path)?.path ?? path).split(separator: "/"); return parts.count == 3 && parts[0] == "reports" && parts[2] == "approve" }
     func refreshShared() {
         do { sharedFiles = try IntakeInbox.list() }
         catch { sharedFiles = [] /* App-group availability is also shown by the intake screen. */ }
@@ -359,6 +388,7 @@ import UniformTypeIdentifiers
     func signOut() async {
         guard !syncing, !busy else { error = "Wait for the current operation to finish before signing out."; return }
         let client = api; let previousStorage = storage
+        clearExportFiles()
         // Clear memory before awaiting any network call; all outstanding responses are generation-guarded.
         generation = UUID(); account = nil; storage = nil; disk = AccountDiskState()
         packs = []; sharedFiles = []; route = nil; tab = 0; sessionVerified = false

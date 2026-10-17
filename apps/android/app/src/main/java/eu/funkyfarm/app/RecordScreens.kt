@@ -13,15 +13,16 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.io.File
 
-@Composable internal fun RecordDetail(model: FarmModel, kind: String, record: JSONObject, edit: () -> Unit, share: (ByteArray, String, String) -> Unit) {
+@Composable internal fun RecordDetail(model: FarmModel, kind: String, record: JSONObject, edit: () -> Unit, share: (ByteArray, String, String) -> Unit, shareExport: (File, String) -> Unit) {
     val data = record.data()
     Text(record.title(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
     Text("Revision ${record.optInt("revision")} · ${data.optString("status").ifBlank { data.optString("review_status") }}", style = MaterialTheme.typography.labelLarge)
     TextButton(onClick = { model.open(kind, record.getString("id")) }, enabled = !model.busy) { Text("Refresh this record") }
     var editingSale by remember(record.optString("id")) { mutableStateOf(false) }
     if (editingSale) GuidedCapture(model, if (kind == "sales") "sale" else data.optString("type"), record = record) { editingSale = false }
-    if (kind == "reports") ReportDetails(model, record, share)
+    if (kind == "reports") ReportReview(model, record, shareExport)
     else {
         if (!(kind in listOf("facts", "operations", "purchases", "sales") && data.optString("review_status") == "confirmed") && kind !in listOf("documents", "checklists")) OutlinedButton(onClick = { if (kind == "sales" || (kind == "operations" && data.optString("type") == "pesticide_application")) editingSale = true else edit() }) { Text("Edit saved information") }
         if (kind == "farms") {
@@ -122,8 +123,8 @@ private fun jsonLiteral(value: Any?): String {
     val encoded = JSONArray().put(value ?: JSONObject.NULL).toString()
     return encoded.substring(1, encoded.length - 1)
 }
-@Composable private fun LiteralField(label: String, value: Any?) { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(label.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge); SelectionContainer { Text(literal(value), style = MaterialTheme.typography.bodyLarge) } } }
-@Composable private fun Sources(sources: JSONArray?) {
+@Composable internal fun LiteralField(label: String, value: Any?) { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(label.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge); SelectionContainer { Text(literal(value), style = MaterialTheme.typography.bodyLarge) } } }
+@Composable internal fun Sources(sources: JSONArray?) {
     if (sources == null || sources.length() == 0) { Text("No source locations supplied. Check the original evidence before confirming."); return }
     Text("Source evidence", style = MaterialTheme.typography.titleLarge)
     sources.objects().forEach { source -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -154,50 +155,7 @@ private fun jsonLiteral(value: Any?): String {
     if (letter) Editor(model, "requests", null, { letter = false }, document = record)
 }
 
-@Composable private fun ReportDetails(model: FarmModel, record: JSONObject, share: (ByteArray, String, String) -> Unit) {
-    val data = record.data(); val snapshot = data.optJSONObject("snapshot") ?: JSONObject()
-    val issued = data.optString("status") == "issued" || data.optJSONObject("approval") != null
-    Text(if (issued) "Approved snapshot" else "Report preview", style = MaterialTheme.typography.titleLarge)
-    Text(snapshot.optString("capability_notice").ifBlank { "Prepared evidence for review. Export and a manual receipt do not establish authority acceptance." })
-    val blockers = record.optJSONArray("current_blockers") ?: data.optJSONArray("current_blockers") ?: data.optJSONArray("blockers") ?: JSONArray()
-    if (blockers.length() > 0) { Text("Needs attention", style = MaterialTheme.typography.titleLarge); blockers.objects().forEach { Text(it.optString("message", it.toString())) } }
-    snapshot.optJSONArray("fields")?.objects()?.forEach { field ->
-        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(field.optString("label", field.optString("field")), fontWeight = FontWeight.Bold)
-            (field.opt("group_label") as? String)?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (!field.optBoolean("missing") && field.optJSONObject("row_schema") != null && field.optJSONObject("value") != null) {
-                SourceRowValues(field.getJSONObject("value"), field.getJSONObject("row_schema"))
-                Text("Column meanings and original units are retained in this report's snapshot.", style = MaterialTheme.typography.bodySmall)
-            } else LiteralField(if (field.optBoolean("missing")) "Missing answer" else "Snapshot value", field.opt("value"))
-            listOf("unit", "period", "temporal_basis").forEach { if (field.has(it)) LiteralField(it.replace('_', ' '), field.opt(it)) }
-            Sources(field.optJSONArray("sources"))
-            if (field.optString("fact_id").isNotBlank()) TextButton(onClick = { model.open("facts", field.getString("fact_id")) }) { Text("Check source fact · revision ${field.optInt("fact_revision")}") }
-        } }
-    }
-    snapshot.optJSONArray("evidence")?.objects()?.forEach { evidence -> OutlinedButton(onClick = { model.open("documents", evidence.getString("id")) }) { Text("Evidence: ${evidence.optString("name")} · revision ${evidence.optInt("revision")}") } }
-    if (!issued) {
-        var checked by remember(record.optString("id"), record.optInt("revision")) { mutableStateOf(false) }
-        Row { Checkbox(checked, { checked = it }); Text("I reviewed this exact report and its evidence.", Modifier.padding(top = 12.dp)) }
-        Button(onClick = { model.enqueue("/reports/${record.getString("id")}/approve", obj("expected_revision" to record.getInt("revision"))) }, enabled = checked && blockers.length() == 0 && !model.busy) { Text("Approve this report") }
-        Text("The service checks your role, revisions and prerequisites again before approval.", style = MaterialTheme.typography.bodySmall)
-        if (blockers.length() > 0) OutlinedButton(onClick = { model.enqueue("/reports/${record.getString("id")}/reissue", obj("expected_revision" to record.getInt("revision"))) }, enabled = !model.busy) { Text("Prepare a fresh preview with current evidence") }
-    } else {
-        data.optJSONObject("approval")?.let { LiteralField("Approval record", it) }
-        Text("Save or share approved export", style = MaterialTheme.typography.titleLarge)
-        val advertised = snapshot.optJSONArray("exports")
-        val formats = if (advertised == null && !snapshot.has("exports")) listOf("pdf", "csv", "json", "xlsx") else (0 until (advertised?.length() ?: 0)).map { advertised!!.optString(it) }.filter { it in listOf("pdf", "csv", "json", "xlsx") }
-        formats.forEach { format -> Button(onClick = { model.export(record, format) { bytes -> share(bytes, "farm-report-${record.getString("id")}.$format", when (format) { "pdf" -> "application/pdf"; "csv" -> "text/csv"; "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; else -> "application/json" }) } }, enabled = !model.busy) { Text("Export ${format.uppercase()}") } }
-        Text("Sharing is an explicit Android action. Only the chosen file is passed to the app you select.", style = MaterialTheme.typography.bodySmall)
-        var receipt by remember { mutableStateOf(false) }; OutlinedButton(onClick = { receipt = true }) { Text("Record a manual response reference") }
-        if (receipt) ReceiptEditor(model, record) { receipt = false }
-        val receipts = record.optJSONArray("receipts") ?: data.optJSONArray("receipts")
-        receipts?.objects()?.forEach { LiteralField("Manual receipt · unverified acceptance", it.data()) }
-        OutlinedButton(onClick = { model.enqueue("/reports/${record.getString("id")}/reissue", obj("expected_revision" to record.getInt("revision"))) }, enabled = !model.busy) { Text("Prepare a separate correction draft") }
-        Text("The issued report stays immutable. A correction needs its own review and approval.")
-    }
-}
-
-@Composable private fun ReceiptEditor(model: FarmModel, record: JSONObject, close: () -> Unit) {
+@Composable internal fun ReceiptEditor(model: FarmModel, record: JSONObject, close: () -> Unit) {
     val key = "receipt:${record.getString("id")}"; val initial = model.draft(key, obj("reference" to "", "date" to LocalDate.now().toString()))
     var reference by remember { mutableStateOf(initial.optString("reference")) }; var date by remember { mutableStateOf(initial.optString("date")) }
     Sheet("Manual response reference", close) {

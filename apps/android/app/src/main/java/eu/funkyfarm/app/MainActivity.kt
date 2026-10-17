@@ -32,10 +32,11 @@ class MainActivity : ComponentActivity() {
         model = FarmModel(applicationContext)
         cameraFile = savedInstanceState?.getString("camera_path")?.let { path -> File(path).takeIf { it.parentFile == File(cacheDir, "camera") } }
         if (savedInstanceState == null) receive(intent)
-        setContent { FarmerApp(model, ::pickFiles, ::takePhoto, ::assemblePages, ::shareFile) }
+        setContent { FarmerApp(model, ::pickFiles, ::takePhoto, ::assemblePages, ::shareFile, ::shareDownloadedFile) }
         if (model.session != null) model.refresh()
     }
     override fun onSaveInstanceState(outState: Bundle) { cameraFile?.let { outState.putString("camera_path", it.absolutePath) }; super.onSaveInstanceState(outState) }
+    override fun onDestroy() { if (::model.isInitialized) model.cancelReportExport(); super.onDestroy() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receive(intent) }
     private fun receive(intent: Intent) {
         if (intent.action == Intent.ACTION_VIEW) {
@@ -114,13 +115,19 @@ class MainActivity : ComponentActivity() {
     }
     private fun shareFile(bytes: ByteArray, filename: String, mime: String) {
         runCatching {
+            model.cancelReportExport()
             val directory = File(cacheDir, "exports").apply { mkdirs() }
             directory.listFiles()?.forEach { it.delete() }
             val file = File(directory, filename.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(120))
             file.outputStream().use { it.write(bytes) }
-            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
-            val send = Intent(Intent.ACTION_SEND).apply { type = mime; putExtra(Intent.EXTRA_STREAM, uri); clipData = ClipData.newRawUri("Reviewed export", uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            startActivity(Intent.createChooser(send, "Save or share this private file"))
+            shareDownloadedFile(file, mime)
         }.onFailure { model.notify(it.message ?: "No sharing app is available.") }
+    }
+    private fun shareDownloadedFile(file: File, mime: String) {
+        val directory = File(cacheDir, "exports").canonicalFile
+        require(file.canonicalFile.parentFile == directory && file.isFile && file.length() > 0) { "The complete private export is unavailable. Download it again." }
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+        val send = Intent(Intent.ACTION_SEND).apply { type = mime; putExtra(Intent.EXTRA_STREAM, uri); clipData = ClipData.newRawUri("Reviewed export", uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        startActivity(Intent.createChooser(send, "Save or share this private file"))
     }
 }

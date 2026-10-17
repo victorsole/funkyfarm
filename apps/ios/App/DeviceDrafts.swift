@@ -71,8 +71,9 @@ struct PendingEditView: View {
                     if edit.path == "/regulatory/preferences", let farmID = edit.payload["farm_id"]?.text {
                         NavigationLink("Compare source-update preferences") { RegulatoryUpdatesView(initialFarmID: farmID, deviceDraft: edit) }
                     }
+                    if edit.path.hasPrefix("/reports/") { let parts = edit.path.split(separator: "/"); if parts.count > 1, UUID(uuidString: String(parts[1])) != nil { NavigationLink("Open the current paged report review") { DetailView(collection: "reports", id: String(parts[1])) } }; Notice("Report decisions cannot be rebased from a device draft. Review the current report revision, sources and checks before a new approval.") }
                 }
-                if edit.state == .conflict && !edit.path.hasPrefix("/workflow/") && edit.path != "/regulatory/preferences" {
+                if edit.state == .conflict && !edit.path.hasPrefix("/workflow/") && !edit.path.hasPrefix("/reports/") && edit.path != "/regulatory/preferences" {
                     Section("Compare before resolving") {
                         Notice("Another device changed this record. Your draft has not overwritten it.", warning: true)
                         Button("Load current server revision") {

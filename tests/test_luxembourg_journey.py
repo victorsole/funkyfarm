@@ -10,7 +10,7 @@ from uuid import uuid4
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
-from conftest import confirm, farm_data
+from conftest import confirm, fact_data, farm_data
 
 
 def source_csv(rows, delimiter=";", extra_last_cell=None):
@@ -240,3 +240,140 @@ def test_luxembourg_original_profiles_review_partial_rows_and_immutable_country_
     for issued, exports in retained:
         for format, content in exports.items():
             assert owner.get(f"/reports/{issued['id']}/download?format={format}").content == content
+
+    # Legitimate bounded source rows can produce a report above both native
+    # transport limits. Use the real upload/review path, not injected snapshots.
+    farm = owner.create("farms", {**farm_data("Large source-table review holding"), "country": "LU", "region": None})
+    large_rows = [{**agriculture, "id_parcel": f"{100000 + index:06d}", "field_name": f"Source field {index + 1}",
+                   **{f"retained_note_{part}": f"Original row {index + 1}, note {part}. " + chr(65 + part) * 149950 for part in range(3)}}
+                  for index in range(32)]
+    imported = upload("lu-agriculture-2026", source_csv(large_rows))
+    imported = owner.post(f"/imports/{imported['id']}/profile-review", json=review(imported, ",")).json()
+    large_facts = []
+    for offset in range(0, len(large_rows), 5):
+        preview = owner.get(f"/imports/{imported['id']}/preview", params={"offset": offset, "limit": 5}).json()
+        outcome = owner.post(f"/imports/{imported['id']}/rows/review", json=batch(imported, preview)).json()
+        assert outcome["failed_count"] == 0 and outcome["saved_count"] == len(preview["items"])
+        large_facts.extend(confirm(owner, item["record"], "Checked every original source cell, unit, period and warning.") for item in outcome["items"])
+    assert len(large_facts) == len(large_rows)
+    evidence = owner.post("/documents", expected=201, files={"file": ("selected-source.txt", b"Fictional reviewed source evidence.\n", "text/plain")}, data={"farm_id": farm["id"]}).json()
+    activity = owner.create("operations", {"farm_id": farm["id"], "title": "Recorded field visit", "type": "observation", "date": "2026-06-01", "period": "2026-06-01", "temporal_basis": "calendar_date", "review_status": "proposed"})
+    sale = owner.create("sales", {"farm_id": farm["id"], "title": "Fictional vegetable sale", "category": "produce", "date": "2026-06-01", "buyer": "Fictional local buyer", "quantity": 25, "unit": "kg", "amount": 50, "currency": "EUR", "review_status": "proposed"})
+    for kind, record in (("operations", activity), ("sales", sale)):
+        reviewed = owner.post(f"/{kind}/{record['id']}/review", json={"expected_revision": record["revision"], "decision": "confirmed", "note": "Checked this actual dated fictional ledger record; not a derived farm activity."}).json()
+        record.update(reviewed)
+    linked = confirm(owner, owner.create("facts", fact_data(farm["id"], key="reviewed_sale_reference", value="Fictional sale reference", unit=None,
+                     sources=[{"record_id": item["id"], "record_kind": kind, "revision": item["revision"]} for kind, item in (("sales", sale), ("operations", activity))])))
+    body = {"farm_id": farm["id"], "pack_id": "LU-cap-2026", "reporting_year": 2026,
+            "fact_ids": [item["id"] for item in [*large_facts, linked]], "selected_document_ids": [evidence["id"]], "operation_ids": [activity["id"]]}
+    compact = {"view": "summary"}
+    retry = {"Idempotency-Key": "large-report-" + uuid4().hex}
+    response = owner.post("/reports", expected=201, params=compact, headers=retry, json=body)
+    draft = response.json()
+    assert len(response.content) < 64 * 1024 and draft["data"]["transport_view"] == "summary"
+    assert not {"fields", "facts", "operations", "evidence"} & draft["data"]["snapshot"].keys()
+    assert "validation_sources" not in draft["data"]
+    assert owner.post("/reports", expected=201, params=compact, headers=retry, json=body).json() == draft
+    legacy = owner.post("/reports", expected=201, headers=retry, json=body)
+    assert legacy.json()["id"] == draft["id"] and "transport_view" not in legacy.json()["data"], "Changing response view must replay the same committed creation."
+    assert len(legacy.content) > 24 * 1024 * 1024, "Fixture must exceed both the old12MiB JSON and24MiB download caps."
+    retained_snapshot = legacy.json()["data"]["snapshot"]
+    metadata = owner.get(f"/reports/{draft['id']}", params={"view": "review"}).json()
+    assert len(json.dumps(metadata).encode()) < 64 * 1024
+    assert metadata["data"]["transport_view"] == "review" and metadata["data"]["can_approve"] is True
+    binding = metadata["data"]["review"]
+    assert binding["sections"] == {"fields": 33, "operations": 1, "evidence": 1, "blockers": 0, "changes": 0, "receipts": 0, "reissues": 0}
+    assert binding["page_limit"] == 5 and binding["byte_limit"] == 2 * 1024 * 1024
+
+    def page_params(binding, section, offset=0, **overrides):
+        return {"section": section, "expected_revision": binding["report_revision"], "snapshot_checksum": binding["snapshot_checksum"],
+                "check_fingerprint": binding["check_fingerprint"], "offset": offset, "limit": 5, **overrides}
+
+    def read_section(report_id, binding, section):
+        items, offset = [], 0
+        reduced_page = False
+        while True:
+            response = owner.get(f"/reports/{report_id}/review", params=page_params(binding, section, offset))
+            page = response.json()
+            assert len(response.content) <= binding["byte_limit"]
+            assert page["section"] == section and page["offset"] == offset and page["total"] == binding["sections"][section]
+            assert page["report_revision"] == binding["report_revision"] and page["snapshot_checksum"] == binding["snapshot_checksum"]
+            assert page["check_fingerprint"] == binding["check_fingerprint"]
+            assert len(page["items"]) <= 5
+            items.extend(page["items"])
+            if page["next_offset"] is None:
+                assert len(items) == page["total"]
+                break
+            assert 0 < len(page["items"]) and page["next_offset"] == offset + len(page["items"])
+            reduced_page |= len(page["items"]) < 5
+            offset = page["next_offset"]
+        return items, reduced_page
+
+    fields, reduced = read_section(draft["id"], binding, "fields")
+    assert reduced, "The byte bound must stop before five complete450KiB source rows."
+    assert fields == retained_snapshot["fields"]
+    assert [field["value"] for field in fields[:32]] == large_rows
+    assert len({field["fact_id"] for field in fields}) == 33
+    for field in fields[:32]:
+        assert field["row_schema"]["id"] == "lu-agriculture-2026" and field["row_schema"]["row_columns"] == profiles["lu-agriculture-2026"]["row_columns"]
+        assert any(source.get("import_id") == imported["id"] and source.get("sha256") == imported["data"]["sha256"] for source in field["sources"])
+    for section in ("operations", "evidence", "blockers", "changes", "receipts", "reissues"):
+        items, _ = read_section(draft["id"], binding, section)
+        if section in ("operations", "evidence"):
+            assert items == retained_snapshot[section]
+    outsider.get(f"/reports/{draft['id']}?view=review", expected=404)
+    outsider.get(f"/reports/{draft['id']}/review", params=page_params(binding, "fields"), expected=404)
+    owner.get(f"/reports/{draft['id']}/review", params=page_params(binding, "fields", expected_revision=binding["report_revision"] + 1), expected=409)
+    owner.get(f"/reports/{draft['id']}/review", params=page_params(binding, "fields", snapshot_checksum="0" * 64), expected=409)
+    owner.get(f"/reports/{draft['id']}/review", params=page_params(binding, "blockers", check_fingerprint="0" * 64), expected=409)
+    owner.get(f"/reports/{draft['id']}/review", params=page_params(binding, "fields", limit=6), expected=422)
+    approval = {"expected_revision": draft["revision"], "snapshot_checksum": binding["snapshot_checksum"], "check_fingerprint": binding["check_fingerprint"]}
+    owner.post(f"/reports/{draft['id']}/approve", params=compact, json={**approval, "check_fingerprint": "0" * 64}, expected=409)
+    approve_retry = {"Idempotency-Key": "large-approve-" + uuid4().hex}
+    issued_response = owner.post(f"/reports/{draft['id']}/approve", params=compact, json=approval, headers=approve_retry)
+    issued = issued_response.json()
+    assert len(issued_response.content) < 64 * 1024 and issued["data"]["status"] == "issued"
+    assert owner.post(f"/reports/{draft['id']}/approve", params=compact, json=approval, headers=approve_retry).json() == issued
+    for kind, record in (("facts", large_facts[0]), ("operations", activity), ("sales", sale)):
+        dependencies = owner.get(f"/{kind}/{record['id']}/reports", params=compact)
+        assert len(dependencies.content) < 64 * 1024 and {item["id"] for item in dependencies.json()["items"]} == {issued["id"]}
+        assert all(item["data"]["transport_view"] == "summary" for item in dependencies.json()["items"])
+        outsider.get(f"/{kind}/{record['id']}/reports", params=compact, expected=404)
+    summary_list = owner.get("/reports", params={**compact, "farm_id": farm["id"]})
+    assert len(summary_list.content) < 64 * 1024 and summary_list.json()["total"] == 1
+    original_hashes = {}
+    for format in ("json", "csv", "xlsx"):
+        response = owner.get(f"/reports/{issued['id']}/download", params={"format": format})
+        original_hashes[format] = sha256(response.content).hexdigest()
+        if format == "json":
+            assert len(response.content) > 24 * 1024 * 1024 and response.json()["snapshot"] == retained_snapshot
+        assert response.headers["X-Report-Snapshot-SHA256"] == binding["snapshot_checksum"]
+    pending = owner.post("/reports", expected=201, params=compact, json=body).json()
+    pending_binding = owner.get(f"/reports/{pending['id']}", params={"view": "review"}).json()["data"]["review"]
+    old_review = owner.get(f"/reports/{issued['id']}", params={"view": "review"}).json()["data"]["review"]
+    correction = owner.create("facts", {key: value for key, value in large_facts[0]["data"].items() if key not in ("reviewed_at", "reviewed_by", "review_note")} |
+                              {"supersedes_id": large_facts[0]["id"], "review_status": "proposed", "value": {**large_rows[0], "a_parcel": "126,00"}})
+    confirm(owner, correction, "Checked separate corrected observation; retained report bytes must not change.")
+    changed = owner.get(f"/reports/{issued['id']}", params={"view": "review"}).json()
+    changed_binding = changed["data"]["review"]
+    assert changed["data"]["amendment"]["needed"] and changed_binding["sections"]["changes"] > 0
+    stale_approval = owner.post(f"/reports/{pending['id']}/approve", expected=409, params=compact,
+                               json={"expected_revision": pending["revision"], "snapshot_checksum": pending_binding["snapshot_checksum"], "check_fingerprint": pending_binding["check_fingerprint"]})
+    assert stale_approval.json()["error"]["code"] == "review_checks_changed" and len(stale_approval.content) < 64 * 1024
+    blocked_approval = owner.post(f"/reports/{pending['id']}/approve", expected=409, params=compact, json={"expected_revision": pending["revision"]})
+    assert blocked_approval.json()["error"]["code"] == "approval_blocked"
+    assert blocked_approval.json()["error"]["details"]["blocker_count"] > 0 and "blockers" not in blocked_approval.json()["error"]["details"]
+    owner.get(f"/reports/{issued['id']}/review", params=page_params(old_review, "changes"), expected=409)
+    assert read_section(issued["id"], changed_binding, "changes")[0]
+    assert read_section(issued["id"], changed_binding, "fields")[0] == retained_snapshot["fields"]
+    reissue_body = {"expected_revision": issued["revision"], "snapshot_checksum": issued["data"]["checksum"]}
+    reissue_retry = {"Idempotency-Key": "large-reissue-" + uuid4().hex}
+    reissued = owner.post(f"/reports/{issued['id']}/reissue", expected=201, params=compact, headers=reissue_retry, json=reissue_body).json()
+    assert reissued["data"]["correction_of"] == issued["id"] and reissued["data"]["transport_view"] == "summary"
+    assert owner.post(f"/reports/{issued['id']}/reissue", expected=201, params=compact, headers=reissue_retry, json=reissue_body).json() == reissued
+    owner.post(f"/reports/{issued['id']}/receipts", expected=201, json={**reissue_body, "reference": "FICTIONAL-MANUAL-LARGE-REPORT", "date": "2026-10-17"})
+    final_binding = owner.get(f"/reports/{issued['id']}", params={"view": "review"}).json()["data"]["review"]
+    assert read_section(issued["id"], final_binding, "receipts")[0][0]["data"]["authority_acceptance_verified"] is False
+    assert read_section(issued["id"], final_binding, "reissues")[0][0]["id"] == reissued["id"]
+    for format, original_hash in original_hashes.items():
+        assert sha256(owner.get(f"/reports/{issued['id']}/download", params={"format": format}).content).hexdigest() == original_hash

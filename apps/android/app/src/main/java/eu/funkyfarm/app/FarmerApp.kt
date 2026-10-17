@@ -30,6 +30,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.time.LocalDate
+import java.io.File
 
 private val Green = Color(0xFF285840)
 private val Ink = Color(0xFF24312B)
@@ -37,7 +38,7 @@ private val Paper = Color(0xFFF8F6EE)
 private val Lilac = Color(0xFFE5DDF0)
 private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Documents")
 
-@Composable fun FarmerApp(model: FarmModel, chooseFiles: () -> Unit, camera: () -> Unit, assemble: () -> Unit, share: (ByteArray, String, String) -> Unit) {
+@Composable fun FarmerApp(model: FarmModel, chooseFiles: () -> Unit, camera: () -> Unit, assemble: () -> Unit, share: (ByteArray, String, String) -> Unit, shareExport: (File, String) -> Unit) {
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, onPrimary = Color.White, background = Paper, surface = Paper, onSurface = Ink, secondaryContainer = Lilac)) {
         var account by remember { mutableStateOf(false) }
         var editor by remember { mutableStateOf<Pair<String, JSONObject?>?>(null) }
@@ -64,7 +65,7 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                         val route = model.detail!!
                         val item = model.item
                         if (item == null) { Heading("Opening record"); Text("This record is loaded only after workspace authorization."); OutlinedButton(onClick = { model.open(route.first, route.second) }) { Text("Try again") } }
-                        else RecordDetail(model, route.first, item, { editor = route.first to item }, share)
+                        else RecordDetail(model, route.first, item, { editor = route.first to item }, share, shareExport)
                     } else if (model.tab == "Home") {
                         Heading("A little less to keep in your head.")
                         Text("Keep today's work together. See what needs a check before the next deadline.", style = MaterialTheme.typography.bodyLarge)
@@ -156,6 +157,7 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
             Text("Prepare a report, check the original facts, then approve the exact version you want to export.")
             Button(onClick = { reports = false; editor = "reports" to null }) { Text("Prepare a report") }
             model.records["reports"].orEmpty().forEach { report -> RecordRow(report, status(report)) { reports = false; model.open("reports", report.getString("id")) } }
+            if (model.records["reports"].orEmpty().size < (model.totals["reports"] ?: 0)) OutlinedButton(onClick = { model.loadMore("reports") }, enabled = !model.busy && !model.offline) { Text("Load more prepared reports") }
             if (model.records["reports"].isNullOrEmpty()) Text("No reports prepared yet.")
         }
         if (note) NoteEditor(model) { note = false }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -46,21 +47,31 @@ class FarmModel(val context: Context) {
     var serverVersion by mutableStateOf(0); private set
     var staged by mutableStateOf<List<JSONObject>>(emptyList()); private set
     var shared by mutableStateOf<List<JSONObject>>(emptyList()); private set
+    var exporting by mutableStateOf(false); private set
+    private var reportTransfer: ReportFileTransfer? = null
+    private var exportJob: Job? = null
     private val sending = mutableSetOf<String>()
     init {
         runCatching {
             val stored = bootstrap.json("auth.json")
-            if (stored.has("session")) activate(stored.getJSONObject("session"), stored.getString("origin"))
+            if (stored.has("session")) activate(stored.getJSONObject("session"), stored.getString("origin"), restoring = true)
             shared = intake.json("items.json").optJSONArray("items")?.objects().orEmpty()
         }.onFailure { message = "Private saved data could not be unlocked. Sign in again; no data has been sent." }
     }
     fun api() = Api(origin, session?.optString("token").orEmpty(), session?.optJSONObject("workspace")?.optString("id").orEmpty())
-    private fun activate(auth: JSONObject, endpoint: String) {
+    private fun activate(auth: JSONObject, endpoint: String, restoring: Boolean = false) {
+        cancelReportExport(); clearReportExports(incompleteOnly = restoring)
         generation++; origin = endpoint; session = auth; administration = null; sourceImports = null
         vault = PrivateStore(context, auth.getJSONObject("user").getString("id") + ":" + auth.getJSONObject("workspace").getString("id"))
         state = vault!!.json("workspace.json")
         staged = state.optJSONArray("attachments")?.objects().orEmpty()
         records = state.optJSONObject("cache")?.let { cache -> cache.keys().asSequence().associateWith { cache.optJSONArray(it)?.objects().orEmpty() } }.orEmpty()
+        records["reports"]?.let { reports ->
+            val compact = reports.map(::compactCachedReport)
+            records = records + ("reports" to compact); state.optJSONObject("cache")?.put("reports", JSONArray(compact))
+        }
+        state.optJSONArray("outbox")?.objects()?.forEach { job -> job.optJSONObject("current")?.takeIf { it.optString("kind") == "reports" }?.let { job.put("current", compactCachedReport(it)) } }
+        vault!!.save("workspace.json", state)
         totals = state.optJSONObject("totals")?.let { counts -> counts.keys().asSequence().associateWith { counts.optInt(it) } }.orEmpty()
         bootstrap.save("auth.json", obj("session" to auth, "origin" to endpoint))
         detail = null; item = null; tab = "Home"; extras = state.optJSONObject("workflow_home")?.let { mapOf("home" to it) }.orEmpty(); privateUnavailable = emptySet(); version++
@@ -85,6 +96,7 @@ class FarmModel(val context: Context) {
         activate(response, endpoint); message = "Signed in to your private workspace."; refresh()
     }
     fun logout() {
+        cancelReportExport()
         val client = api(); val old = vault; administration = null; sourceImports = null
         generation++; session = null; vault = null; state = JSONObject(); records = emptyMap(); totals = emptyMap(); staged = emptyList(); packs = emptyList(); extras = emptyMap(); privateUnavailable = emptySet(); item = null; detail = null; sending.clear(); busy = false; offline = false
         bootstrap.purge(); old?.purge(); intake.purge(); shared = emptyList()
@@ -168,6 +180,7 @@ class FarmModel(val context: Context) {
             listOf("rows", "row", "record", "farm").forEach { key -> value.optJSONObject(key)?.let(::checkWorkspace) }
         }
         checkWorkspace(response)
+        if (method == "GET" && path.startsWith("/reports/")) offline = false
         return response
     }
     fun saveImportFile(key: String, bytes: ByteArray, filename: String, owner: JSONObject): JSONObject {
@@ -262,6 +275,7 @@ class FarmModel(val context: Context) {
                 serverVersion++
                 message = "Synchronized with your workspace."; refresh(); detail?.let { open(it.first, it.second) }
                 if (job.optString("path") in listOf("/workflow/capture", "/workflow/answer")) response.optJSONObject("record")?.let { saved -> open(saved.getString("kind"), saved.getString("id")) }
+                if (response.optString("kind") == "reports") open("reports", response.getString("id"))
                 if (job.optString("path") == "/workflow/onboard") { detail = null; tab = "Home" }
             } catch (error: Throwable) {
                 if (generation != expected) return@action
@@ -283,6 +297,8 @@ class FarmModel(val context: Context) {
                 path == "/regulatory/preferences" -> client.request("/regulatory/updates?farm_id=${job.getJSONObject("body").getString("farm_id")}").getJSONObject("preferences")
                 path.startsWith("/compliance/farms/") -> client.request(path.substringBefore("/checklist") + "?year=${job.getJSONObject("body").optInt("year", java.time.LocalDate.now().year)}")
                 path == "/workflow/capture" || path == "/workflow/answer" -> error("Check the saved details again in their original form. This action will not be rebased automatically.")
+                path.startsWith("/reports/") -> client.request("/reports/" + path.removePrefix("/reports/").substringBefore('/').substringBefore('?'))
+                path == "/reports" -> error("Reload the report list to compare saved previews. Report creation is not rebased automatically.")
                 else -> client.request(path.substringBefore("/review").substringBefore("/approve").substringBefore("/reply").substringBefore("/close"))
             }
         }
@@ -339,10 +355,44 @@ class FarmModel(val context: Context) {
         staged = staged.filterNot { it.optString("id") == part.optString("id") }; state.put("attachments", JSONArray(staged)); persist(); retry(id)
     }
     fun notify(value: String) { message = value }
-    fun export(record: JSONObject, format: String, completed: (ByteArray) -> Unit) = action {
-        val expected = generation; val client = api()
-        val bytes = withContext(Dispatchers.IO) { client.download("/reports/${record.getString("id")}/download?format=$format") }
-        if (generation == expected) completed(bytes)
+    private fun clearReportExports(incompleteOnly: Boolean = false) {
+        val directory = File(context.cacheDir, "exports").canonicalFile
+        directory.listFiles()?.filter { it.isFile && it.canonicalFile.parentFile == directory && (!incompleteOnly || it.name.endsWith(".partial")) }?.forEach { it.delete() }
+    }
+    fun cancelReportExport(tellUser: Boolean = false) {
+        reportTransfer?.cancel(); exportJob?.cancel(); reportTransfer = null; exportJob = null; exporting = false
+        if (tellUser) message = "Export cancelled. Incomplete private file removed."
+    }
+    fun export(record: JSONObject, format: String, completed: (File) -> Unit) {
+        if (exporting) { message = "Finish or cancel the current export first."; return }
+        try {
+            require(format in listOf("pdf", "csv", "json", "xlsx"))
+            require(session != null && record.getString("workspace_id") == session!!.getJSONObject("workspace").getString("id"))
+            require(record.data().optString("status") == "issued") { "Only an approved report can be exported." }
+            val expected = generation; val client = api()
+            val directory = File(context.cacheDir, "exports").apply { mkdirs() }
+            clearReportExports()
+            val budget = minOf(REPORT_EXPORT_BUDGET, directory.usableSpace - REPORT_DISK_RESERVE)
+            if (budget <= 0) { message = "Free private device storage before exporting; 32 MiB is kept available."; return }
+            val file = File(directory, "farm-report-${UUID.randomUUID()}.$format")
+            val transfer = ReportFileTransfer(File(directory, file.name + ".partial"), budget)
+            reportTransfer = transfer; exporting = true
+            exportJob = scope.launch {
+                var shared = false
+                try {
+                    withContext(Dispatchers.IO) { client.streamReport("/reports/${record.getString("id")}/download?format=$format", transfer) }
+                    if (generation != expected || session == null) throw CancellationException()
+                    transfer.check()
+                    require(transfer.file.renameTo(file)) { "The completed export could not be prepared for sharing. Free storage and retry." }
+                    completed(file); shared = true
+                } catch (error: CancellationException) { /* The cancellation owner removes this private file. */ }
+                catch (error: Throwable) { if (generation == expected && !transfer.cancelled) message = error.message ?: "The export could not finish. No incomplete file was shared." }
+                finally {
+                    if (!shared) { transfer.file.delete(); file.delete() }
+                    if (reportTransfer === transfer) { reportTransfer = null; exportJob = null; exporting = false }
+                }
+            }
+        } catch (error: Throwable) { cancelReportExport(); message = error.message ?: "The private export could not be prepared. No file was shared." }
     }
     fun original(record: JSONObject, completed: (ByteArray) -> Unit) = action {
         val expected = generation; val client = api()

@@ -61,6 +61,21 @@ struct PrivateStore {
         return name
     }
     func attachment(_ name: String) throws -> Data { try Data(contentsOf: safeURL(name)) }
+    func exportURL(suffix: String) throws -> URL {
+        let directory = self.directory.appendingPathComponent("Exports", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
+        var root = directory; var values = URLResourceValues(); values.isExcludedFromBackup = true; try root.setResourceValues(values)
+        let safe = suffix.filter { $0.isLetter || $0.isNumber }.prefix(10)
+        return directory.appendingPathComponent(UUID().uuidString + (safe.isEmpty ? "" : "." + safe))
+    }
+    func clearOldExports() throws {
+        let root = directory.appendingPathComponent("Exports", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey]) {
+            guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true, UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil else { continue }
+            try FileManager.default.removeItem(at: file)
+        }
+    }
     func safeURL(_ name: String) throws -> URL {
         guard name == URL(fileURLWithPath: name).lastPathComponent, !name.isEmpty else { throw ServiceError(status: 0, message: "Invalid private file reference.") }
         return directory.appendingPathComponent(name)

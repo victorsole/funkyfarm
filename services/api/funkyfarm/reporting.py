@@ -15,13 +15,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .db import fetch_record, idempotent, insert_record, transaction, update_record
+from .db import fetch_record, idempotent, insert_record, json_safe, transaction, update_record
 from .security import Session, require_roles, require_session
 from .models import ApiError
 from .records import matches_reporting_period, physical_identity as _physical_identity
 from .reconciliation import selected_fact_ids, reconciliation_for_farm
 from .report_render import csv_bytes, literal, pdf_bytes, readable, xlsx_bytes
 from .parcel_formats import row_issues
+from .report_views import BYTE_LIMIT, PAGE_LIMIT, SECTIONS, bounded_page, compact_record, summary_data_sql
 
 
 router = APIRouter(tags=["reporting"])
@@ -222,6 +223,7 @@ class CreateReport(BaseModel):
 class ApproveReport(BaseModel):
     expected_revision: int = Field(ge=1)
     snapshot_checksum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    check_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class ReissueReport(ApproveReport):
@@ -602,20 +604,89 @@ def _impact(conn, report, blockers=None):
     return {"needed": bool(changes), "changes": changes, "message": "Records used by this issued report have changed. Review the changes and prepare an amendment; the issued version stays intact." if changes else "The records used by this issued version have not changed.", "next_action": "prepare_amendment" if changes else None}
 
 
+def _summary_records(conn, where, params, *, limit=None, offset=0, newest=False):
+    order = "created_at DESC,id DESC" if newest else "created_at,id"
+    suffix = " LIMIT %s OFFSET %s" if limit is not None else ""
+    arguments = [*params, limit, offset] if limit is not None else params
+    rows = conn.execute("SELECT id,kind,workspace_id,revision," + summary_data_sql() + " AS data,created_at,updated_at "
+                        f"FROM records WHERE {where} ORDER BY {order}{suffix}", arguments).fetchall()
+    return [compact_record(row) for row in json_safe(rows)]
+
+
+def _report_history(conn, report):
+    """Read only this report's receipts and small correction identities."""
+    report_id = str(report["id"])
+    receipts = conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records "
+                            "WHERE kind='report_receipts' AND deleted_at IS NULL AND data->>'report_id'=%s "
+                            "ORDER BY created_at,id", (report_id,)).fetchall()
+    reissues = conn.execute("SELECT id,data->>'status' AS status FROM records WHERE kind='reports' "
+                           "AND deleted_at IS NULL AND data->>'correction_of'=%s ORDER BY created_at,id",
+                           (report_id,)).fetchall()
+    return json_safe(receipts), json_safe(reissues)
+
+
+def _review_state(conn, report, session, blockers=None):
+    blockers = _blockers(conn, report["data"]) if blockers is None else blockers
+    impact = _impact(conn, report, blockers)
+    receipts, reissues = _report_history(conn, report)
+    issued = report["data"]["status"] == "issued"
+    can_approve = False
+    if report["data"]["status"] == "draft" and not blockers and session.role in ("owner", "adviser"):
+        access = conn.execute("SELECT record_access(id,kind,data,true) AS allowed FROM records "
+                              "WHERE kind='reports' AND id=%s AND deleted_at IS NULL", (str(report["id"]),)).fetchone()
+        can_approve = bool(access and access["allowed"])
+    reason = "Approval is recorded for this retained version." if issued else (
+        "Resolve the outstanding report issues." if blockers else (
+            None if can_approve else "Only an owner or an adviser with review permission can approve."))
+    snapshot = report["data"]["snapshot"]
+    sections = {key: snapshot.get(key, []) for key in ("fields", "operations", "evidence")}
+    sections.update(blockers=blockers, changes=impact["changes"], receipts=receipts, reissues=reissues)
+    # No timestamps/random tokens: the same evaluated content has the same
+    # fingerprint, including when checked again under the approval source locks.
+    fingerprint = digest({"report_id": str(report["id"]), "report_revision": report["revision"],
+                          "snapshot_checksum": report["data"]["checksum"], "blockers": blockers,
+                          "amendment": impact, "receipts": receipts, "reissues": reissues,
+                          "can_approve": can_approve, "approval_blocked_reason": reason})
+    return {"sections": sections, "check_fingerprint": fingerprint, "can_approve": can_approve,
+            "approval_blocked_reason": reason, "supported_formats": ["pdf", "csv", "json", "xlsx"] if issued else [],
+            "amendment": {key: impact.get(key) for key in ("needed", "message", "next_action")}}
+
+
+def _review_record(conn, report, session):
+    current = _review_state(conn, report, session)
+    result = compact_record(report, "review")
+    result["data"].update({key: current[key] for key in ("can_approve", "approval_blocked_reason", "supported_formats", "amendment")})
+    result["data"]["review"] = {"report_revision": report["revision"], "snapshot_checksum": report["data"]["checksum"],
+                                "check_fingerprint": current["check_fingerprint"],
+                                "sections": {key: len(current["sections"][key]) for key in SECTIONS},
+                                "page_limit": PAGE_LIMIT, "byte_limit": BYTE_LIMIT}
+    return result
+
+
+def _approval_payload(body):
+    # Preserve hashes for keys created before this additive optional field.
+    return body.model_dump(mode="json", exclude={"check_fingerprint"} if body.check_fingerprint is None else set())
+
+
 @router.post("/reports", status_code=201)
-def create_report(body: CreateReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+def create_report(body: CreateReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
-        return idempotent(conn, idempotency_key, "report-create", body.model_dump(mode="json"), lambda: insert_record(conn, "reports", _prepare(conn, body, session)))
+        report = idempotent(conn, idempotency_key, "report-create", body.model_dump(mode="json"), lambda: insert_record(conn, "reports", _prepare(conn, body, session)))
+        return compact_record(report) if view == "summary" else report
 
 
 @router.get("/reports")
-def list_reports(farm_id: UUID | None = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
+def list_reports(farm_id: UUID | None = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), session: Session = Depends(require_session), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
         params = ["reports"]
         where = "kind = %s"
         if farm_id is not None:
             where += " AND data->>'farm_id' = %s"
             params.append(str(farm_id))
+        if view == "summary":
+            records = _summary_records(conn, where + " AND deleted_at IS NULL", params, limit=limit, offset=offset, newest=True)
+            total_row = conn.execute(f"SELECT count(*) AS total FROM records WHERE {where} AND deleted_at IS NULL", params).fetchone()
+            return {"items": records, "total": total_row["total"], "limit": limit, "offset": offset}
         total_row = conn.execute(f"SELECT count(*) AS total FROM records WHERE {where}", params).fetchone()
         rows = conn.execute(f"SELECT id FROM records WHERE {where} ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s", [*params, limit, offset]).fetchall()
         records = [_get(conn, "reports", row["id"]) for row in rows]
@@ -625,18 +696,41 @@ def list_reports(farm_id: UUID | None = None, limit: int = Query(50, ge=1, le=20
 
 
 @router.get("/reports/{report_id}")
-def report_detail(report_id: UUID, session: Session = Depends(require_session)):
+def report_detail(report_id: UUID, session: Session = Depends(require_session), view: Literal["review"] | None = None):
     with transaction(session) as conn:
         report = _get(conn, "reports", report_id)
+        if view == "review":
+            return _review_record(conn, report, session)
         result = deepcopy(report)
         result["data"]["current_blockers"] = _blockers(conn, report["data"])
         result["data"]["amendment"] = _impact(conn, report, result["data"]["current_blockers"])
         result["data"]["can_approve"] = session.role in ("owner", "adviser") and report["data"]["status"] == "draft" and not result["data"]["current_blockers"]
         result["data"]["supported_formats"] = ["pdf", "csv", "json", "xlsx"] if report["data"]["status"] == "issued" else []
         result["data"]["approval_blocked_reason"] = "Approval is recorded for this retained version." if report["data"]["status"] == "issued" else ("Resolve the outstanding report issues." if result["data"]["current_blockers"] else ("Only an owner or adviser can approve." if session.role not in ("owner", "adviser") else None))
-        result["data"]["receipts"] = [item for item in _records(conn, "report_receipts", report["data"]["farm_id"]) if item["data"].get("report_id") == str(report_id)]
-        result["data"]["reissues"] = [{"id": item["id"], "status": item["data"]["status"]} for item in _records(conn, "reports", report["data"]["farm_id"]) if item["data"].get("correction_of") == str(report_id)]
+        result["data"]["receipts"], result["data"]["reissues"] = _report_history(conn, report)
         return result
+
+
+@router.get("/reports/{report_id}/review")
+def report_review_page(report_id: UUID, section: Literal["fields", "operations", "evidence", "blockers", "changes", "receipts", "reissues"],
+                       expected_revision: int = Query(ge=1), snapshot_checksum: str = Query(pattern=r"^[a-f0-9]{64}$"),
+                       check_fingerprint: str = Query(pattern=r"^[a-f0-9]{64}$"), offset: int = Query(0, ge=0),
+                       limit: int = Query(PAGE_LIMIT, ge=1, le=PAGE_LIMIT), session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        report = _get(conn, "reports", report_id)
+        if report["revision"] != expected_revision:
+            fail("revision_conflict", "The report changed. Reload its review before continuing.", 409)
+        if report["data"]["checksum"] != snapshot_checksum:
+            fail("snapshot_changed", "The report preview changed. Reload its review before continuing.", 409)
+        if section in ("fields", "operations", "evidence"):
+            items = report["data"]["snapshot"].get(section, [])
+        else:
+            current = _review_state(conn, report, session)
+            if current["check_fingerprint"] != check_fingerprint:
+                fail("review_checks_changed", "The report checks changed. Reload the review before continuing.", 409)
+            items = current["sections"][section]
+        content = bounded_page(items, section=section, report=report, fingerprint=check_fingerprint, offset=offset, limit=limit)
+    return Response(content, media_type="application/json", headers={"Cache-Control": "private, no-store"})
 
 
 def _approver(session):
@@ -674,6 +768,10 @@ def _approve_in_transaction(conn, report_id, body, session):
     # Re-read blockers only after these locks; they remain held through issuance.
     conn.execute("SELECT id FROM records WHERE id = ANY(%s::uuid[]) ORDER BY id FOR SHARE", (sorted(source_ids),)).fetchall()
     blockers = _blockers(conn, report["data"])
+    if body.check_fingerprint is not None:
+        current = _review_state(conn, report, session, blockers)
+        if current["check_fingerprint"] != body.check_fingerprint:
+            fail("review_checks_changed", "The report checks changed. Reload and review this version before approving.", 409)
     if blockers:
         fail("approval_blocked", "Review the outstanding report issues before approval.", 409, blockers=blockers)
     data = deepcopy(report["data"])
@@ -688,37 +786,47 @@ def _approve_in_transaction(conn, report_id, body, session):
 
 
 @router.post("/reports/{report_id}/approve")
-def approve_report(report_id: UUID, body: ApproveReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+def approve_report(report_id: UUID, body: ApproveReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), view: Literal["summary"] | None = None):
     _approver(session)
     with transaction(session) as conn:
-        return idempotent(conn, idempotency_key, "report-approve:" + str(report_id), body.model_dump(mode="json"), lambda: _approve_in_transaction(conn, report_id, body, session))
+        try:
+            report = idempotent(conn, idempotency_key, "report-approve:" + str(report_id), _approval_payload(body), lambda: _approve_in_transaction(conn, report_id, body, session))
+        except ApiError as error:
+            if view == "summary" and error.code == "approval_blocked":
+                fail(error.code, error.message, error.status, blocker_count=len(error.details.get("blockers", [])),
+                     review_url=f"/reports/{report_id}?view=review")
+            raise
+        return compact_record(report) if view == "summary" else report
 
 
 @router.post("/reports/{report_id}/reissue", status_code=201)
-def reissue_report(report_id: UUID, body: ReissueReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+def reissue_report(report_id: UUID, body: ReissueReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
-        old = _get(conn, "reports", report_id)
-        _check_snapshot_binding(old, body)
-        if old["revision"] != body.expected_revision:
-            fail("revision_conflict", "The report changed. Refresh before preparing a correction.", 409)
-        data = old["data"]
-        selected = body.selected_document_ids if body.selected_document_ids is not None else [item["id"] for item in data["snapshot"]["evidence"]]
-        operation_ids = body.operation_ids if body.operation_ids is not None else [item["id"] for item in data["snapshot"].get("operations", [])]
-        fact_ids = body.fact_ids
-        if fact_ids is None:
-            prior_keys = {(fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) for fact in data["snapshot"]["facts"]}
-            selectors = _field_specs(get_pack(data["pack_id"]))
-            current_request = _get(conn, "requests", data["request_id"]) if data.get("request_id") else None
-            requirements = [{"key": item} if isinstance(item, str) else item for item in (current_request["data"].get("requirements", []) if current_request else [])]
-            selectors.extend(item for item in requirements if isinstance(item, dict) and item.get("type") != "evidence")
-            excluded = selected_fact_ids(conn, data["farm_id"])["excluded_fact_ids"]
-            fact_ids = [fact["id"] for fact in _records(conn, "facts", data["farm_id"]) if str(fact["id"]) not in excluded and fact["data"].get("review_status") != "rejected" and _same_period(fact, data["reporting_year"]) and (any(_matches_requirement(fact, selector, data["reporting_year"]) for selector in selectors) or (fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) in prior_keys)]
-        create = CreateReport(farm_id=data["farm_id"], request_id=data.get("request_id"), pack_id=data["pack_id"], reporting_year=data["reporting_year"], fact_ids=fact_ids, selected_document_ids=selected, operation_ids=operation_ids)
-        return idempotent(conn, idempotency_key, "report-reissue:" + str(report_id), body.model_dump(mode="json"), lambda: insert_record(conn, "reports", _prepare(conn, create, session, correction_of=str(report_id))))
+        def perform():
+            old = _get(conn, "reports", report_id)
+            _check_snapshot_binding(old, body)
+            if old["revision"] != body.expected_revision:
+                fail("revision_conflict", "The report changed. Refresh before preparing a correction.", 409)
+            data = old["data"]
+            selected = body.selected_document_ids if body.selected_document_ids is not None else [item["id"] for item in data["snapshot"]["evidence"]]
+            operation_ids = body.operation_ids if body.operation_ids is not None else [item["id"] for item in data["snapshot"].get("operations", [])]
+            fact_ids = body.fact_ids
+            if fact_ids is None:
+                prior_keys = {(fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) for fact in data["snapshot"]["facts"]}
+                selectors = _field_specs(get_pack(data["pack_id"]))
+                current_request = _get(conn, "requests", data["request_id"]) if data.get("request_id") else None
+                requirements = [{"key": item} if isinstance(item, str) else item for item in (current_request["data"].get("requirements", []) if current_request else [])]
+                selectors.extend(item for item in requirements if isinstance(item, dict) and item.get("type") != "evidence")
+                excluded = selected_fact_ids(conn, data["farm_id"])["excluded_fact_ids"]
+                fact_ids = [fact["id"] for fact in _records(conn, "facts", data["farm_id"]) if str(fact["id"]) not in excluded and fact["data"].get("review_status") != "rejected" and _same_period(fact, data["reporting_year"]) and (any(_matches_requirement(fact, selector, data["reporting_year"]) for selector in selectors) or (fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) in prior_keys)]
+            create = CreateReport(farm_id=data["farm_id"], request_id=data.get("request_id"), pack_id=data["pack_id"], reporting_year=data["reporting_year"], fact_ids=fact_ids, selected_document_ids=selected, operation_ids=operation_ids)
+            return insert_record(conn, "reports", _prepare(conn, create, session, correction_of=str(report_id)))
+        report = idempotent(conn, idempotency_key, "report-reissue:" + str(report_id), _approval_payload(body), perform)
+        return compact_record(report) if view == "summary" else report
 
 
 @router.get("/facts/{fact_id}/reports")
-def fact_reports(fact_id: UUID, session: Session = Depends(require_session)):
+def fact_reports(fact_id: UUID, session: Session = Depends(require_session), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
         fact = _get(conn, "facts", fact_id)
         lineage = {str(fact_id)}
@@ -727,24 +835,37 @@ def fact_reports(fact_id: UUID, session: Session = Depends(require_session)):
             lineage.add(str(predecessor))
             prior = fetch_record(conn, "facts", str(predecessor))
             predecessor = prior["data"].get("supersedes_id") if prior else None
-        records = [report for report in _records(conn, "reports", fact["data"].get("farm_id")) if any(value["id"] in lineage for value in report["data"]["snapshot"]["facts"])]
+        if view == "summary":
+            records = _summary_records(conn, "kind='reports' AND deleted_at IS NULL AND data->>'farm_id'=%s "
+                                       "AND EXISTS (SELECT 1 FROM jsonb_array_elements(data#>'{snapshot,facts}') AS retained_fact(value) "
+                                       "WHERE retained_fact.value->>'id'=ANY(%s::text[]))", (fact["data"].get("farm_id"), sorted(lineage)))
+        else:
+            records = [report for report in _records(conn, "reports", fact["data"].get("farm_id")) if any(value["id"] in lineage for value in report["data"]["snapshot"]["facts"])]
         return {"items": records, "total": len(records), "limit": len(records), "offset": 0}
 
 
 @router.get("/operations/{operation_id}/reports")
-def operation_reports(operation_id: UUID, session: Session = Depends(require_session)):
+def operation_reports(operation_id: UUID, session: Session = Depends(require_session), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
         operation = _get(conn, "operations", operation_id)
-        records = [report for report in _records(conn, "reports", operation["data"].get("farm_id")) if str(operation_id) in report["data"].get("validation_sources", {}).get("operations", {})]
+        if view == "summary":
+            records = _summary_records(conn, "kind='reports' AND deleted_at IS NULL AND data->>'farm_id'=%s "
+                                       "AND (data#>'{validation_sources,operations}') ? %s", (operation["data"].get("farm_id"), str(operation_id)))
+        else:
+            records = [report for report in _records(conn, "reports", operation["data"].get("farm_id")) if str(operation_id) in report["data"].get("validation_sources", {}).get("operations", {})]
         return {"items": records, "total": len(records), "limit": len(records), "offset": 0}
 
 
 @router.get("/sales/{sale_id}/reports")
-def sale_reports(sale_id: UUID, session: Session = Depends(require_session)):
+def sale_reports(sale_id: UUID, session: Session = Depends(require_session), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
         sale = _get(conn, "sales", sale_id)
-        records = [report for report in _records(conn, "reports", sale["data"]["farm_id"])
-                   if report["data"].get("validation_sources", {}).get("records", {}).get(str(sale_id), {}).get("kind") == "sales"]
+        if view == "summary":
+            records = _summary_records(conn, "kind='reports' AND deleted_at IS NULL AND data->>'farm_id'=%s "
+                                       "AND data#>>ARRAY['validation_sources','records',%s,'kind']='sales'", (sale["data"]["farm_id"], str(sale_id)))
+        else:
+            records = [report for report in _records(conn, "reports", sale["data"]["farm_id"])
+                       if report["data"].get("validation_sources", {}).get("records", {}).get(str(sale_id), {}).get("kind") == "sales"]
         return {"items": records, "total": len(records), "limit": len(records), "offset": 0}
 
 
@@ -752,7 +873,7 @@ def sale_reports(sale_id: UUID, session: Session = Depends(require_session)):
 def record_receipt(report_id: UUID, body: ReceiptInput, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     _approver(session)
     with transaction(session) as conn:
-        return idempotent(conn, idempotency_key, "report-receipt:" + str(report_id), body.model_dump(mode="json"), lambda: _receipt_in_transaction(conn, report_id, body, session))
+        return idempotent(conn, idempotency_key, "report-receipt:" + str(report_id), _approval_payload(body), lambda: _receipt_in_transaction(conn, report_id, body, session))
 
 
 def _receipt_in_transaction(conn, report_id, body, session):

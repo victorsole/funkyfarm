@@ -263,7 +263,17 @@ struct ReportComposer: View {
             Section("Choose confirmed facts") {
                 let facts = store.records("facts").filter { $0.value("farm_id") == farm && $0.state == "confirmed" }
                 if facts.isEmpty { Notice("No confirmed facts are available for this farm. Review proposed facts first.", warning: true) }
-                ForEach(facts) { item in Toggle(isOn: membership(item.id, set: $selectedFacts)) { VStack(alignment: .leading) { Text(item.title); Text("\(item.data["value"]?.text ?? "Unknown") · \(item.value("period")) · revision \(item.revision)").font(.caption) } } }
+                ForEach(facts) { item in
+                    VStack(alignment: .leading) {
+                        Toggle(isOn: membership(item.id, set: $selectedFacts)) {
+                            VStack(alignment: .leading) {
+                            Text(item.title)
+                            Text("\(factSummary(item.data["value"])) · \(item.value("period")) · revision \(item.revision)").font(.caption)
+                            }
+                        }
+                        NavigationLink("Review complete source fact") { DetailView(collection: "facts", id: item.id) }
+                    }
+                }
             }
             Section("Selected evidence only") {
                 ForEach(store.records("documents").filter { $0.value("farm_id") == farm }) { item in Toggle(item.title, isOn: membership(item.id, set: $selectedDocuments)) }
@@ -288,6 +298,15 @@ struct ReportComposer: View {
     private func membership(_ id: String, set: Binding<Set<String>>) -> Binding<Bool> {
         Binding(get: { set.wrappedValue.contains(id) }, set: { selected in if selected { set.wrappedValue.insert(id) } else { set.wrappedValue.remove(id) } })
     }
+    private func factSummary(_ value: JSONValue?) -> String {
+        guard let value else { return "Unknown" }
+        switch value {
+        case .object(let cells): return "Retained source row: \(cells.count) columns"
+        case .array(let values): return "Retained collection: \(values.count) items"
+        case .string(let text): return text.count > 160 ? "Long source text — open the complete fact" : text
+        default: return value.text
+        }
+    }
     private func create() {
         working = true; error = nil
         Task {
@@ -295,7 +314,7 @@ struct ReportComposer: View {
                 var body: [String: JSONValue] = ["farm_id": .string(farm), "pack_id": .string(pack), "reporting_year": .number(Double(year)), "fact_ids": .array(selectedFacts.sorted().map(JSONValue.string)), "selected_document_ids": .array(selectedDocuments.sorted().map(JSONValue.string))]
                 if let request { body["request_id"] = .string(request.id) }
                 if let reissue {
-                    body = ["expected_revision": .number(Double(reissue.revision)), "fact_ids": body["fact_ids"]!, "selected_document_ids": body["selected_document_ids"]!]
+                    body = ["expected_revision": .number(Double(reissue.revision)), "snapshot_checksum": .string(reissue.value("checksum")), "fact_ids": body["fact_ids"]!, "selected_document_ids": body["selected_document_ids"]!]
                     try await store.mutate("/reports/\(reissue.id)/reissue", body: body, idempotency: submissionKey.uuidString)
                 } else { try await store.mutate("/reports", body: body, idempotency: submissionKey.uuidString) }
                 dismiss()

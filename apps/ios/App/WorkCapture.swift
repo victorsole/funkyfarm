@@ -60,19 +60,25 @@ struct WorkRecordDetail: View {
                     Button("Confirm checked record") { decision = "confirmed"; confirm = true }.buttonStyle(.borderedProminent).disabled(note.isEmpty || working || !store.sessionVerified)
                     Button("Reject proposal", role: .destructive) { decision = "rejected"; confirm = true }.disabled(note.isEmpty || working || !store.sessionVerified)
                 }
-                if collection == "sales" {
-                    Button("Check reports using this sale") {
+                if ["sales", "operations"].contains(collection) {
+                    Button("Check reports using this record") {
                         working = true; problem = nil
                         Task {
-                            do { let page = try await store.scopedValue("/sales/\(current.id)/reports"); affectedReports = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(page.object["items"] ?? .array([]))) }
+                            do {
+                                let page = try await store.scopedValue("/\(collection)/\(current.id)/reports")
+                                guard case .array(let items)? = page.object["items"] else { throw ServiceError(status: 0, message: "Dependent report summaries were not returned.") }
+                                affectedReports = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(JSONValue.array(items))).map(ReportTransport.compact)
+                            }
                             catch { problem = error.localizedDescription }
                             working = false
                         }
                     }.disabled(working || !store.sessionVerified)
                     if let affectedReports {
-                        if affectedReports.isEmpty { Text("The service found no reports linked to this sale.").font(.footnote).foregroundStyle(.secondary) }
+                        if affectedReports.isEmpty { Text("The service found no reports linked to this record.").font(.footnote).foregroundStyle(.secondary) }
                         ForEach(affectedReports) { report in NavigationLink { DetailView(collection: "reports", id: report.id) } label: { RecordRow(item: report) } }
                     }
+                }
+                if collection == "sales" {
                     Button("View recorded sale history") {
                         working = true; problem = nil
                         Task { do { history = try await store.scopedValue("/sales/\(current.id)/history") } catch { problem = error.localizedDescription }; working = false }

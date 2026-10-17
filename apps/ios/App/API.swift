@@ -13,7 +13,7 @@ struct FarmAPI {
     let baseURL: URL
     let token: String?
     let workspaceID: String?
-    // Ephemeral storage prevents account responses and credentials entering shared URL caches.
+    // Preserve established non-report response behavior; report JSON has its own bounded receiver.
     private static let transport: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
@@ -34,7 +34,7 @@ struct FarmAPI {
         return URL(string: url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")))!
     }
     func send(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil, idempotency: String? = nil) async throws -> Data {
-        var request = URLRequest(url: endpoint(path))
+        var request = URLRequest(url: endpoint(ReportTransport.path(path, method: method)))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
@@ -42,6 +42,14 @@ struct FarmAPI {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         return try await perform(request, idempotency: idempotency)
+    }
+    func fileRequest(_ path: String) -> URLRequest {
+        var request = URLRequest(url: endpoint(path))
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let workspaceID { request.setValue(workspaceID, forHTTPHeaderField: "X-Workspace-ID") }
+        return request
     }
     func upload(_ edit: PendingEdit, bytes: Data) async throws -> Data {
         var fields: [String: String] = [:]
@@ -73,7 +81,14 @@ struct FarmAPI {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let workspaceID { request.setValue(workspaceID, forHTTPHeaderField: "X-Workspace-ID") }
         if let idempotency { request.setValue(idempotency, forHTTPHeaderField: "Idempotency-Key") }
-        let (bytes, response) = try await Self.transport.data(for: request)
+        let path = request.url?.path ?? ""
+        let reportJSON = path.contains("/reports") && !path.hasSuffix("/download")
+        let result: (Data, URLResponse)
+        if reportJSON {
+            let bounded = try await BoundedJSONTransfer(request: request, limit: ReportTransport.pageBytes).run()
+            result = (bounded.0, bounded.1)
+        } else { result = try await Self.transport.data(for: request) }
+        let (bytes, response) = result
         guard let http = response as? HTTPURLResponse else { throw ServiceError(status: 0, message: "The service returned no HTTP response.") }
         guard (200..<300).contains(http.statusCode) else {
             let json = (try? JSONDecoder().decode(JSONValue.self, from: bytes))?.object ?? [:]

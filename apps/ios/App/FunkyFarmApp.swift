@@ -370,7 +370,7 @@ struct FactReview: View {
     @State private var error: String?
     @State private var confirm = false
     @State private var correctionSource: RecordItem?
-    @State private var dependencies: JSONValue?
+    @State private var dependencies: [RecordItem]?
     private var profileImportID: String? {
         guard (item.data["sources"]?.array ?? []).contains(where: { $0.object["kind"] == .string("authority_csv_profile") }) else { return nil }
         return (item.data["sources"]?.array ?? []).compactMap { $0.object["import_id"]?.text }.first
@@ -421,14 +421,21 @@ struct FactReview: View {
                 if let error { Notice(error, warning: true) }
             }
             Section("Outputs that use this fact") {
-                if let dependencies { Text(dependencies.text).font(.callout).textSelection(.enabled) }
+                if let dependencies {
+                    if dependencies.isEmpty { Text("The service found no dependent reports.") }
+                    ForEach(dependencies) { report in NavigationLink { DetailView(collection: "reports", id: report.id) } label: { RecordRow(item: report) } }
+                }
                 else { Text("Load the dependent reports before making a correction.").foregroundStyle(.secondary) }
                 Button("Check affected reports") {
                     Task {
-                        do { guard let api = store.api else { return }; dependencies = try JSONDecoder().decode(JSONValue.self, from: await api.send("/facts/\(item.id)/reports")) }
+                        do {
+                            let page = try await store.scopedValue("/facts/\(item.id)/reports")
+                            guard case .array(let items)? = page.object["items"] else { throw ServiceError(status: 0, message: "Dependent report summaries were not returned.") }
+                            dependencies = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(JSONValue.array(items))).map(ReportTransport.compact)
+                        }
                         catch { self.error = error.localizedDescription }
                     }
-                }
+                }.disabled(!store.sessionVerified)
                 Notice("Confirmed revisions and issued report snapshots remain in history. A correction needs a new reviewed fact and an explicit report reissue.")
             }
             Section { RecordMetadata(item: item) }
