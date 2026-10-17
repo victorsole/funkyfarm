@@ -28,6 +28,14 @@ function object(value: unknown): Record<string, unknown> | null {
 function text(value: unknown, maximum = 200): string | null {
   return typeof value === 'string' && value.length > 0 && value.length <= maximum ? value : null;
 }
+function sourceValue(value: unknown, depth = 0): string {
+  if (value === null || value === undefined) return 'Not supplied';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value !== 'object') return String(value) || 'Left blank';
+  if (depth >= 3) return 'Further detail retained in the original source';
+  if (Array.isArray(value)) return value.map(item => sourceValue(item, depth + 1)).join('; ') || 'None supplied';
+  return Object.entries(value).map(([key, item]) => `${key.replaceAll('_', ' ')}: ${sourceValue(item, depth + 1)}`).join('; ');
+}
 function sourceYear(value: unknown): number | null {
   const year = typeof value === 'number' ? value : typeof value === 'string' && /^\d{4}$/.test(value) ? Number(value) : NaN;
   return Number.isInteger(year) && year >= 1900 && year <= 2200 ? year : null;
@@ -231,7 +239,7 @@ export function PublicParcelReference({ farm, viewport, onCandidates, onSelect, 
       {visible.truncated && <Notice kind="warning">More references may exist in this view. Zoom in and read again; no additional pages are fetched automatically.</Notice>}
       {!visible.returned && <p>No public references were returned for this view. This is not evidence that land is ineligible or unregistered.</p>}
       <p><a href={SOURCE} target="_blank" rel="noopener noreferrer">Official PDOK BRP source</a> · <a href="https://www.pdok.nl/ogc-apis/-/article/basisregistratie-gewaspercelen-brp-" target="_blank" rel="noopener noreferrer">Publisher documentation and terms</a></p>
-      {visible.entries.map(entry => <article key={entry.id}><p><strong>{entry.label}</strong></p><p>Source year: {entry.reference.year ?? 'Unknown'} · category: {entry.category ?? 'Unknown'} · source status: {entry.status ?? 'Unknown'}. A source status such as Definitief does not mean a current farm claim or this app's filing was accepted.</p><Button variant="secondary" disabled={reading || checkingSelection || disconnecting} onClick={() => void compare(entry)}>Compare with this reference</Button>{selected === entry.id && (selectedSource === undefined || selectedSource === entry.reference.source) && <Notice kind="success">Selected for comparison only. Your actual field outline, crop, identifiers and ownership have not changed.</Notice>}<details><summary>Original source properties</summary><pre>{JSON.stringify(entry.originalProperties, null, 2)}</pre></details></article>)}
+      {visible.entries.map(entry => <article key={entry.id}><p><strong>{entry.label}</strong></p><p>Source year: {entry.reference.year ?? 'Unknown'} · category: {entry.category ?? 'Unknown'} · source status: {entry.status ?? 'Unknown'}. A source status such as Definitief does not mean a current farm claim or this app's filing was accepted.</p><Button variant="secondary" disabled={reading || checkingSelection || disconnecting} onClick={() => void compare(entry)}>Compare with this reference</Button>{selected === entry.id && (selectedSource === undefined || selectedSource === entry.reference.source) && <Notice kind="success">Selected for comparison only. Your actual field outline, crop, identifiers and ownership have not changed.</Notice>}<details><summary>Original source properties</summary><dl>{Object.entries(entry.originalProperties).map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{sourceValue(value)}</dd></div>)}</dl></details></article>)}
     </div>}
   </section>;
 }

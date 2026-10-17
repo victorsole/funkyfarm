@@ -25,6 +25,13 @@ type Example = {
 type SavedExample = { runId: string; attemptId: string };
 const itemStatus: Record<string, string> = { open: 'Still to do', in_progress: 'Started', resolved: 'Reviewed as done', cancelled: 'Set aside' };
 const proposalStatus: Record<string, string> = { proposed: 'Waiting for your review', approved: 'Approved in the private workspace', rejected: 'Not approved', stale: 'Needs checking again' };
+const label = (value: string) => value.replace(/\bFICTIONAL\b(?:\s+TRAINING)?(?:\s+EXAMPLE)?(?:\s*[—–:.-]\s*|\s+)?/gi, '')
+  .replace(/^Authored\s+/i, '').replace(/\s*[—–-]\s*(?=,|$)/g, '').replace(/\s+,/g, ',').trim();
+const taskText: Record<string, string> = {
+  boundary: 'Compare the two outlines. Save the boundary you want to use, then review the change.',
+  land_use: 'Upload the land-use record, select it in the case and review the requested item. A drawing alone does not prove a right to claim.',
+  commitment: 'Upload the commitment record and check the notice’s conditions. A protected-area label alone does not decide eligibility.',
+};
 const appLink = (href: string | undefined) => {
   if (!href?.startsWith('/app/') || /[\\\u0000-\u0020]/.test(href)) return null;
   try { const url = new URL(href, 'https://farm.invalid'); return url.origin === 'https://farm.invalid' && url.pathname.startsWith('/app/') ? `${url.pathname}${url.search}${url.hash}` : null; }
@@ -88,15 +95,15 @@ function CompareOutlines({ scenario }: { scenario: Example['scenario'] }) {
       {claimed.map((part, index) => <path key={`claimed-${index}`} d={path(part)} fill="#1746a2" fillOpacity=".12" fillRule="evenodd" stroke="#1746a2" strokeWidth="3" strokeDasharray="9 5" vectorEffect="non-scaling-stroke" />)}
       <text x="12" y="284" fill="#433e3c" fontSize="13">Sample field plan</text>
     </svg>
-    <figcaption><p><strong>Dashed blue:</strong> {scenario.claimed_label}<br /><strong>Solid green:</strong> {scenario.reference_label} · supplied reference year {scenario.reference_year}</p><details><summary>What these outlines show</summary><p>The area in a claim is not necessarily the area that can be paid for. Neither outline proves ownership, land-use rights or eligibility. No satellite observation was made for this example.</p></details></figcaption>
+    <figcaption><p><strong>Dashed blue:</strong> {label(scenario.claimed_label)}<br /><strong>Solid green:</strong> {label(scenario.reference_label)} · {scenario.reference_year}</p><p className="muted">Compare the shapes; they do not establish ownership or eligible area.</p></figcaption>
   </figure>;
 }
 
 function downloadSample(sample: Sample, title: string) {
   if (sample.mime_type !== 'text/plain' || typeof sample.contents !== 'string' || new TextEncoder().encode(sample.contents).length > 512000) throw new Error('This sample text is unavailable or too large. No file was saved.');
-  const blob = new Blob([`FICTIONAL TRAINING EXAMPLE — NOT A REAL FARM RECORD\n${title}\n${sample.notice}\n\n`, sample.contents], { type: 'text/plain;charset=utf-8' });
+  const blob = new Blob([`DEMO SAMPLE — NOT A REAL FARM RECORD\n${title}\n${sample.notice}\n\n`, sample.contents], { type: 'text/plain;charset=utf-8' });
   const href = URL.createObjectURL(blob); const link = document.createElement('a');
-  link.href = href; link.download = `FICTIONAL-${sample.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 140).replace(/^FICTIONAL-/i, '').replace(/\.txt$/i, '') || 'sample'}.txt`;
+  link.href = href; link.download = `DEMO-${sample.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 140).replace(/^FICTIONAL-/i, '').replace(/\.txt$/i, '') || 'sample'}.txt`;
   link.click(); window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 
@@ -108,7 +115,7 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
   const runId = queryRun !== null ? queryRun : draft.ready ? draft.value.runId : '';
   const validRun = !!runId && UUID.test(runId) && params.getAll('run_id').length <= 1;
   const invalidRun = (queryRun !== null || !!runId) && !validRun;
-  const [refresh, setRefresh] = useState(0); const [acknowledged, setAcknowledged] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const [creating, setCreating] = useState(false); const [createError, setCreateError] = useState(''); const [sampleError, setSampleError] = useState('');
   const [result, setResult] = useState<{ binding: string; data?: Example; error?: string }>({ binding: '' });
   const binding = JSON.stringify([scope, params.getAll('run_id'), runId, refresh]); const currentBinding = useRef(binding); currentBinding.current = binding;
@@ -117,10 +124,7 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
 
   useEffect(() => {
     mounted.current = true;
-    const returned = () => { setAcknowledged(false); if (!writing.current) setRefresh(value => value + 1); };
-    const visible = () => { if (document.visibilityState === 'visible') returned(); };
-    window.addEventListener('focus', returned); window.addEventListener('online', returned); document.addEventListener('visibilitychange', visible);
-    return () => { mounted.current = false; generation.current += 1; request.current?.abort(); window.removeEventListener('focus', returned); window.removeEventListener('online', returned); document.removeEventListener('visibilitychange', visible); };
+    return () => { mounted.current = false; generation.current += 1; request.current?.abort(); };
   }, []);
 
   useEffect(() => {
@@ -139,7 +143,7 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
   }, [current?.data?.run_id, draft.ready]);
 
   async function create() {
-    if (!owner || !acknowledged || !draft.ready || creating || writing.current || runId || queryRun !== null) return;
+    if (!owner || !draft.ready || creating || writing.current || runId || queryRun !== null) return;
     writing.current = true; setCreating(true); setCreateError('');
     const sequence = ++generation.current; const origin = binding; const controller = new AbortController(); request.current?.abort(); request.current = controller;
     const active = () => mounted.current && !controller.signal.aborted && sequence === generation.current && currentBinding.current === origin;
@@ -150,7 +154,7 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
       const data = checkedExample(await api.post<Example>('/examples/cap', { acknowledged: true }, { idempotencyKey: draft.value.attemptId, signal: controller.signal }), workspaceId);
       if (!active()) return;
       draft.setValue(previous => ({ ...previous, runId: data.run_id }));
-      setCreating(false); setAcknowledged(false);
+      setCreating(false);
       const next = new URLSearchParams(params); next.set('run_id', data.run_id); setParams(next, { replace: true });
     } catch (reason) { if (active()) setCreateError(errorMessage(reason)); }
     finally { writing.current = false; if (mounted.current && currentBinding.current === origin) setCreating(false); }
@@ -160,55 +164,52 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
   const caseHref = data ? `/app/cases/${data.case.id}` : '';
   return <>
     <PageHeader title="Try a CAP correction" description="Check a sample claim, correct its field details and prepare the records." />
-    <p><span className="badge">Demo</span> Made-up records. Nothing is sent.</p>
-    <details><summary>About this example</summary><p>The farm, outlines, claim details, notices and sample records were made for this walkthrough. They do not establish a real CAP entitlement or authority acceptance.</p></details>
+    <p><span className="badge">Demo</span></p>
     {!draft.ready && <p role="status">Looking for your saved example on this device…</p>}
-    {draft.saving && <p role="status">Keeping the example link privately on this device…</p>}
     {draft.error && <Notice kind="warning">{draft.error} Keep the saved example link before leaving.</Notice>}
     {invalidRun && <Notice kind="error">This example link is incomplete or invalid. Open its original saved link; a new example has not been created.</Notice>}
     {!runId && !invalidRun && draft.ready && <section className="paper-section">
       <h2>Start with a sample Dutch farm</h2>
       <p>You will compare the claimed boundary with a supplied reference, check a correction, and attach the missing land-use and commitment records.</p>
-      <p>Starting saves an example farm, claim and notice tasks, a proposed field change, and a case with three unfinished items in this workspace. It does not approve fields, add original documents, send a claim or record acceptance.</p>
-      {owner ? <><label className="check-row"><input type="checkbox" checked={acknowledged} disabled={creating} onChange={event => setAcknowledged(event.target.checked)} />I want to save these sample records in my workspace.</label><div className="actions"><Button onClick={() => void create()} loading={creating} disabled={!acknowledged || draft.saving}>Create or reopen my example</Button></div><p className="muted">If the connection stops, retry this same button. It reopens the saved example rather than creating another farm.</p></> : <Notice>You can view an existing example through its saved link. Only the workspace owner can create the example.</Notice>}
+      <p>Add sample records to this workspace. Your existing records stay unchanged.</p>
+      {owner ? <Button onClick={() => void create()} loading={creating} disabled={draft.saving}>Start example</Button> : <Notice>Ask the workspace owner to start an example, or open its saved link.</Notice>}
       {createError && <Notice kind="error">{createError} Your retry reference has been kept; no second example should be started.</Notice>}
     </section>}
     {validRun && !data && !current?.error && <p role="status">Opening the saved example and checking its current records…</p>}
     {current?.error && <Notice kind="error">{current.error}<div className="actions"><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Try opening the saved example again</Button></div></Notice>}
     {data && <>
       <section className="paper-section">
-        <div className="section-heading"><h2>{data.scenario.title}</h2><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh example progress</Button></div>
-        <p><strong>Example farm:</strong> {String(data.farm.data.name || 'Sample Dutch farm')}</p>
+        <div className="section-heading"><h2>{label(data.scenario.title)}</h2><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh example progress</Button></div>
+        <p><strong>Farm:</strong> {label(String(data.farm.data.name || 'Sample Dutch farm'))}</p>
         <CompareOutlines scenario={data.scenario} />
-        <details><summary>Read the claim and notice details</summary><dl className="detail-grid"><div><dt>Original claim reference</dt><dd>{data.scenario.original_reference}</dd></div><div><dt>Notice date</dt><dd>{data.scenario.fictional_notice_date}</dd></div><div><dt>Response date in this example</dt><dd>{data.scenario.fictional_deadline}</dd></div></dl><p>{data.scenario.notice}</p><p>This date belongs only to the example. For a real case, check the national process, authority notice and actual dates. No universal deadline is calculated here.</p></details>
+        <details><summary>Read the claim and notice details</summary><dl className="detail-grid"><div><dt>Original claim reference</dt><dd>{label(data.scenario.original_reference)}</dd></div><div><dt>Notice date</dt><dd>{data.scenario.fictional_notice_date}</dd></div><div><dt>Response date in this example</dt><dd>{data.scenario.fictional_deadline}</dd></div></dl><p>These are sample dates, not a national correction deadline. For a real case, check the actual notice and the rules that apply.</p></details>
       </section>
       <section className="paper-section">
         <h2>Work through these three things</h2>
         <p>{data.progress.resolved_items} of {data.progress.total_items} items reviewed as done; {data.progress.open_items} still open{data.progress.cancelled_items ? `; ${data.progress.cancelled_items} set aside, not completed` : ''}.</p>
-        <ol>{data.progress.steps.map(step => <li key={step.key}><h3>{step.title}</h3><p><strong>{itemStatus[step.status] ?? 'Status needs checking in the saved case'}</strong></p>{data.scenario.items.find(item => item.key === step.key)?.description && <p>{data.scenario.items.find(item => item.key === step.key)?.description}</p>}{appLink(step.href) ? <Link className="button button-secondary" to={appLink(step.href)!}>Open this step</Link> : <Link to={caseHref}>Open the saved case to check this step</Link>}</li>)}</ol>
+        <ol>{data.progress.steps.map(step => <li key={step.key}><h3>{label(step.title)}</h3><p><strong>{itemStatus[step.status] ?? 'Status needs checking in the saved case'}</strong></p><p>{taskText[step.key] || 'Check the saved record and review what needs changing.'}</p>{appLink(step.href) ? <Link className="button button-secondary" to={appLink(step.href)!}>Open this step</Link> : <Link to={caseHref}>Open the saved case to check this step</Link>}</li>)}</ol>
         <p><strong>Saved field change:</strong> {proposalStatus[data.progress.proposal_status] ?? 'Open the proposal to check its status'}.</p>
-        <p>Review the outline and choose a correction yourself. Approving it updates only the private example farm, not LPIS or a submitted application. If the farm or proposal changes, revisit the case’s selected saved versions before reviewing it.</p>
+        <p>Compare the outline before approving the private change. If its records changed, check the case again.</p>
         <Link className="button button-secondary" to={referenceHref({ kind: 'field_change_proposals', id: data.proposal.id, revision: data.proposal.revision }, data.farm.id)}>Open the actual saved field proposal</Link>
       </section>
       <section className="paper-section">
         <h2>Add the missing records yourself</h2>
         <p>Download the sample land-use and commitment records below. Then open Documents, choose each file, save it to this example farm, and return to the case. Select the right document and review each requested item separately.</p>
-        <p>A boundary does not prove a right to claim. A protected-area attribute is a reason to check the applicable commitment, not automatic ineligibility.</p>
-        <ul>{data.scenario.samples.map(sample => <li key={sample.id}><strong>{sample.title}</strong><p>{sample.notice}</p><Button variant="secondary" onClick={() => { try { downloadSample(sample, data.scenario.title); setSampleError(''); } catch (reason) { setSampleError(errorMessage(reason)); } }}>Download {sample.title.toLowerCase()}</Button></li>)}</ul>
+        <ul>{data.scenario.samples.map(sample => <li key={sample.id}><strong>{label(sample.title)}</strong><Button variant="secondary" onClick={() => { try { downloadSample(sample, data.scenario.title); setSampleError(''); } catch (reason) { setSampleError(errorMessage(reason)); } }}>Download {label(sample.title).toLowerCase()}</Button></li>)}</ul>
         {sampleError && <Notice kind="error">{sampleError}</Notice>}
-        <p>No sample is uploaded or selected automatically. For a real farm, use your actual records instead.</p>
+        <p>Choose each document yourself. For a real farm, use your actual records.</p>
         <div className="actions"><Link className="button button-secondary" to={`/app/documents?${new URLSearchParams({ farm_id: data.farm.id })}`}>Open Documents for the example farm</Link><Link className="button button-secondary" to={caseHref}>Select evidence and review the case items</Link></div>
       </section>
       <section className="paper-section">
         <h2>Check the case, then prepare the folder</h2>
         <p><strong>Case:</strong> {caseStatusLabel[data.progress.case_status] ?? 'Open the saved case to check its status'}.</p>
-        <p>{data.progress.next_action}</p><p>{data.progress.notice}</p>
-        {data.checks.issues.length > 0 ? <ul>{data.checks.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}{appLink(issue.href) && <> <Link to={appLink(issue.href)!}>Check the linked record</Link></>}</li>)}</ul> : <p>No issues were returned by the current case check. You still need to review the selected records yourself.</p>}
+        <p>{label(data.progress.next_action)}</p>
+        {data.checks.issues.length > 0 ? <ul>{data.checks.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{label(issue.message)}{appLink(issue.href) && <> <Link to={appLink(issue.href)!}>Check the linked record</Link></>}</li>)}</ul> : <p>No issues were returned by the current case check. You still need to review the selected records yourself.</p>}
         <p>{data.progress.review_current ? 'The selected saved records currently match the case review.' : data.progress.can_review ? 'The current check allows you to open the case and review the selected records yourself.' : 'A new review is not available in the case’s present state. Open it to check the remaining issues or the next permitted action.'}</p>
-        <p>In the saved case, check the field change and evidence, explicitly review the records, then download the complete prepared folder (ZIP). The folder includes selected records and attachments, not unrelated farm documents. Downloading it sends nothing.</p>
+        <p>Review the selected records in the case, then download the complete folder with its attachments.</p>
         <Link className="button button-primary" to={caseHref}>Open the case for review and its complete folder</Link>
-        <p>Sending, receipt and acceptance are separate actions recorded by a person. This example has no authority connection and never records them automatically. Do not send the sample documents to an authority.</p>
-        <p className="muted">Progress is rechecked when you return here or choose Refresh example progress. An open or set-aside item is not an approved claim.</p>
+        <p className="muted">Private changes do not update LPIS. Downloading does not send anything; do not file the sample documents. Sending and authority replies are separate steps.</p>
+        <p className="muted">Choose Refresh example progress to check the saved result.</p>
       </section>
       <p><Link to={`/app/examples/cap?${new URLSearchParams({ run_id: data.run_id })}`}>Saved link to this example</Link></p>
     </>}

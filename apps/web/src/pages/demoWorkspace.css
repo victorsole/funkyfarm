@@ -1,24 +1,28 @@
 .demo-workspace { display: grid; gap: 24px; }
 .demo-workspace .page-header { margin-bottom: 0; }
-.demo-fictional { justify-self: start; margin: 0; padding: 7px 12px; border: 1px solid #9b6923; border-radius: 4px; background: #fff1d4; color: #694614; font-size: .76rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.demo-label { justify-self: start; margin: -10px 0 0; padding: 5px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: .75rem; }
 .demo-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .demo-overview h2, .demo-farm-card h2 { margin-top: 0; }
 .demo-overview .button { flex-shrink: 0; }
 .demo-farm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .demo-farm-card { display: flex; flex-direction: column; align-items: flex-start; padding: 25px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; transition: border-color 180ms ease, box-shadow 180ms ease; }
-.demo-farm-card-selected { border-color: var(--forest); box-shadow: inset 0 0 0 1px var(--forest); }
+.demo-farm-card:hover { border-color: var(--forest); }
 .demo-scenario-number { display: block; margin-bottom: 14px; color: var(--muted); font-size: .72rem; font-weight: 650; }
 .demo-farm-card h2 { font-size: 1.24rem; line-height: 1.35; }
 .demo-farm-card p { font-size: .84rem; line-height: 1.6; }
 .demo-farm-card .button { margin-top: auto; }
-.demo-saved-progress { padding-top: 10px; border-top: 1px solid var(--line); width: 100%; }
-.demo-scenario-detail { scroll-margin-top: 24px; animation: demo-open 220ms ease-out; }
+.demo-scenario-detail { display: grid; gap: 20px; }
+.demo-scenario-detail > h2, .demo-scenario-detail > p { margin: 0; }
+.demo-scenario-detail > .button { justify-self: start; }
 .demo-scenario-detail li { margin-block: 10px; line-height: 1.6; }
 .demo-case-progress { padding-block: 12px; border-block: 1px solid var(--line); margin-block: 20px; }
-.demo-start-links { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
-.demo-start-links .button { max-width: 100%; text-align: left; white-space: normal; }
-.demo-ack { display: flex; align-items: flex-start; gap: 12px; line-height: 1.6; }
-.demo-ack input { flex: 0 0 auto; margin-top: 5px; }
-@keyframes demo-open { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 760px) { .demo-farm-grid { grid-template-columns: 1fr; } .demo-overview { flex-direction: column; } .demo-start-links { flex-direction: column; align-items: stretch; } }
-@media (prefers-reduced-motion: reduce) { .demo-scenario-detail { animation: none; } .demo-farm-card { transition: none; } }
+.demo-instructions { padding-left: 24px; margin: 0; }
+.demo-related-records { padding-left: 20px; }
+.demo-footer { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; color: var(--muted); font-size: .82rem; }
+.demo-new-run { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid var(--line); }
+.demo-new-run p { width: 100%; margin: 0; font-size: .85rem; color: var(--muted); }
+.demo-workspace a { overflow-wrap: anywhere; }
+.demo-workspace a:focus-visible { outline: 2px solid var(--forest); outline-offset: 4px; }
+@media (max-width: 760px) { .demo-farm-grid { grid-template-columns: 1fr; } .demo-overview { flex-direction: column; } .demo-farm-card { padding: 20px; } }
+@media (max-width: 520px) { .demo-scenario-detail .button { max-width: 100%; white-space: normal; } .demo-new-run { align-items: flex-start; flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .demo-farm-card { transition: none; } }

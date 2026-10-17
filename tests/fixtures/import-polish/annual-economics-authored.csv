@@ -1,0 +1,4 @@
+econ_id,holding_id,year,total_output_eur,comment
+0007,FARM-AUTHORED-0001,2026,"1234,50","Žito ""by the river"", test only"
+0008,FARM-AUTHORED-0001,2026,0,
+0009,FARM-AUTHORED-0001,2026,,NULL

@@ -44,24 +44,45 @@ function rememberWorkspaceSelection(next: Session) {
   } catch { /* Keep the current session usable when tab storage is unavailable. */ }
 }
 
+function stableBrowserSession(next: Session, previous: Session | null): Session {
+  // Membership order is not an access change. Keep semantic bindings stable
+  // so a successful recheck of the same access cannot remount open forms.
+  const { token: _nativeToken, ...browser } = next;
+  const workspace = { ...next.workspace,
+    farm_ids: next.workspace.farm_ids == null ? null : [...new Set(next.workspace.farm_ids)].sort(),
+    permissions: [...new Set(next.workspace.permissions ?? [])].sort(),
+  };
+  const sameUser = previous && previous.user.id === browser.user.id && previous.user.display_name === browser.user.display_name && previous.user.email === browser.user.email;
+  const sameWorkspace = previous && previous.workspace.id === workspace.id && previous.workspace.name === workspace.name && previous.workspace.role === workspace.role && JSON.stringify(previous.workspace.farm_ids) === JSON.stringify(workspace.farm_ids) && JSON.stringify(previous.workspace.permissions) === JSON.stringify(workspace.permissions);
+  const value = { ...browser, user: previous && sameUser ? previous.user : browser.user, workspace: previous && sameWorkspace ? previous.workspace : workspace };
+  return previous && sameUser && sameWorkspace && previous.csrf_token === value.csrf_token ? previous : value;
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const currentSession = useRef<Session | null>(null);
   currentSession.current = session;
+  const generation = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const acceptSession = useCallback((next: Session) => {
+    const accepted = ++generation.current;
     setCsrfToken(next.csrf_token);
     setWorkspaceId(next.workspace.id);
-    void import('./offline').then(({ activateDraftAccount }) => activateDraftAccount(`${next.user.id}/${next.workspace.id}`));
+    void import('./offline').then(({ activateDraftAccount }) => {
+      if (accepted === generation.current) activateDraftAccount(`${next.user.id}/${next.workspace.id}`);
+    });
     // Native bearer credentials never enter browser persistence or application state.
-    const { token: _nativeToken, ...browserSession } = next;
+    const browserSession = stableBrowserSession(next, currentSession.current);
     rememberWorkspaceSelection(next);
     currentSession.current = browserSession;
     setSession(browserSession);
+    setLoading(false);
     setError(null);
   }, []);
   const refresh = useCallback(async () => {
+    const requested = ++generation.current;
+    const current = () => requested === generation.current;
     const existing = currentSession.current;
     if (!existing) setLoading(true);
     setError(null);
@@ -70,10 +91,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!existing) setWorkspaceId(null);
     try {
       const defaultSession = await api.get<Session>('/auth/session');
-      if (existing && (defaultSession.user.id !== existing.user.id || defaultSession.workspace.id !== existing.workspace.id)) throw new Error('Your farm access changed. Sign in again to open your workspace.');
+      if (!current()) return;
+      if (existing && (defaultSession.user.id !== existing.user.id || defaultSession.workspace.id !== existing.workspace.id)) throw new ApiError(403, 'session_scope_changed', 'Your farm access changed. Sign in again to open your workspace.');
       const available = await api.get<{ items: Session['workspace'][] }>('/workspaces');
+      if (!current()) return;
       const defaultMembership = available.items.find(workspace => workspace.id === defaultSession.workspace.id);
-      if (!defaultMembership) throw new Error('Your default workspace could not be verified. Please try again.');
+      if (!defaultMembership) throw new ApiError(403, 'membership_revoked', 'Your workspace access is no longer available. Sign in again to choose an available workspace.');
       const savedId = existing ? null : readWorkspaceSelection(defaultSession.user.id);
       const preferred = savedId ? available.items.find(workspace => workspace.id === savedId) : null;
       let next = defaultSession;
@@ -83,25 +106,35 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setWorkspaceId(preferred.id);
         try {
           const selected = await api.get<Session>('/auth/session');
+          if (!current()) return;
           if (selected.user.id !== defaultSession.user.id || selected.workspace.id !== preferred.id) {
             throw new Error('The selected workspace did not confirm the current account. Please try again.');
           }
           next = selected;
           membership = preferred;
         } catch (failure) {
+          if (!current()) return;
           if (!(failure instanceof ApiError && [401, 403, 404].includes(failure.status))) throw failure;
           // Membership can be revoked between the list and session requests.
           setWorkspaceId(null);
           clearWorkspaceSelection();
           const fallback = await api.get<Session>('/auth/session');
+          if (!current()) return;
           if (fallback.user.id !== defaultSession.user.id || fallback.workspace.id !== defaultSession.workspace.id) throw new Error('Your account changed. Please sign in again.');
           next = fallback;
           unavailable = true;
         }
       }
-      acceptSession({ ...next, workspace: { ...next.workspace, farm_ids: membership.farm_ids, permissions: membership.permissions } });
+      acceptSession({ ...next, workspace: { ...next.workspace, ...membership } });
       if (unavailable) setError('That farm workspace is no longer available. Your default workspace is open instead.');
     } catch (failure) {
+      if (!current()) return;
+      if (existing && !(failure instanceof ApiError && [401, 403].includes(failure.status))) {
+        // A lost connection is not a revocation. Keep this account's visible
+        // page/drafts; every mutation still uses normal server authorization.
+        setError(errorMessage(failure));
+        return;
+      }
       setCsrfToken(null);
       setWorkspaceId(null);
       currentSession.current = null;
@@ -109,62 +142,83 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (failure instanceof ApiError && failure.status === 401) clearWorkspaceSelection();
       else setError(errorMessage(failure));
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [acceptSession]);
   const logout = useCallback(async () => {
+    const signedOutAccount = currentSession.current;
+    const signedOutScope = signedOutAccount ? `${signedOutAccount.user.id}/${signedOutAccount.workspace.id}` : null;
+    const requested = ++generation.current;
     await api.post('/auth/logout', {});
-    clearWorkspaceSelection();
     let storageError: string | null = null;
-    if (session) {
+    // A parallel expiry must not skip the successful logout's private cleanup.
+    // The scope is captured before the request, never read from a new account.
+    if (signedOutScope) {
       try {
         const { purgeAccount } = await import('./offline');
-        await purgeAccount(`${session.user.id}/${session.workspace.id}`);
+        await purgeAccount(signedOutScope);
       } catch {
         storageError = 'You are signed out. This browser could not remove its encrypted form drafts. Clear this site’s browser storage if you share this device.';
       }
     }
+    if (requested !== generation.current) {
+      if (storageError && currentSession.current === null) setError(storageError);
+      return;
+    }
+    clearWorkspaceSelection();
     setCsrfToken(null);
     setWorkspaceId(null);
     currentSession.current = null;
     setSession(null);
+    setLoading(false);
     setError(storageError);
-  }, [session]);
+  }, []);
   useEffect(() => {
     if (!session) return;
     let active = true;
     const userId = session.user.id;
     const selectedId = session.workspace.id;
+    const requested = generation.current;
     api.get<{ items: Session['workspace'][] }>('/workspaces').then(result => {
       const membership = result.items.find(workspace => workspace.id === selectedId);
-      if (!active || !membership) return;
-      setSession(current => current?.user.id === userId && current.workspace.id === selectedId
-        ? { ...current, workspace: { ...current.workspace, farm_ids: membership.farm_ids, permissions: membership.permissions } }
-        : current);
-    }).catch(() => undefined);
+      if (!active || requested !== generation.current) return;
+      if (!membership) throw new ApiError(403, 'membership_revoked', 'Your workspace access is no longer available. Sign in again to choose an available workspace.');
+      const current = currentSession.current;
+      if (current?.user.id === userId && current.workspace.id === selectedId) acceptSession({ ...current, workspace: { ...membership } });
+    }).catch(failure => {
+      if (!active || requested !== generation.current) return;
+      if (failure instanceof ApiError && [401, 403].includes(failure.status)) {
+        generation.current++; setCsrfToken(null); setWorkspaceId(null); currentSession.current = null; setSession(null); setLoading(false);
+      }
+      setError(errorMessage(failure));
+    });
     return () => { active = false; };
-  }, [session?.user.id, session?.workspace.id]);
+  }, [session?.user.id, session?.workspace.id, acceptSession]);
   const switchWorkspace = useCallback(async (id: string) => {
     if (!session || id === session.workspace.id) return;
+    const requested = ++generation.current;
     setLoading(true);
     setError(null);
     try {
       const available = await api.get<{ items: Session['workspace'][] }>('/workspaces');
+      if (requested !== generation.current) return;
       const permitted = available.items.find(workspace => workspace.id === id);
       if (!permitted) throw new Error('This workspace is not available to your account.');
       setWorkspaceId(id);
       const next = await api.get<Session>('/auth/session');
+      if (requested !== generation.current) return;
       if (next.user.id !== session.user.id || next.workspace.id !== id) throw new Error('The workspace did not confirm your access.');
-      acceptSession({ ...next, workspace: { ...next.workspace, farm_ids: permitted.farm_ids, permissions: permitted.permissions } });
+      acceptSession({ ...next, workspace: { ...next.workspace, ...permitted } });
     } catch (failure) {
+      if (requested !== generation.current) return;
       setWorkspaceId(session.workspace.id);
       setError(errorMessage(failure));
       throw failure;
-    } finally { setLoading(false); }
+    } finally { if (requested === generation.current) setLoading(false); }
   }, [session, acceptSession]);
   useEffect(() => {
     void refresh();
-    const expire = () => { clearWorkspaceSelection(); setCsrfToken(null); setWorkspaceId(null); currentSession.current = null; setSession(null); };
+    const expire = () => { generation.current++; clearWorkspaceSelection(); setCsrfToken(null); setWorkspaceId(null); currentSession.current = null; setSession(null); setLoading(false); };
     window.addEventListener('session-expired', expire);
     return () => window.removeEventListener('session-expired', expire);
   }, [refresh]);

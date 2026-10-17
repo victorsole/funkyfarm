@@ -1,0 +1,27 @@
+.guidance-page { display: grid; gap: 1.25rem; }
+.guidance-page > .page-header { margin-bottom: 0; }
+.guidance-page .guidance-filters { margin-bottom: 0; }
+.guidance-country-grid, .guidance-topic-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; }
+.guidance-country, .guidance-topic { display: flex; flex-direction: column; align-items: flex-start; gap: .65rem; margin: 0; }
+.guidance-country h2, .guidance-topic h3, .guidance-country p, .guidance-topic p { margin: 0; }
+.guidance-country .button, .guidance-topic .button { margin-top: auto; }
+.guidance-country-section > h2 { margin: .25rem 0 1rem; }
+.guidance-topic-label { color: var(--plum, #482b43); font-size: .8rem; font-weight: 700; }
+.guidance-status { display: inline-block; padding: .3rem .65rem; border: 1px solid #d9d1c7; border-radius: .35rem; background: #f5f1ea; color: #514b43; font-size: .8rem; font-weight: 600; }
+.guidance-status-ready { background: #eaf0e6; border-color: #cbd8c2; color: #33462b; }
+.guidance-summary p:last-child { margin-bottom: 0; }
+.guidance-edition { font-size: .85rem; color: #625d57; }
+.guidance-back { width: fit-content; }
+.guidance-answer-list, .guidance-source-list { list-style: none; padding: 0; margin: 0; }
+.guidance-answer-list > li, .guidance-source-list > li { padding: .85rem 0; border-bottom: 1px solid #e6dfd6; overflow-wrap: anywhere; }
+.guidance-answer-list > li:last-child, .guidance-source-list > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.guidance-answer-list p, .guidance-source-list p { margin: .35rem 0 0; }
+.guidance-required { display: inline-block; margin-left: .65rem; font-size: .8rem; color: #625d57; }
+.guidance-plain-list { padding-left: 1.25rem; margin-bottom: 0; }
+.guidance-plain-list > li + li { margin-top: .65rem; }
+.guidance-form-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 1rem; }
+.guidance-change + .guidance-change { border-top: 1px solid #e6dfd6; padding-top: 1rem; margin-top: 1rem; }
+.guidance-other-topics ul { list-style: none; padding: 0; margin-bottom: 0; }
+.guidance-other-topics li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem 1rem; padding: .45rem 0; }
+.guidance-other-topics li .muted { font-size: .85rem; }
+@media (max-width: 540px) { .guidance-country .button, .guidance-topic .button { width: 100%; } .guidance-required { display: block; margin: .25rem 0 0; } }

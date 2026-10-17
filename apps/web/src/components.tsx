@@ -5,7 +5,7 @@ export { useRecords } from './hooks';
 export { useSession } from './auth';
 
 export function PageHeader({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
-  return <header className="page-header"><div><p className="eyebrow">The farm folio</p><h1>{title}</h1>{description && <div className="page-description">{description}</div>}</div>{action && <div className="page-action">{action}</div>}</header>;
+  return <header className="page-header"><div><h1>{title}</h1>{description && <div className="page-description">{description}</div>}</div>{action && <div className="page-action">{action}</div>}</header>;
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost'; loading?: boolean };

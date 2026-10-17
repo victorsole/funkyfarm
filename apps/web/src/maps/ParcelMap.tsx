@@ -59,7 +59,7 @@ function position(value: L.LatLng): number[] {
   return [Number(wrapped.lng.toFixed(8)), Number(Math.max(-85.05112878, Math.min(85.05112878, wrapped.lat)).toFixed(8))];
 }
 function positionsOf(props: ParcelMapProps): number[][] {
-  const snapshot = props.readOnly ? getSpanishDemoSnapshot(props.snapshot) : null;
+  const snapshot = getSpanishDemoSnapshot(props.snapshot);
   const points = [props.geometry, props.reference, snapshot?.field.geometry ?? null, ...contextOutlinesOf(props).map(item => item.geometry)].flatMap(geometry => partsOf(geometry).flat(2));
   if (props.point) points.push([props.point.longitude, props.point.latitude]);
   return [...points, ...props.sketch, ...props.splitLine].filter(validPosition);
@@ -122,6 +122,8 @@ export function ParcelMap(props: ParcelMapProps) {
   const snapRef = useRef(false);
   const editBinding = useRef('');
   const focusedCorner = useRef<number | null>(null);
+  const cornerMarkers = useRef(new Map<number, L.Marker>());
+  const nudgeDistance = useRef(1);
   const undo = useRef<EditSnapshot[]>([]);
   const acknowledgedGeometry = useRef(JSON.stringify(props.geometry));
   const expectedGeometry = useRef<string | null>(null);
@@ -130,6 +132,10 @@ export function ParcelMap(props: ParcelMapProps) {
   const [ready, setReady] = useState(false);
   const [part, setPart] = useState(0);
   const [selectedRing, setSelectedRing] = useState(0);
+  const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
+  const [cornerPosition, setCornerPosition] = useState({ longitude: '', latitude: '' });
+  const [nudgeMetres, setNudgeMetres] = useState(1);
+  nudgeDistance.current = nudgeMetres;
   const [drawingHole, setDrawingHole] = useState(false);
   const [snapToComparison, setSnapToComparison] = useState(false);
   const [confirmation, setConfirmation] = useState<{ kind: 'close' | 'cancel' | 'remove'; binding: string } | null>(null);
@@ -150,7 +156,7 @@ export function ParcelMap(props: ParcelMapProps) {
   const sources = mapSources(props.country, props.region);
   const source = sources.find(item => item.id === sourceId);
   const sourceSignature = JSON.stringify(source ?? null);
-  const snapshot = props.readOnly ? getSpanishDemoSnapshot(props.snapshot) : null;
+  const snapshot = getSpanishDemoSnapshot(props.snapshot);
   const snapshotBinding = snapshot ? `${snapshot.id}:${snapshot.field.reference}:${snapshot.image.sha256}` : '';
   const instructionId = useId();
   const parts = partsOf(props.geometry);
@@ -159,7 +165,7 @@ export function ParcelMap(props: ParcelMapProps) {
   const ringIndex = Math.min(selectedRing, Math.max(0, (parts[selectedPart]?.length ?? 1) - 1));
   ringRef.current = ringIndex;
   drawingHoleRef.current = drawingHole && props.mode === 'edit';
-  snapRef.current = snapToComparison && !!props.reference;
+  snapRef.current = snapToComparison && !!(props.reference || snapshot);
   const ring = parts[selectedPart]?.[ringIndex] ?? [];
   const binding = JSON.stringify([props.geometry, props.reference, props.sketch, props.mode, selectedPart, ringIndex, drawingHole]);
   editBinding.current = binding;
@@ -175,7 +181,7 @@ export function ParcelMap(props: ParcelMapProps) {
   }
   function focusSelected() {
     const current = latest.current;
-    const retained = current.readOnly ? getSpanishDemoSnapshot(current.snapshot) : null;
+    const retained = getSpanishDemoSnapshot(current.snapshot);
     const points = [current.geometry, retained?.field.geometry ?? null].flatMap(geometry => partsOf(geometry).flat(2)).filter(validPosition);
     if (current.point && validPosition([current.point.longitude, current.point.latitude])) points.push([current.point.longitude, current.point.latitude]);
     if (!map.current || !points.length) return;
@@ -186,6 +192,18 @@ export function ParcelMap(props: ParcelMapProps) {
     const previous = latest.current.geometry;
     if (!previous) return;
     undo.current = [...undo.current.slice(-29), { geometry: structuredClone(previous), sketch: structuredClone(latest.current.sketch), part: partRef.current, ring: ringRef.current, drawingHole: drawingHoleRef.current }];
+    setUndoCount(undo.current.length);
+  }
+  function undoLast() {
+    if (latest.current.readOnly || latest.current.disabled) return;
+    const previous = undo.current.pop();
+    if (previous) {
+      expectedGeometry.current = JSON.stringify(previous.geometry);
+      latest.current.onGeometry(previous.geometry); latest.current.onSketch(previous.sketch);
+      setPart(previous.part); setSelectedRing(previous.ring); setDrawingHole(previous.drawingHole);
+      setSelectedCorner(null); focusedCorner.current = null; setConfirmation(null);
+      setMessage('Last boundary adjustment undone, including its unfinished excluded-area points.');
+    }
     setUndoCount(undo.current.length);
   }
   function commit(next: FieldGeometry) {
@@ -209,6 +227,16 @@ export function ParcelMap(props: ParcelMapProps) {
     const next = movedCorner(index, nextPosition);
     if (next) commit(next);
   }
+  function nudgeCorner(index: number, east: number, north: number, multiplier = 1) {
+    const edge = partsOf(latest.current.geometry)[partRef.current]?.[ringRef.current];
+    const point = edge?.[index];
+    if (!point || latest.current.readOnly || latest.current.disabled) return;
+    const distance = nudgeDistance.current * multiplier;
+    const radians = 180 / Math.PI;
+    const latitude = point[1] + north * distance / 6_371_000 * radians;
+    const longitude = point[0] + east * distance / (6_371_000 * Math.max(.001, Math.cos(point[1] / radians))) * radians;
+    moveCorner(index, [longitude, latitude]);
+  }
   function changeCornerCount(index: number, insert: boolean) {
     const current = latest.current.geometry;
     const next = structuredClone(partsOf(current));
@@ -227,7 +255,7 @@ export function ParcelMap(props: ParcelMapProps) {
     commit(current.type === 'Polygon' ? { type: 'Polygon', coordinates: next[0] } : { type: 'MultiPolygon', coordinates: next });
   }
   function pointerPosition(value: L.LatLng): number[] {
-    const instance = map.current, reference = latest.current.reference;
+    const instance = map.current, reference = latest.current.reference ?? getSpanishDemoSnapshot(latest.current.snapshot)?.field.geometry;
     if (!instance || !snapRef.current || !reference) return position(value);
     const referenceParts = partsOf(reference);
     if (positionCount(referenceParts) > 1000) return position(value);
@@ -318,13 +346,12 @@ export function ParcelMap(props: ParcelMapProps) {
       doubleClickZoom: false, worldCopyJump: false, maxBounds: [[-85.05112878, -180], [85.05112878, 180]],
       zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false,
     });
+    instance.attributionControl.setPrefix('<a href="https://leafletjs.com/" title="Map software">Leaflet</a>');
     map.current = instance;
     alive.current = true;
     outlines.current = L.layerGroup().addTo(instance);
     handles.current = L.layerGroup().addTo(instance);
     deviceLocation.current = L.layerGroup().addTo(instance);
-    instance.attributionControl.addAttribution(props.readOnly ? 'Your supplied outline · not an official LPIS boundary' : 'Your boundary draft · not an official LPIS boundary');
-    if (props.readOnly) L.control.scale({ imperial: false }).addTo(instance);
     const announceView = () => { setZoom(instance.getZoom()); latest.current.onViewportChange?.(viewport(instance)); };
     const userMoved = (event: L.LeafletEvent) => {
       // Leaflet drag/zoom changes the viewport only. Geometry is separate.
@@ -414,6 +441,7 @@ export function ParcelMap(props: ParcelMapProps) {
     // history. Never restore another field's outline through this button.
     if (current !== expectedGeometry.current) {
       undo.current = []; setUndoCount(0); focusedCorner.current = null;
+      setSelectedCorner(null);
       setPart(0); setSelectedRing(0); setDrawingHole(false); setConfirmation(null);
     }
     acknowledgedGeometry.current = current;
@@ -421,6 +449,15 @@ export function ParcelMap(props: ParcelMapProps) {
   }, [props.geometry]);
   useEffect(() => { undo.current = []; setUndoCount(0); focusedCorner.current = null; setPart(0); setSelectedRing(0); setDrawingHole(false); setConfirmation(null); }, [props.mode]);
   useEffect(() => { setSnapToComparison(false); }, [props.reference]);
+  useEffect(() => { setSelectedCorner(null); }, [selectedPart, ringIndex, props.mode, drawingHole]);
+  useEffect(() => {
+    const point = selectedCorner === null ? null : ring[selectedCorner];
+    setCornerPosition({ longitude: point ? String(point[0]) : '', latitude: point ? String(point[1]) : '' });
+    for (const [index, marker] of cornerMarkers.current) {
+      marker.getElement()?.classList.toggle('is-selected', index === selectedCorner);
+      marker.setZIndexOffset(index === selectedCorner ? 1000 : 0);
+    }
+  }, [selectedCorner, props.geometry, selectedPart, ringIndex, ready]);
   useEffect(() => { setConfirmation(current => current && current.binding !== binding ? null : current); }, [binding]);
 
   useEffect(() => {
@@ -432,6 +469,7 @@ export function ParcelMap(props: ParcelMapProps) {
     if (!ready || !outlines.current || !handles.current || !map.current) return;
     const instance = map.current, layers = outlines.current, cornerLayers = handles.current;
     layers.clearLayers(); cornerLayers.clearLayers(); outline.current = null;
+    cornerMarkers.current.clear();
     function addShape(geometry: FieldGeometry | null, reference: boolean) {
       const shape = partsOf(geometry).filter(polygon => polygon.length && polygon.every(edge => edge.length >= 3 && edge.every(validPosition)));
       if (!shape.length) return null;
@@ -462,6 +500,7 @@ export function ParcelMap(props: ParcelMapProps) {
       candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); if (!latest.current.readOnly) latest.current.onReferenceSelect?.(candidate.id); });
     }
     if (snapshot && isDisplayableFieldGeometry(snapshot.field.geometry)) {
+      if (props.reference && JSON.stringify(props.reference) !== JSON.stringify(snapshot.field.geometry)) addShape(props.reference, true);
       L.polygon(partsOf(snapshot.field.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
         color: '#194d36', weight: 4, fillColor: '#487f55', fillOpacity: .08, fillRule: 'evenodd', interactive: false,
       }).addTo(layers);
@@ -508,6 +547,9 @@ export function ParcelMap(props: ParcelMapProps) {
         draggable: !props.disabled, keyboard: true, autoPan: true, autoPanOnFocus: false,
         title: `${ringIndex ? 'Excluded area' : 'Outer edge'} corner ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`,
       }).addTo(cornerLayers);
+      cornerMarkers.current.set(index, marker);
+      marker.on('click', () => { setSelectedCorner(index); focusedCorner.current = null; });
+      marker.on('dragstart', () => { setSelectedCorner(index); });
       marker.on('drag', () => {
         if (latest.current.disabled || editBinding.current !== handleBinding) return;
         const nextPosition = pointerPosition(marker.getLatLng());
@@ -518,21 +560,24 @@ export function ParcelMap(props: ParcelMapProps) {
       marker.on('dragend', () => { if (!latest.current.disabled && editBinding.current === handleBinding) { focusedCorner.current = null; moveCorner(index, pointerPosition(marker.getLatLng())); } });
       const element = marker.getElement();
       if (!element) return;
+      element.classList.toggle('is-selected', index === selectedCorner);
+      element.setAttribute('data-corner', String(index + 1));
+      marker.setZIndexOffset(index === selectedCorner ? 1000 : 0);
       element.setAttribute('role', 'button');
       element.setAttribute('aria-label', `${ringIndex ? 'Excluded area corner' : 'Corner'} ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`);
+      const selectCorner = () => setSelectedCorner(index);
+      element.addEventListener('focus', selectCorner);
       const keydown = (event: KeyboardEvent) => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
         if (latest.current.disabled || editBinding.current !== handleBinding) return;
-        const distance = event.shiftKey ? 10 : 1;
-        const pixel = instance.project(marker.getLatLng(), instance.getZoom());
-        pixel.x += event.key === 'ArrowLeft' ? -distance : event.key === 'ArrowRight' ? distance : 0;
-        pixel.y += event.key === 'ArrowUp' ? -distance : event.key === 'ArrowDown' ? distance : 0;
+        setSelectedCorner(index);
         focusedCorner.current = index;
-        moveCorner(index, position(instance.unproject(pixel, instance.getZoom())));
+        nudgeCorner(index, event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0, event.key === 'ArrowUp' ? 1 : event.key === 'ArrowDown' ? -1 : 0, event.shiftKey ? 10 : 1);
       };
       element.addEventListener('keydown', keydown);
       cleanups.push(() => element.removeEventListener('keydown', keydown));
+      cleanups.push(() => element.removeEventListener('focus', selectCorner));
       if (focusedCorner.current === index) element.focus({ preventScroll: true });
     });
     return () => { cleanups.forEach(cleanup => cleanup()); };
@@ -547,14 +592,21 @@ export function ParcelMap(props: ParcelMapProps) {
       {!props.readOnly && <Button variant="secondary" disabled={!ready || locating} onClick={useLocation}>{locating ? 'Finding my location…' : 'Use my location'}</Button>}
       {!props.readOnly && parts.length > 1 && <Field label="Part to edit"><select value={selectedPart} disabled={drawingHole} onChange={event => { focusedCorner.current = null; setPart(Number(event.target.value)); setSelectedRing(0); setConfirmation(null); }}>{parts.map((_, index) => <option value={index} key={index}>Part {index + 1}</option>)}</select></Field>}
     </div>
+    {!props.readOnly && props.mode === 'edit' && <div className="parcel-map-edit-actions"><span>Select a corner to fine-tune it. Nothing is applied to the farm yet.</span><Button variant="secondary" disabled={!undoCount} onClick={undoLast}>Undo last boundary adjustment</Button></div>}
     {!props.readOnly && <div className="parcel-map-pan" aria-label="Move map view"><Button variant="ghost" disabled={!ready} onClick={() => pan(0, -160)}>Move north</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(0, 160)}>Move south</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(160, 0)}>Move east</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(-160, 0)}>Move west</Button></div>}
-    <p id={instructionId}>{props.readOnly ? 'Drag to look around. Zoom in for a closer view, or fit the supplied outline. This view cannot change the field.' : props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to move the view.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark a dividing line. Drag the map to move the view.' : drawingHole ? 'Tap corners inside the selected part, then choose Close excluded area. Finish or cancel this excluded area before changing parts.' : 'Choose the outer edge or an excluded area, then drag a white corner to move it. You can also select a corner and use the arrow keys; hold Shift to move farther. Drag elsewhere to move the map.'}</p>
+    <p id={instructionId}>{props.readOnly ? 'Drag to look around, or zoom in for a closer view.' : props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to look around.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark the dividing line.' : drawingHole ? 'Tap around the gap, then choose Close excluded area.' : 'Click a corner to select it, then drag or fine-tune it below. Drag between corners to look around.'}</p>
     {mapError && <Notice kind="warning">{mapError} {props.readOnly ? 'The saved outline remains available without a background.' : 'Your draft is still editable without a background.'}</Notice>}
     {!props.readOnly && (props.mode !== 'edit' || drawingHole) && zoom < 14 && <Notice>Zoom in closer before drawing. This overview does not show your farm's location.</Notice>}
     <div ref={host} className="parcel-map" role="group" aria-label="Field boundary map" aria-describedby={instructionId}/>
-    <p className="parcel-map-caption">{props.readOnly ? 'Your supplied outline, not an official LPIS boundary.' : 'Your boundary draft, not an official LPIS boundary.'} Moving or zooming the map does not move its corners. <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p>
+    {!props.readOnly && props.mode === 'edit' && !drawingHole && ring.length > 0 && <section className="parcel-map-fine-edit" aria-label="Fine-tune a boundary corner">
+      <div className="parcel-map-fine-heading"><h3>Fine-tune a corner</h3><span>Draft only</span></div>
+      <Field label="Selected boundary corner"><select value={selectedCorner ?? ''} onChange={event => { focusedCorner.current = null; setSelectedCorner(event.target.value === '' ? null : Number(event.target.value)); }}><option value="">Choose a corner, or click one on the map</option>{ring.slice(0, -1).map((_, index) => <option key={index} value={index}>Corner {index + 1}</option>)}</select></Field>
+      {selectedCorner !== null && ring[selectedCorner] && <Button variant="ghost" onClick={() => { const instance = map.current; if (!instance) return; movedByUser.current = true; instance.setView(latLng(ring[selectedCorner]), Math.max(instance.getZoom(), 18), { animate: false }); }}>Focus this corner</Button>}
+      {selectedCorner !== null && ring[selectedCorner] ? <><div className="parcel-map-fine-coordinates"><Field label="Selected corner longitude"><input inputMode="decimal" value={cornerPosition.longitude} onChange={event => setCornerPosition(previous => ({ ...previous, longitude: event.target.value }))}/></Field><Field label="Selected corner latitude"><input inputMode="decimal" value={cornerPosition.latitude} onChange={event => setCornerPosition(previous => ({ ...previous, latitude: event.target.value }))}/></Field><Button variant="secondary" onClick={() => { const point = [Number(cornerPosition.longitude), Number(cornerPosition.latitude)]; if (!cornerPosition.longitude.trim() || !cornerPosition.latitude.trim() || !validPosition(point)) { setMessage('Enter valid longitude and latitude with a decimal point. Your corner has not moved.'); return; } focusedCorner.current = null; moveCorner(selectedCorner, point); setMessage('Corner position changed in this draft. Undo restores the earlier position.'); }}>Apply corner position</Button></div><div className="parcel-map-nudges"><Field label="Nudge distance"><select value={nudgeMetres} onChange={event => setNudgeMetres(Number(event.target.value))}><option value={0.1}>About 10 cm</option><option value={1}>About 1 m</option><option value={5}>About 5 m</option></select></Field>{([['north',0,1],['south',0,-1],['east',1,0],['west',-1,0]] as const).map(([direction,east,north]) => <Button key={direction} variant="secondary" onClick={() => { focusedCorner.current = null; nudgeCorner(selectedCorner,east,north); }}>Nudge {direction}</Button>)}</div><p>Drag the selected corner, type its coordinates, or use arrow keys while that corner is focused. Shift moves ten nudge steps. Distances are approximate; typed coordinates and nudges do not snap.</p></> : <p>Click a white corner, or choose its number above. The selected corner turns blue. Dragging the map between corners only moves the view.</p>}
+    </section>}
+    {!snapshot && <details className="parcel-map-map-details"><summary>Map details and licence</summary><p>Your saved outline or draft is not an official LPIS update. Moving the view does not move any coordinates. <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p></details>}
     {!props.readOnly && <>
-    <fieldset className="parcel-map-comparison"><legend>Comparison outline</legend><label className="parcel-map-consent"><input type="checkbox" checked={snapToComparison && !!props.reference} disabled={!props.reference} onChange={event => setSnapToComparison(event.target.checked)}/>Help pointer clicks and drags follow the comparison outline</label><p>{props.reference ? 'Optional: a pointer within 10 screen pixels of the chosen comparison outline follows its nearest vertex or edge. Turning this on does not move any corners. Typed coordinates and arrow-key adjustments are never snapped. This is a drawing aid, not official accuracy or acceptance.' : 'Choose a comparison outline first. Public candidates are not used until you choose one for comparison.'}</p></fieldset>
+    <fieldset className="parcel-map-comparison"><legend>Comparison outline</legend><label className="parcel-map-consent"><input type="checkbox" checked={snapToComparison && !!(props.reference || snapshot)} disabled={!props.reference && !snapshot} onChange={event => setSnapToComparison(event.target.checked)}/>Help pointer clicks and drags follow the comparison outline</label><p>{props.reference || snapshot ? 'Optional: pointer moves within 10 screen pixels follow the selected comparison edge. Turning this on does not move any corners; typed coordinates and nudges remain exact inputs. The reference itself cannot be changed here.' : 'Choose a comparison outline first. Public candidates are not used until you choose one for comparison.'}</p></fieldset>
     {props.mode === 'edit' && parts[selectedPart] && <fieldset className="parcel-map-exclusions"><legend>Excluded area</legend><p>An excluded area is a hole in this private boundary draft, not a decision about legal eligibility. Other parts and rings are kept; saving a change retains the earlier field outline in history.</p><Field label="Edge to edit"><select value={ringIndex} disabled={drawingHole} onChange={event => { setSelectedRing(Number(event.target.value)); focusedCorner.current = null; setConfirmation(null); }}><option value={0}>Outer edge</option>{parts[selectedPart].slice(1).map((_, index) => <option value={index + 1} key={index}>Excluded area {index + 1}</option>)}</select></Field><div className="parcel-map-toolbar">
       {!drawingHole && !props.sketch.length && <Button variant="secondary" disabled={parts[selectedPart].length >= 20 || positionCount(parts) + 4 > 1000} onClick={() => { setDrawingHole(true); setSelectedRing(0); focusedCorner.current = null; setConfirmation(null); setMessage('Drawing an excluded area inside the selected part. No boundary change is made until you close and confirm it.'); }}>Draw excluded area</Button>}
       {!drawingHole && props.sketch.length > 0 && <Button variant="secondary" onClick={() => { setDrawingHole(true); focusedCorner.current = null; setConfirmation(null); }}>Resume excluded area in part {selectedPart + 1}</Button>}
@@ -564,7 +616,7 @@ export function ParcelMap(props: ParcelMapProps) {
       {!drawingHole && !props.sketch.length && ringIndex > 0 && <Button variant="secondary" onClick={() => requestConfirmation('remove')}>Remove excluded area</Button>}
     </div>{props.sketch.length > 0 && <p>{props.sketch.length} unfinished excluded-area corners kept in your private draft. {!drawingHole && 'Check the selected part and these points before resuming; the target part is not retained when the editor is reopened.'}</p>}{parts[selectedPart].length >= 20 && <p>This part already has the maximum 19 excluded areas.</p>}{confirmation && confirmation.binding === binding && <div className="parcel-map-confirmation" role="group" aria-label="Confirm excluded-area change"><p>{confirmation.kind === 'close' ? 'Add this closed excluded area to the selected part? The rest of the boundary stays as drawn.' : confirmation.kind === 'cancel' ? 'Discard these unfinished excluded-area points? The boundary stays unchanged. Undo can restore the points.' : 'Remove the selected excluded area from this draft? This fills its hole in the draft, without changing the retained original.'}</p><div className="parcel-map-toolbar"><Button onClick={confirmChange}>{confirmation.kind === 'close' ? 'Confirm excluded area' : confirmation.kind === 'cancel' ? 'Discard unfinished excluded area' : 'Confirm removal of excluded area'}</Button><Button variant="secondary" onClick={() => setConfirmation(null)}>Keep editing</Button></div></div>}</fieldset>}
     </>}
-    {snapshot && <div className="parcel-map-snapshot-source"><p><strong>PNOA aerial photograph · cached public demo area</strong><br />{snapshot.image.attribution}<br />{snapshot.source.attribution}</p><p className="parcel-map-snapshot-legend"><span>Green: retained SIGPAC reference</span><span>Orange dashed: private staged outline</span><span>Red: reference holes missing from that outline</span></p><details><summary>Photo, reference and date details</summary><p>The photograph covers a fixed public demo area. The image is served by this app; viewing it sends no farm coordinates to an outside map provider. Photo capture date: {snapshot.image.capture_date || 'not established'}. Reference retrieval date: {snapshot.retrieved_at}; source campaign year: {snapshot.source.campaign_year ?? 'not established'}.</p><p><a href={snapshot.image.source_url} target="_blank" rel="noopener noreferrer">Original PNOA source</a> · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">Image licence</a> · <a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">SIGPAC source for {snapshot.field.reference}</a></p><p>The red marks follow actual holes in the retained reference. They are an outline comparison, not a pasture coefficient drawn onto the field, an eligibility decision or a completed official correction.</p></details>{snapshotStatus === 'failed' && <Notice kind="warning">The cached aerial photograph could not load. The saved outlines remain on the neutral grid. No external map was requested as a fallback.</Notice>}{snapshotStatus === 'loading' && <p role="status">Opening the cached aerial photograph…</p>}</div>}
+    {snapshot && <div className="parcel-map-snapshot-source"><p className="parcel-map-credit"><strong>Demo</strong> · PNOA © IGN/SCNE · SIGPAC © FEGA · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p><p className="parcel-map-snapshot-legend"><span>Green: reference</span><span>Orange dashed: your outline</span><span>Red: gaps to leave out</span></p><details><summary>Photo, reference and date details</summary><p>{snapshot.image.attribution}<br />{snapshot.source.attribution}</p><p>Photo date: {snapshot.image.capture_date || 'unknown'}. Reference checked: {snapshot.retrieved_at}; campaign year in the source: {snapshot.source.campaign_year ?? 'unknown'}.</p><p><a href={snapshot.image.source_url} target="_blank" rel="noopener noreferrer">Original PNOA source</a> · <a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">SIGPAC source for {snapshot.field.reference}</a> · <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p><p>Red marks follow the actual gaps in the reference, not a percentage cut out of the field.</p></details>{snapshotStatus === 'failed' && <Notice kind="warning">The photo could not open. Your outlines are still available.</Notice>}{snapshotStatus === 'loading' && <p role="status">Opening the cached aerial photograph…</p>}</div>}
     {!snapshot && <details className="parcel-map-background-options" open={props.readOnly ? undefined : true}><summary hidden={!props.readOnly}>Choose an optional background map</summary>
     <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
       <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
@@ -582,7 +634,6 @@ export function ParcelMap(props: ParcelMapProps) {
     {!props.readOnly && <>
     {props.mode === 'draw' && <div className="parcel-map-toolbar"><Button disabled={props.sketch.length < 3} onClick={() => { props.onGeometry({ type: 'Polygon', coordinates: [[...props.sketch, [...props.sketch[0]]]] }); props.onSketch([]); }}>Close boundary</Button><Button variant="secondary" disabled={!props.sketch.length} onClick={() => props.onSketch(props.sketch.slice(0, -1))}>Undo last corner</Button></div>}
     {props.mode === 'split' && <div className="parcel-map-toolbar"><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine(props.splitLine.slice(0, -1))}>Undo dividing line point</Button><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine([])}>Redraw dividing line</Button></div>}
-    {props.mode === 'edit' && <Button variant="secondary" disabled={!undoCount} onClick={() => { const previous = undo.current.pop(); if (previous) { expectedGeometry.current = JSON.stringify(previous.geometry); props.onGeometry(previous.geometry); props.onSketch(previous.sketch); setPart(previous.part); setSelectedRing(previous.ring); setDrawingHole(previous.drawingHole); focusedCorner.current = null; setConfirmation(null); setMessage('Last boundary adjustment undone, including its unfinished excluded-area points.'); } setUndoCount(undo.current.length); }}>Undo last boundary adjustment</Button>}
     {props.mode === 'edit' && !drawingHole && ring.length > 0 && <details className="parcel-map-coordinates"><summary>Adjust corners using coordinates</summary><p>These controls change {ringIndex ? `excluded area ${ringIndex} in the selected part` : 'the selected outer edge'}. Other parts and rings remain as saved. Coordinates and arrow keys do not snap to a comparison. The server checks the resulting outline before saving.</p><div className="parcel-map-corners">{ring.slice(0, -1).map((p, index) => <div className="parcel-map-coordinate-row" key={index}><strong>Corner {index + 1}</strong><Field label="Longitude"><input type="number" min="-180" max="180" step="any" value={p[0]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [event.target.valueAsNumber, p[1]]); }}/></Field><Field label="Latitude"><input type="number" min="-90" max="90" step="any" value={p[1]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [p[0], event.target.valueAsNumber]); }}/></Field><div className="parcel-map-toolbar"><Button variant="ghost" disabled={ring.length >= 500 || positionCount(parts) >= 1000} onClick={() => changeCornerCount(index, true)}>Insert corner after {index + 1}</Button><Button variant="ghost" disabled={ring.length <= 4} onClick={() => changeCornerCount(index, false)}>Remove corner {index + 1}</Button></div></div>)}</div></details>}
     </>}
   </div>;

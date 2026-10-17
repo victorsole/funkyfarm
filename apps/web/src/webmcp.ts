@@ -13,8 +13,6 @@ type Proposal = {
   id: string; revision: number; checksum: string; status: string; action: string;
   farm_id: string; farm_name: string; recipient: string | null; expires_at: string; payload: unknown; notice: string;
 };
-type Credential = { id: string; revision: number; data: { name: string; farm_ids: string[]; permissions: string[]; expires_at: string; revoked_at: string | null } };
-type FarmChoice = { id: string; data: { name?: string } };
 const names = new Set([
   'list_tasks', 'find_records', 'check_request', 'preview_request', 'preview_journal', 'propose_capture', 'export_approved',
   'farm_overview', 'read_document', 'missing_answers', 'animal_events', 'list_fields', 'field_change_diff',
@@ -36,114 +34,9 @@ export function mountWebMCP(): () => void {
   const context = (document as Document & { modelContext?: ModelContext }).modelContext;
   let review: HTMLDialogElement | null = null;
   let reviewGeneration = 0;
-  let secretInput: HTMLInputElement | null = null;
-  let accessControl: HTMLButtonElement | null = null;
 
-  const clearReview = () => { reviewGeneration++; if (secretInput) secretInput.value = ''; secretInput = null; review?.close(); review?.remove(); review = null; };
+  const clearReview = () => { reviewGeneration++; review?.close(); review?.remove(); review = null; };
 
-  const showAssistantAccess = async (event: MouseEvent) => {
-    if (!event.isTrusted || lifecycle.signal.aborted) return;
-    clearReview();
-    const generation = reviewGeneration;
-    const dialog = document.createElement('dialog');
-    review = dialog; dialog.className = 'panel';
-    dialog.setAttribute('aria-label', 'Connect an AI assistant');
-    dialog.style.maxWidth = 'min(44rem, 92vw)'; dialog.style.maxHeight = '85vh';
-    const title = document.createElement('h2'); title.textContent = 'Connect an AI assistant';
-    const status = document.createElement('p'); status.setAttribute('role', 'status');
-    status.textContent = 'Choose exactly which farms and operations this client may access. Keys cannot approve evidence, issue reports or file paperwork.';
-    const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Close';
-    close.addEventListener('click', clearReview); dialog.addEventListener('cancel', clearReview);
-    dialog.append(title, status, close); document.body.append(dialog); dialog.showModal();
-    try {
-      const [credentials, farms] = await Promise.all([
-        api.get<{ items: Credential[] }>('/assistant/credentials'),
-        api.get<{ items: FarmChoice[]; total: number }>('/farms?limit=100'),
-      ]);
-      if (lifecycle.signal.aborted || generation !== reviewGeneration) return;
-      const form = document.createElement('form'); form.className = 'stack';
-      const field = (label: string, input: HTMLElement) => {
-        const wrapper = document.createElement('label'); wrapper.className = 'field';
-        const text = document.createElement('span'); text.textContent = label;
-        wrapper.append(text, input); return wrapper;
-      };
-      const clientName = document.createElement('input'); clientName.required = true; clientName.maxLength = 120;
-      clientName.autocomplete = 'off';
-      form.append(field('Assistant client name', clientName));
-      const farmSet = document.createElement('fieldset');
-      const legend = document.createElement('legend'); legend.textContent = 'Allow access to selected farms only'; farmSet.append(legend);
-      const choices: { id: string; checkbox: HTMLInputElement }[] = [];
-      for (const farm of farms.items) {
-        const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
-        choices.push({ id: farm.id, checkbox }); farmSet.append(field(farm.data.name ?? farm.id, checkbox));
-      }
-      if (farms.total > farms.items.length) {
-        const note = document.createElement('p'); note.textContent = 'Showing the first 100 farms. Use separate keys for selected farms; no all-farms shortcut is granted.'; farmSet.append(note);
-      }
-      form.append(farmSet);
-      const permission = document.createElement('select');
-      for (const [value, label] of [['read', 'Read records only'], ['propose', 'Read and stage proposals for my review']]) {
-        const option = document.createElement('option'); option.value = value; option.textContent = label; permission.append(option);
-      }
-      const expiry = document.createElement('input'); expiry.type = 'number'; expiry.required = true; expiry.min = '1'; expiry.max = '30'; expiry.value = '7';
-      form.append(field('Permitted operations', permission), field('Expires after days (1–30)', expiry));
-      const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Create restricted key';
-      create.disabled = choices.length === 0; form.append(create);
-      const endpoint = document.createElement('p');
-      endpoint.textContent = `MCP endpoint: ${window.location.origin}/api/v1/assistant/mcp. Configure the key as a Bearer credential in a trusted MCP client, not in a prompt. Never use your ordinary account session.`;
-      let busy = false;
-      form.addEventListener('submit', event => {
-        event.preventDefault();
-        if (!event.isTrusted || busy || lifecycle.signal.aborted) return;
-        const farmIds = choices.filter(choice => choice.checkbox.checked).map(choice => choice.id);
-        if (!farmIds.length) { status.textContent = 'Select at least one farm.'; return; }
-        busy = true; create.disabled = true;
-        void api.post<{ token: string; credential: Credential; notice: string }>('/assistant/credentials', {
-          name: clientName.value.trim(), farm_ids: farmIds,
-          permissions: permission.value === 'propose' ? ['read', 'propose'] : ['read'], expires_in_days: Number(expiry.value),
-        }).then(result => {
-          if (lifecycle.signal.aborted || generation !== reviewGeneration) return;
-          const key = document.createElement('input'); key.type = 'password'; key.readOnly = true;
-          key.autocomplete = 'off'; key.spellcheck = false; key.value = result.token;
-          result.token = '';
-          secretInput = key;
-          const reveal = document.createElement('button'); reveal.type = 'button'; reveal.textContent = 'Show key once';
-          reveal.addEventListener('click', event => { if (event.isTrusted) { key.type = key.type === 'password' ? 'text' : 'password'; reveal.textContent = key.type === 'password' ? 'Show key once' : 'Hide key'; } });
-          status.textContent = result.notice;
-          form.replaceChildren(field('New key — available only until this dialog closes', key), reveal);
-          const revoked = document.createElement('button'); revoked.type = 'button'; revoked.textContent = 'Revoke this new key';
-          revoked.addEventListener('click', event => {
-            if (!event.isTrusted) return;
-            revoked.disabled = true;
-            void api.post(`/assistant/credentials/${result.credential.id}/revoke`, { expected_revision: result.credential.revision })
-              .then(() => { key.value = ''; status.textContent = 'The new key was revoked.'; reveal.disabled = true; })
-              .catch(failure => { status.textContent = errorMessage(failure); revoked.disabled = false; });
-          });
-          form.append(revoked);
-        }).catch(failure => {
-          if (!lifecycle.signal.aborted && generation === reviewGeneration) { status.textContent = errorMessage(failure); create.disabled = false; }
-        }).finally(() => { busy = false; });
-      });
-      dialog.insertBefore(endpoint, close); dialog.insertBefore(form, close);
-      const heading = document.createElement('h3'); heading.textContent = 'Existing assistant access'; dialog.insertBefore(heading, close);
-      for (const credential of credentials.items) {
-        const row = document.createElement('p');
-        row.textContent = `${credential.data.name} · ${credential.data.farm_ids.length} farms · ${credential.data.permissions.join(', ')} · expires ${credential.data.expires_at} `;
-        const revoke = document.createElement('button'); revoke.type = 'button'; revoke.textContent = credential.data.revoked_at ? 'Revoked' : 'Revoke';
-        revoke.disabled = Boolean(credential.data.revoked_at);
-        revoke.addEventListener('click', event => {
-          if (!event.isTrusted || revoke.disabled) return;
-          revoke.disabled = true;
-          void api.post(`/assistant/credentials/${credential.id}/revoke`, { expected_revision: credential.revision })
-            .then(() => { revoke.textContent = 'Revoked'; })
-            .catch(failure => { status.textContent = errorMessage(failure); revoke.disabled = false; });
-        });
-        row.append(revoke); dialog.insertBefore(row, close);
-      }
-    } catch (failure) {
-      if (!lifecycle.signal.aborted && generation === reviewGeneration) status.textContent = errorMessage(failure);
-    }
-  };
 
   const showReview = async (approvalId: string) => {
     if (!identifier.test(approvalId) || lifecycle.signal.aborted) return;
@@ -279,15 +172,6 @@ export function mountWebMCP(): () => void {
   };
   reviewFromLocation();
   window.addEventListener('popstate', reviewFromLocation);
-  // The owner opts in through a visible control. No credential screen opens
-  // automatically and no key is ever passed to document.modelContext.
-  void api.get('/assistant/credentials').then(() => {
-    if (lifecycle.signal.aborted) return;
-    accessControl = document.createElement('button'); accessControl.type = 'button';
-    accessControl.className = 'text-button'; accessControl.textContent = 'Connect an AI assistant';
-    accessControl.addEventListener('click', event => { void showAssistantAccess(event); });
-    document.querySelector('.workspace-footer')?.append(accessControl);
-  }).catch(() => { /* Nonowners have no credential-management control. */ });
 
   if (window.isSecureContext && context && typeof context.registerTool === 'function') {
     void api.get<{ tools: Tool[] }>('/assistant/tools').then(async catalog => {
@@ -310,5 +194,5 @@ export function mountWebMCP(): () => void {
     });
   }
 
-  return () => { lifecycle.abort(); registrations.abort(); clearReview(); accessControl?.remove(); window.removeEventListener('popstate', reviewFromLocation); };
+  return () => { lifecycle.abort(); registrations.abort(); clearReview(); window.removeEventListener('popstate', reviewFromLocation); };
 }

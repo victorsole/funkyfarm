@@ -41,4 +41,21 @@
 .correction-boundary svg { display: block; width: 100%; max-height: 22rem; background: var(--correction-paper); border: 1px solid #cbd7cd; }
 .correction-boundary figcaption { margin-top: .6rem; font-size: .9rem; }
 .correction-step-navigation { margin: 1.5rem 0; justify-content: space-between; }
+.correction-attachment { margin-block: 1.5rem; padding: 1.2rem; border: 1px solid #c2d0c5; border-left: 4px solid #064b32; background: #f6f8ef; color: #064b32; }
+.correction-attachment > h4 { font-size: 1.1rem; margin: 0 0 .5rem; }
+.correction-attachment fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.correction-attachment-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.correction-attachment :is(input[type="file"], select) { max-width: 100%; }
+.correction-attachment .check-row { margin: 1rem 0; }
+.correction-attachment .correction-save-note { margin: .8rem 0 0; }
+.correction-file-preview { margin: .8rem 0 1.2rem; padding: .8rem; background: #fffef8; border: 1px solid #cbd7cd; overflow-wrap: anywhere; }
+.correction-file-preview img { display: block; max-width: 100%; max-height: 20rem; object-fit: contain; margin-bottom: .6rem; }
+.correction-file-preview figcaption { font-weight: 650; margin-bottom: .6rem; }
+.correction-file-preview .button { margin-left: .6rem; }
+.correction-readable-value { margin: .3rem 0; overflow-wrap: anywhere; }
+.correction-readable-value > div { border-top: 1px solid #dce4d8; padding: .55rem 0; }
+.correction-readable-value dt { text-transform: capitalize; font-size: .85rem; color: #40594b; }
+.correction-readable-value dd { margin: 0; }
+.correction-literal-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 580px) { .correction-attachment-inputs { grid-template-columns: 1fr; gap: 0; } .correction-attachment { padding: .9rem; } .correction-file-preview .button { margin: .6rem 0 0; } }
 @media (max-width: 760px) { .correction-steps { display: flex; overflow-x: auto; padding-bottom: .4rem; } .correction-steps li { flex: 0 0 10rem; } .correction-steps button { padding: .6rem .8rem; } .correction-value-pair { grid-template-columns: 1fr; } .correction-question-actions { flex-wrap: wrap; } .correction-question-actions .button { flex: 1; } }

@@ -1,0 +1,20 @@
+{
+  "fixture_kind": "wholly_authored_test_data_using_documented_source_column_names",
+  "provided_guide": "EU-Agri-Hackathon-2026/Hackathon 2026 Dataset Guide.xlsx",
+  "guide_sha256": "2400a0278e6fef1600e458734ce5771ca170198be1728cfaf88c61edc6fad8ab",
+  "guide_locations": {
+    "annual_economics": "data_dictionary!A646:I659; synthetic_farm_economics econ_id/holding_id/year; monetary columns EUR",
+    "parcel_coordinates": "data_dictionary!A760:I769; shape_wkt and x_local_m/y_local_m have no geographic CRS",
+    "documents_absent": "quality_and_release!A4:C4",
+    "regional_licences": "quality_and_release!A11:C11; weather_sources/crop_sources/soil_sources"
+  },
+  "archive_members_inspected_read_only": [
+    "dg-agri-hackathon-datasets/synthetic/synthetic_farm_economics.csv",
+    "dg-agri-hackathon-datasets/synthetic/synthetic_fertilisation_2017.csv",
+    "dg-agri-hackathon-datasets/synthetic/synthetic_fertilisation_2018.csv"
+  ],
+  "licence_decision": "No supplied data rows or documents are redistributed. A synthetic-data redistribution licence was not established from the bounded local metadata inspection. Regional source licences do not automatically cover every synthetic table.",
+  "changes_from_source": "All identifiers, amounts, text and geometry are authored. The comment column and adversarial CSV formatting are test-only. The GeoJSON deliberately mislabels local metre coordinates and must be rejected; it is not a transformed source parcel.",
+  "grain": "Annual holding economics are campaign facts, not dated transactions or applications. No document, certification, official parcel identity or CRS is inferred.",
+  "document_fixture": "A plain generated PNG with an explicitly supplied human transcription, created in memory by the journey. It proves the manual fallback and source retention, not OCR accuracy."
+}

@@ -98,9 +98,8 @@ test(title, async ({ page }) => {
   await page.goto('/app/examples/cap');
   await expect(page.getByRole('heading', { name: 'Try a CAP correction', exact: true })).toBeVisible();
   await expect(page.getByText('Demo', { exact: true })).toBeVisible();
-  const create = page.getByRole('button', { name: 'Create or reopen my example', exact: true });
-  await expect(create).toBeDisabled(); expect(exampleCreates).toHaveLength(0);
-  await page.getByRole('checkbox', { name: 'I want to save these sample records in my workspace.', exact: true }).check();
+  const create = page.getByRole('button', { name: 'Start example', exact: true });
+  await expect(create).toBeEnabled(); expect(exampleCreates).toHaveLength(0);
   const created = responseFor(page, '/examples/cap', 'POST'); await create.click();
   const createResponse = await created; expect(createResponse.status()).toBe(201);
   expect(createResponse.request().postDataJSON()).toEqual({ acknowledged: true });
@@ -111,9 +110,10 @@ test(title, async ({ page }) => {
   expect(example.progress.open_items).toBe(3); expect(example.checks.can_review).toBe(false);
   await expect(page).toHaveURL(new RegExp(`/app/examples/cap\\?run_id=${runId}$`));
   await expect(page.getByRole('img', { name: /Sample claim and supplied reference outlines/ })).toBeVisible();
-  await page.getByText('What these outlines show', { exact: true }).click();
-  await expect(page.getByText(/The area in a claim is not necessarily the area that can be paid for/)).toBeVisible();
-  await expect(page.getByText(/No satellite observation was made for this example/)).toBeVisible();
+  await page.getByText('Read the claim and notice details', { exact: true }).click();
+  await expect(page.getByText('Compare the shapes; they do not establish ownership or eligible area.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: /Sample claim and supplied reference outlines/ })).toHaveAccessibleName(/These are sample shapes, not satellite imagery or an official field map/);
+  await expect(page.getByText('These are sample dates, not a national correction deadline. For a real case, check the actual notice and the rules that apply.', { exact: true })).toBeVisible();
   expect((await read(page, `/documents?farm_id=${farm.id}`)).total).toBe(0);
 
   await page.getByRole('link', { name: 'Open the actual saved field proposal', exact: true }).click();
@@ -143,10 +143,12 @@ test(title, async ({ page }) => {
   const samples = [];
   for (const sample of scenario.samples) {
     const downloaded = page.waitForEvent('download');
-    await page.getByRole('button', { name: `Download ${sample.title.toLowerCase()}`, exact: true }).click();
+    const downloadName = sample.id === 'land-use' ? 'Download land-use record' : 'Download commitment record';
+    await page.getByRole('button', { name: downloadName, exact: true }).click();
     const file = await downloaded; const buffer = await bytesOf(file);
-    expect(file.suggestedFilename()).toMatch(/^FICTIONAL-.*\.txt$/);
-    expect(buffer.toString('utf8')).toContain('FICTIONAL TRAINING EXAMPLE'); expect(buffer.toString('utf8')).toContain(sample.contents);
+    expect(file.suggestedFilename()).toBe(sample.id === 'land-use' ? 'DEMO-land-use-record-2026.txt' : 'DEMO-commitment-record-2026.txt');
+    expect(buffer.toString('utf8')).toContain('DEMO SAMPLE — NOT A REAL FARM RECORD');
+    expect(buffer.toString('utf8')).toContain(sample.notice); expect(buffer.toString('utf8')).toContain(sample.contents);
     samples.push({ id: sample.id, name: file.suggestedFilename(), mimeType: 'text/plain', buffer });
   }
   expect((await read(page, `/documents?farm_id=${farm.id}`)).total).toBe(0);

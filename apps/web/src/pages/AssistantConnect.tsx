@@ -4,6 +4,7 @@ import { api, ApiError, errorMessage } from '../api';
 import { useSession } from '../auth';
 import { Button, Field, Notice, PageHeader } from '../components';
 import type { Page, RecordItem } from '../types';
+import './assistantHelp.css';
 
 type Configuration = { available: boolean; resource?: string; issuer?: string; message: string; local_development?: boolean; provider_account_verified: boolean };
 type PendingConsent = { request_id: string; client_name: string; client_id: string; redirect_uri: string; redirect_hostname: string; requested_scopes: string[]; resource: string; expires_at: string; workspace: { id: string }; farms: { id: string; name: string }[]; farm_count: number; farm_limit: number; notice: string };
@@ -39,6 +40,17 @@ function ConnectionPage() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [chatAvailable, setChatAvailable] = useState(false);
+  const [copyMessage, setCopyMessage] = useState('');
+
+  // Copy public entry points only: never the current URL, consent request or credentials.
+  const siteAddress = `${window.location.origin}/app`;
+  let connectionAddress = '';
+  try {
+    const address = new URL(configuration?.resource || '');
+    if (configuration?.available && ['https:', 'http:'].includes(address.protocol) && !address.username && !address.password && !address.search && !address.hash) connectionAddress = address.href;
+  } catch { /* An unavailable public connection still permits a browser instruction. */ }
+  const instruction = `Open ${siteAddress} in your browser and help me work through my farm paperwork, one question at a time. Ask me what I need help with and which farm to use. If your browser supports this website’s tools (WebMCP), use those tools only after I choose the farms and permissions.${connectionAddress ? ` If browser tools are unavailable and your assistant supports remote MCP connections, the connection address is ${connectionAddress}. Start the sign-in and farm-permission request there; I will approve it myself on the website.` : ' If website tools are unavailable, tell me what to open and check myself.'} Do not ask me to paste passwords, access keys or connection codes into this conversation. Do not confirm records, approve reports, send or file anything for me. Keep suggestions separate from saved records and ask me to review each proposed change on the website.`;
 
   async function reloadConnections(offset = connectionOffset) {
     const page = await api.get<Page<Connection>>(`/assistant/oauth/connections?limit=20&offset=${offset}`);
@@ -49,6 +61,8 @@ function ConnectionPage() {
   useEffect(() => {
     let active = true;
     setLoading(true); setError(null); setPending(null); setSelectedFarms([]); setPropose(false); setRefresh(false); setDisclosure(false);
+    setChatAvailable(false);
+    void api.get<{ available: boolean }>('/assistant/chat/status').then(value => { if (active) setChatAvailable(value.available); }).catch(() => { /* Optional alternative, not a connection requirement. */ });
     void (async () => {
       try {
         const config = await api.get<Configuration>('/assistant/oauth/config');
@@ -89,19 +103,24 @@ function ConnectionPage() {
     try {
       await api.post(`/assistant/oauth/connections/${connection.id}/revoke`, { expected_revision: connection.revision });
       await reloadConnections(0);
-      setMessage('Access was revoked. This connection can no longer read farms, stage proposals or refresh its tokens.');
+      setMessage('Access was revoked. This assistant can no longer read these farms or prepare new suggestions through this connection.');
     } catch (failure) { setError(failure); } finally { setBusy(false); }
   }
 
   async function copyAddress() {
-    if (!configuration?.resource) return;
+    if (!connectionAddress) return;
     setError(null); setMessage('');
-    try { await navigator.clipboard.writeText(configuration.resource); setMessage('MCP server address copied. Add it in your assistant’s custom connector settings and choose OAuth.'); }
+    try { await navigator.clipboard.writeText(connectionAddress); setMessage('Connection address copied. Use it only in your assistant’s connection settings.'); }
     catch { setMessage('Select and copy the server address shown below. Your browser did not allow clipboard access.'); }
   }
 
+  async function copyInstruction() {
+    try { await navigator.clipboard.writeText(instruction); setCopyMessage('Instruction copied. Paste it into your assistant, then let it explain what it can do.'); }
+    catch { setCopyMessage('Your browser could not copy the instruction. Open “Read or copy the instruction yourself” below, then select and copy the text.'); }
+  }
+
   return <>
-    <PageHeader title={pending ? 'Choose what your assistant can access' : 'Use your own assistant'} description={pending ? 'This browser request needs your decision. Choose the farms and permissions before continuing.' : 'Connect ChatGPT or Claude to selected farm records through OAuth. Your assistant account stays with its provider.'} />
+    <PageHeader title={pending ? 'Choose what your assistant can access' : 'Use your own assistant'} description={pending ? 'This browser request needs your decision. Choose the farms and permissions before continuing.' : 'Ask the assistant you already use to open this website and help you, one step at a time.'} />
     {loading && <Notice>Opening assistant connection settings…</Notice>}
     {error && <Notice kind="error">{errorMessage(error)}{error instanceof ApiError && error.status === 409 && <p>The saved connection changed. Reload it before trying again.</p>}{requestId && <p>To restart an expired connection, return to your assistant and choose Connect again in this browser.</p>}<Button variant="secondary" onClick={() => window.location.reload()}>Reload this page</Button></Notice>}
     {message && <Notice kind="success">{message}</Notice>}
@@ -120,7 +139,7 @@ function ConnectionPage() {
         <fieldset disabled={busy}><legend>What may it do?</legend>
           <p><strong>Read the selected farms:</strong> find bounded record summaries, list tasks, check missing evidence and find an already approved report’s private download route.</p>
           {pending.requested_scopes.includes('farm:propose') && <label className="field"><span><input type="checkbox" checked={propose} onChange={event => setPropose(event.target.checked)} /> Also stage facts, work, purchases, sales or report previews for my review.</span></label>}
-          {pending.requested_scopes.includes('offline_access') && <label className="field"><span><input type="checkbox" checked={refresh} onChange={event => setRefresh(event.target.checked)} /> Keep access available for up to seven days using rotating refresh tokens.</span><small className="muted">Otherwise the access token lasts up to 15 minutes. You can revoke the connection at any time.</small></label>}
+          {pending.requested_scopes.includes('offline_access') && <label className="field"><span><input type="checkbox" checked={refresh} onChange={event => setRefresh(event.target.checked)} /> Keep this connection available for up to seven days.</span><small className="muted">Otherwise access lasts up to 15 minutes. You can revoke the connection at any time.</small></label>}
           <p>Assistant access cannot confirm evidence, approve or issue reports, send documents, file with authorities, change account settings or grant another assistant access.</p>
         </fieldset>
         <label><input type="checkbox" required disabled={busy} checked={disclosure} onChange={event => setDisclosure(event.target.checked)} /> I want the selected farm information returned to this assistant when it uses these tools. I have checked the callback domain and permissions.</label>
@@ -129,31 +148,38 @@ function ConnectionPage() {
       </form>
     </section>}
 
-    {!pending && configuration && <section className="card"><h2>Start in your assistant</h2>
-      <p>Add FunkyFarm as a custom MCP connector in your existing ChatGPT or Claude account. The assistant starts an OAuth request, then brings you here to sign in and choose farm access.</p>
-      {!configuration.available ? <Notice kind="warning">{configuration.message} No public connector is configured.</Notice> : <>
+    {!pending && <section className="card assistant-help-start"><p className="eyebrow">Start with a conversation</p><h2>Give your assistant one instruction</h2>
+      <p>Copy the instruction, paste it into ChatGPT, Claude or another assistant you use, and ask it to open this website. You do not need to write a settings file.</p>
+      <div className="actions"><Button disabled={loading} onClick={() => void copyInstruction()}>Copy instruction</Button>{chatAvailable && <Link to="/app/help#in-app-help">Ask inside FunkyFarm instead</Link>}</div>
+      {copyMessage && <p role="status" className="assistant-copy-status">{copyMessage}</p>}
+      <p className="muted">Not every assistant or browser can use website tools or connect to farm records. Copying this instruction does not link accounts or grant access. Your assistant may need to guide you through the website instead.</p>
+      <details className="assistant-help-details"><summary>Read or copy the instruction yourself</summary><Field label="Instruction for your assistant"><textarea className="assistant-instruction" readOnly value={instruction} onFocus={event => event.target.select()} /></Field></details>
+      <div className="assistant-help-permission"><h3>You choose what it can see</h3><p>If the assistant requests a connection, check the website address and choose the farms and permissions yourself. Information you share goes to that assistant’s service. Suggestions still need your review here; nothing is sent or filed for you.</p></div>
+      <details className="assistant-help-details"><summary>Connection setup and compatibility</summary>
+      <p>This website offers browser tools through WebMCP and a remote MCP connection using OAuth. A compatible assistant must start the connection; opening this page alone does not connect your account.</p>
+      {!configuration ? <p>Connection settings could not be loaded. Reload this page to try again, or use the browser instruction above.</p> : !configuration.available ? <Notice kind="warning">The remote connection is not available on this installation. You can still ask your assistant to guide you through the website.</Notice> : <>
         {configuration.local_development && <Notice kind="warning">This is a local development address. A cloud-hosted ChatGPT or Claude connector cannot reach this computer through it. Public HTTPS hosting and a real provider-account connection remain unverified.</Notice>}
-        <Field label="MCP server address"><input readOnly value={configuration.resource || ''} onFocus={event => event.target.select()} /></Field><Button variant="secondary" onClick={() => void copyAddress()}>Copy server address</Button>
+        <Field label="MCP server address"><input readOnly value={connectionAddress} onFocus={event => event.target.select()} /></Field><Button variant="secondary" disabled={!connectionAddress} onClick={() => void copyAddress()}>Copy server address</Button>
         <Field label="Your assistant"><select value={provider} onChange={event => setProvider(event.target.value as 'chatgpt' | 'claude')}><option value="chatgpt">ChatGPT</option><option value="claude">Claude</option></select></Field>
         <p>{provider === 'claude' ? 'In Claude, add a custom remote connector, paste this server address, and choose OAuth with automatic client registration. Select Connect to begin the browser consent flow.' : 'In ChatGPT, add a custom MCP connector using this server address and OAuth. Use automatic client registration when asked, then start the connection.'}</p>
         <p>Provider settings and access depend on your account and organization. This application does not verify your subscription, use your provider’s session, or ask for provider API keys.</p>
         <div className="actions"><a className="button button-secondary" href={provider === 'claude' ? 'https://claude.ai/' : 'https://chatgpt.com/'} target="_blank" rel="noreferrer">Open {provider === 'claude' ? 'Claude' : 'ChatGPT'}</a><a href={references[provider]} target="_blank" rel="noreferrer">Official OAuth connector guidance</a></div>
       </>}
-      <p className="muted">Opening this page alone does not connect an account. A connection is authorized only after the provider starts OAuth and you approve the farms and permissions here.</p>
+      <p className="muted">Technical references: <a href={references.chatgpt} target="_blank" rel="noreferrer">OpenAI authentication guidance</a>, <a href={references.claude} target="_blank" rel="noreferrer">Claude authentication guidance</a>, <a href={references.mcp} target="_blank" rel="noreferrer">MCP authorization specification</a>.</p>
+      </details>
     </section>}
 
-    {owner && <section className="card"><h2>Farm access you granted</h2><p>Revoking access stops future tool calls and token refreshes. Information already returned to an assistant is governed by that provider’s retention settings.</p>
-      {!loading && !connections.length && <p className="muted">No assistant OAuth grants are saved in this workspace.</p>}
+    {owner && <section className="card"><h2>Farm access you granted</h2><p>Revoking access stops future use of this connection. Information already returned to an assistant is governed by that provider’s retention settings.</p>
+      {!loading && !connections.length && <p className="muted">No assistant connections are saved in this workspace.</p>}
       {connections.map(connection => {
         const active = !connection.data.revoked_at && new Date(connection.data.expires_at).getTime() > Date.now();
-        return <article className="panel" key={connection.id}><h3>{connection.data.client_name}</h3><p><span className="badge">{connection.data.revoked_at ? 'Revoked' : !active ? 'Expired' : connection.data.last_issued_at ? 'Access issued' : 'Awaiting code exchange'}</span> · {connection.data.permissions.includes('propose') ? 'Read and stage proposals' : 'Read only'}</p><p>{connection.data.farm_ids.length} explicitly selected {connection.data.farm_ids.length === 1 ? 'farm' : 'farms'} · expires {new Date(connection.data.expires_at).toLocaleString()}</p>
-          {connection.data.last_issued_at && <p className="muted">Last token issued {new Date(connection.data.last_issued_at).toLocaleString()}. Token issuance does not establish a verified provider-account connection.</p>}
+        return <article className="panel" key={connection.id}><h3>{connection.data.client_name}</h3><p><span className="badge">{connection.data.revoked_at ? 'Revoked' : !active ? 'Expired' : connection.data.last_issued_at ? 'Access issued' : 'Waiting for the assistant to finish connecting'}</span> · {connection.data.permissions.includes('propose') ? 'Read and prepare suggestions' : 'Read only'}</p><p>{connection.data.farm_ids.length} explicitly selected {connection.data.farm_ids.length === 1 ? 'farm' : 'farms'} · expires {new Date(connection.data.expires_at).toLocaleString()}</p>
+          {connection.data.last_issued_at && <p className="muted">Access last issued {new Date(connection.data.last_issued_at).toLocaleString()}. This does not verify a ChatGPT or Claude account, or prove that it used the connection.</p>}
           <details><summary>Selected farms and access details</summary><ul>{connection.data.farm_ids.map((farmId, index) => <li key={farmId}><Link to={`/app/fields/${encodeURIComponent(farmId)}`}>Open selected farm {index + 1}</Link> <code>{farmId}</code></li>)}</ul><p>{connection.data.scope.split(' ').includes('offline_access') ? 'Rotating refresh access was allowed until the expiry shown above.' : 'No refresh access was granted.'}</p><p>Registered client: <code style={{ overflowWrap: 'anywhere' }}>{connection.data.client_id}</code></p></details>
           {active && <Button variant="danger" disabled={busy} onClick={() => void disconnect(connection)}>Revoke this connection</Button>}
         </article>;
       })}
       <div className="actions"><Button variant="secondary" disabled={busy || loading || connectionOffset === 0} onClick={() => { setBusy(true); setError(null); void reloadConnections(Math.max(0, connectionOffset - 20)).catch(setError).finally(() => setBusy(false)); }}>Previous connections</Button><span>{connectionTotal ? `${connectionOffset + 1}–${connectionOffset + connections.length} of ${connectionTotal}` : 'No connections'}</span><Button variant="secondary" disabled={busy || loading || connectionOffset + connections.length >= connectionTotal} onClick={() => { setBusy(true); setError(null); void reloadConnections(connectionOffset + 20).catch(setError).finally(() => setBusy(false)); }}>Next connections</Button><Button variant="secondary" disabled={busy || loading} onClick={() => { setBusy(true); setError(null); void reloadConnections().catch(setError).finally(() => setBusy(false)); }}>Reload granted access</Button></div>
     </section>}
-    <p className="muted">Protocol references: <a href={references.chatgpt} target="_blank" rel="noreferrer">OpenAI MCP authentication</a>, <a href={references.claude} target="_blank" rel="noreferrer">Claude connector authentication</a>, <a href={references.mcp} target="_blank" rel="noreferrer">MCP authorization specification</a>.</p>
   </>;
 }

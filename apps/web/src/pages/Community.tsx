@@ -8,6 +8,7 @@ import { usePrivateDraft } from '../offline';
 import type { Page, RecordItem } from '../types';
 import { countries } from './Core';
 import './administration.css';
+import './people-pages.css';
 
 type PublicPost = { id: string; data: { title?: string; body: string; category?: string; country?: string | null }; is_author: boolean; status: string; created_at: string };
 type Thread = { question: PublicPost; replies: PublicPost[] };
@@ -28,8 +29,11 @@ export function CommunityPage() {
 
 function PrivateQuestions() {
   const { session } = useSession();
+  const [query] = useSearchParams();
+  const suppliedFarm = query.get('farm_id') || '';
+  const initialFarm = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(suppliedFarm) ? suppliedFarm.toLowerCase() : '';
   const farms = useRecords('farms');
-  const draft = usePrivateDraft('community/private-question', { farm_id: '', recipient_id: '', title: '', body: '' });
+  const draft = usePrivateDraft(initialFarm ? `community/private-question/${initialFarm}` : 'community/private-question', { farm_id: initialFarm, recipient_id: '', title: '', body: '' });
   const [recipients, setRecipients] = useState<Array<{ user_id: string; display_name: string }>>([]);
   const [questions, setQuestions] = useState<PrivateQuestion[]>([]);
   const [selected, setSelected] = useState<PrivateQuestion | null>(null);
@@ -38,7 +42,7 @@ function PrivateQuestions() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const replyDraft = usePrivateDraft(`community/private-reply/${selected?.id ?? 'none'}`, '');
-  const farmId = draft.value.farm_id;
+  const farmId = farms.items.some(farm => farm.id === draft.value.farm_id) ? draft.value.farm_id : '';
   const owner = session?.workspace.role === 'owner';
   const canReview = session?.workspace.role === 'owner' || session?.workspace.permissions?.includes('review') === true;
   const reload = useCallback(async () => {
@@ -61,7 +65,7 @@ function PrivateQuestions() {
     try {
       if (!recipients.some(person => person.user_id === draft.value.recipient_id)) throw new Error('Choose an adviser who currently has access to this farm.');
       await api.post('/adviser/questions', draft.value);
-      await draft.clear(); await reload(); setSuccess('Your question was sent privately to the adviser you selected.');
+      draft.setValue(previous => ({ ...previous, title: '', body: '' })); await reload(); setSuccess('Your question was sent privately to the adviser you selected.');
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
   async function open(id: string) {
@@ -70,7 +74,7 @@ function PrivateQuestions() {
     catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
   return <section className="panel admin-section">
-    <h2>A private question about your farm</h2><p>Only the farm owner and the named adviser can open this question. An adviser must already have access to the selected farm.</p>
+    <h2>A private question about your farm</h2><p>Choose your farm and a person already helping it. Only the farmer and the adviser you choose can read the conversation.</p>
     {error && <Notice kind="error">{error}</Notice>}{success && <Notice kind="success">{success}</Notice>}
     {draft.error && <Notice kind="warning">{draft.error}</Notice>}{draft.saving && <p role="status" className="muted">Keeping your question in a private draft…</p>}
     {farms.error && <Notice kind="error">{farms.error}</Notice>}
@@ -82,6 +86,7 @@ function PrivateQuestions() {
       <div><Button type="submit" loading={busy} disabled={!recipients.length || loading}>Send privately to my adviser</Button></div></>}
     </form>}
     {loading && <Loading>Checking current adviser access…</Loading>}
+    {farmId && !loading && !!recipients.length && <section className="admin-private-people" aria-label="People helping this farm"><h3>People helping this farm</h3><ul>{recipients.map(person => <li key={person.user_id}><strong>{person.display_name}</strong><span>Has access to this farm</span></li>)}</ul><p className="admin-footnote">These are your farm's existing contacts, not a public directory or a check of professional qualifications.</p></section>}
     {farmId && !loading && <div className="admin-subsection"><h3>Questions for this farm</h3>{!questions.length && <p className="muted">Your private questions and replies will appear here.</p>}<ul className="record-list">{questions.map(question => <li key={question.id}><Button variant="ghost" disabled={busy} onClick={() => void open(question.id)}>{question.data.title}</Button><span className="badge">{question.data.status}</span></li>)}</ul></div>}
     {selected && <article className="admin-thread"><h3>{selected.data.title}</h3><p className="preserve-lines">{selected.data.body}</p>{(selected.data.responses ?? []).map((response, index) => <div className="admin-reply" key={index}>{response.display_name && <strong>{response.display_name}</strong>}<p className="preserve-lines">{response.body}</p></div>)}
       {selected.data.status !== 'closed' && canReview && <form className="stack" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(''); try { setSelected(await api.post<PrivateQuestion>(`/adviser/questions/${selected.id}/reply`, { expected_revision: selected.revision, body: replyDraft.value })); await replyDraft.clear(); await reload(); } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); } }}><Field label="Private reply"><textarea value={replyDraft.value} onChange={event => replyDraft.setValue(event.target.value)} required maxLength={8000}/></Field><div><Button type="submit" loading={busy} disabled={!replyDraft.ready}>Send private reply</Button>{replyDraft.error && <Notice kind="warning">{replyDraft.error}</Notice>}{replyDraft.saving && <p role="status" className="muted">Keeping your unsent reply in a private draft…</p>}</div></form>}

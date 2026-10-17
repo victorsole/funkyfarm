@@ -14,12 +14,10 @@ async function signIn(page, who) {
 }
 
 async function openMoreTool(page, path) {
-  const more = page.locator('details.farm-tools-menu');
-  await expect(more).not.toHaveAttribute('open', '');
-  await more.locator('summary').click();
-  await more.getByRole('navigation', { name: 'More farm tasks', exact: true }).locator(`a[href="${path}"]`).click();
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: /^Tools\b/ }).click();
+  await expect(page.getByRole('heading', { name: 'Farm tools', exact: true })).toBeVisible();
+  await page.locator('main').locator(`a[href="${path}"]`).click();
   await expect(page).toHaveURL(new RegExp(`${path}$`));
-  await expect(more).not.toHaveAttribute('open', '');
 }
 
 async function api(page, path, body) {
@@ -31,8 +29,8 @@ async function api(page, path, body) {
 
 async function saveAndReview(page) {
   await page.getByRole('button', { name: 'Check this entry', exact: true }).click();
-  await page.getByRole('button', { name: 'Save proposed entry', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Entry saved — now check it' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save entry for checking', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entry saved. Check it now.', exact: true })).toBeVisible();
   await page.getByLabel('What did you check?', { exact: true }).fill('Checked the authored notebook against the actual work and date.');
   await page.getByRole('button', { name: 'I checked this — confirm entry', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Saved entry', exact: true })).toBeVisible();
@@ -129,7 +127,7 @@ test('owner reviews a response, exports PDF and starts an explicit correction', 
   await signIn(page, 'owner');
   await openMoreTool(page, '/app/reports');
   await page.getByLabel('Request to answer', { exact: true }).selectOption(fixture.request.id);
-  await page.getByLabel('Reporting pack', { exact: true }).selectOption('farm-evidence');
+  await page.getByLabel('Response format', { exact: true }).selectOption('farm-evidence');
   await page.getByRole('checkbox', { name: /Browser reviewed holding area/ }).check();
   await page.getByRole('button', { name: 'Prepare preview', exact: true }).click();
   await expect(page).toHaveURL(/\/app\/reports\/[a-f0-9-]+/);
@@ -231,12 +229,12 @@ test('crop sale is read back, confirmed and credited without inventing farm move
   await expect(readback).toContainText('Fictional Mill');
   await expect(page.getByLabel('Amount on invoice', { exact: true })).toHaveValue('125,50');
   await expect(page.getByLabel('Quantity sold (if shown)', { exact: true })).toHaveValue('25,50');
-  await expect(page.getByRole('button', { name: 'Save proposed entry', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save entry for checking', exact: true })).toBeDisabled();
   const acknowledgements = readback.getByRole('checkbox', { name: 'I checked this and want to keep these details.', exact: true });
   expect(await acknowledgements.count()).toBeGreaterThan(0);
   for (const acknowledgement of await acknowledgements.all()) await acknowledgement.check();
-  await page.getByRole('button', { name: 'Save proposed entry', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Entry saved — now check it', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save entry for checking', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entry saved. Check it now.', exact: true })).toBeVisible();
   const proposed = (await (await page.request.get('/api/v1/sales')).json()).items;
   expect(proposed).toHaveLength(1);
   expect(proposed[0].data.review_status).toBe('proposed');
@@ -259,8 +257,8 @@ test('crop sale is read back, confirmed and credited without inventing farm move
   const creditReadback = page.getByRole('heading', { name: 'Check before saving', exact: true }).locator('..');
   await expect(creditReadback).toContainText('-12.5');
   for (const acknowledgement of await creditReadback.getByRole('checkbox', { name: 'I checked this and want to keep these details.', exact: true }).all()) await acknowledgement.check();
-  await page.getByRole('button', { name: 'Save proposed entry', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Entry saved — now check it', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save entry for checking', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entry saved. Check it now.', exact: true })).toBeVisible();
   await page.getByLabel('What did you check?', { exact: true }).fill('Read this separate negative 12.50 EUR credit note. No returned stock or animal movement was asserted.');
   await page.getByRole('button', { name: 'I checked this — confirm entry', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Saved entry', exact: true })).toBeVisible();
@@ -424,28 +422,32 @@ test('Dutch dairy bookkeeper reviews a receipt and mapped CSV without losing unc
 
   await openMoreTool(page, '/app/imports');
   const csv = 'source_id,value,comment\r\n0007,0,\r\n0007,"-12,50",NULL\r\n0008,unreadable,unknown\r\n';
-  await page.getByLabel('CSV file', { exact: true }).setInputFiles({ name: 'authored-earlier-ledger.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
-  await page.getByLabel('What does one source row describe?', { exact: true }).fill('One earlier annual feed credit observation, not a receipt or actual input use');
-  await page.getByLabel('Farm (if the whole file belongs to one farm)', { exact: true }).selectOption(fixture.intake_farm.id);
-  await page.getByRole('button', { name: 'Open CSV for review', exact: true }).click();
+  await page.getByLabel('Which farm is this for?', { exact: true }).selectOption(fixture.intake_farm.id);
+  await page.getByLabel('File or photo', { exact: true }).setInputFiles({ name: 'authored-earlier-ledger.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.getByRole('button', { name: 'Read this file', exact: true }).click();
+  await page.getByRole('link', { name: 'Review rows and save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'authored-earlier-ledger.csv', exact: true })).toBeVisible();
   const importId = new URL(page.url()).searchParams.get('import');
   await page.getByLabel('These rows contain', { exact: true }).selectOption('facts');
+  await page.getByRole('button', { name: 'Change dates, units or other settings', exact: true }).click();
   await page.getByLabel('Time basis for all rows', { exact: true }).selectOption('campaign_year');
   await page.getByLabel('Year or date for all rows', { exact: true }).fill('2025');
   await page.getByLabel('Unit for all rows', { exact: true }).selectOption('manual');
   await page.getByLabel('Shared unit', { exact: true }).fill('EUR');
   await page.getByLabel('Shared fact reference (optional)', { exact: true }).fill('annual_feed_credit');
   await page.getByLabel('Shared fact description (optional)', { exact: true }).fill('Earlier feed credit');
-  await page.getByRole('button', { name: 'Match column names for my review', exact: true }).click();
+  await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByLabel('Year or date for all rows', { exact: true })).toHaveValue('2025');
+  await expect(page.getByLabel('Shared unit', { exact: true })).toHaveValue('EUR');
+  await page.getByRole('button', { name: 'Suggest column meanings again', exact: true }).click();
   await page.getByLabel('Value type for value', { exact: true }).selectOption('number');
   const numericColumn = page.locator('tr').filter({ has: page.getByLabel('Value type for value', { exact: true }) });
   await numericColumn.getByLabel('Source decimal mark', { exact: true }).selectOption(',');
   const identityColumn = page.locator('tr').filter({ has: page.getByLabel('Destination for source_id', { exact: true }) });
-  await identityColumn.getByText('Blanks and source references', { exact: true }).click();
   await identityColumn.getByLabel('Reference check', { exact: true }).selectOption('identifier');
-  await page.getByRole('button', { name: 'Preview these column choices', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Check the rows together', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Check my rows', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '3. Review and save your rows', exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Select row 3', exact: true })).toBeDisabled();
   await page.getByRole('checkbox', { name: 'Select row 1', exact: true }).check();
   await page.getByLabel('What did you check in the selected rows?', { exact: true }).fill('Preserved identifier 0007 and real zero. Explicit comma-decimal mapping does not change the original cells.');
@@ -540,7 +542,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   expect(work.data.period).toBe('2026-06-11');
   expect((await collection(page, 'purchases'))).toHaveLength(0);
   await page.goto(`/app/checks?farm_id=${farmId}&year=2026`);
-  await expect(page.getByText(/preparation aid, not an authority decision/)).toBeVisible();
+  await expect(page.getByText(/The authority still makes any official decision\./)).toBeVisible();
   await expect(obligation).toContainText('No established date');
   const liveChecks = await (await page.request.get(`/api/v1/compliance/farms/${farmId}?year=2026`)).json();
   expect(liveChecks.issues.some(issue => issue.code === 'national_deadline_unknown')).toBe(true);
@@ -587,8 +589,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   const afterReview = await (await page.request.get(`/api/v1/compliance/farms/${farmId}?year=2026`)).json();
   expect(afterReview.issues.some(issue => issue.code === 'national_deadline_unknown')).toBe(true);
   await page.goto('/app/home');
-  await expect(page.getByRole('heading', { name: `Home at ${fixture.specialist_farm.data.name}`, exact: true })).toBeVisible();
-  await page.getByText('Saved tasks, dates and other farm records', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Home at Slovak greenhouse', exact: true })).toBeVisible();
   await expect(page.locator('#next-task')).toBeVisible();
   await expect(page.locator('#next-task').getByText(followup.data.title, { exact: true })).toHaveCount(0);
   const homeProgress = await (await page.request.get(`/api/v1/workflow/home?farm_id=${farmId}`)).json();
@@ -599,17 +600,21 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   await expect(page.getByText('Request details confirmed. The evidence still needs its own review.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Fix or review this detail', exact: true }).first()).toBeVisible();
   const answerCard = page.locator('#answers article.evidence-card').first();
-  await answerCard.getByText('Add or correct an answer', { exact: true }).click();
+  const answerEditor = answerCard.locator('details').filter({ has: page.getByText('Add or correct an answer', { exact: true }) });
+  // A missing answer is already open; clicking its summary would close it.
+  if (await answerEditor.getAttribute('open') === null) await answerEditor.locator(':scope > summary').click();
+  await expect(answerEditor).toHaveAttribute('open', '');
+  await expect(answerCard.getByLabel('Answer type', { exact: true })).toBeVisible();
   await answerCard.getByLabel('Answer type', { exact: true }).selectOption('number');
   await answerCard.getByLabel('Answer', { exact: true }).fill('0.40');
   await answerCard.getByLabel('Where did this answer come from?', { exact: true }).fill('Fictional checked holding plan. This is standing holding area, not the treated facility area.');
   await answerCard.getByRole('button', { name: 'Check & save proposed answer', exact: true }).click();
-  await expect(answerCard.getByText('proposed', { exact: true })).toBeVisible();
+  await expect(answerCard.getByText('Needs review', { exact: true })).toBeVisible();
   await answerCard.getByLabel('Review note', { exact: true }).fill('Compared the holding plan; exact 0.40 ha, distinct from 400 m² treated inside a facility.');
   await answerCard.getByRole('button', { name: 'Confirm this answer', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Questions with a confirmed answer', exact: true })).toHaveAttribute('value', '1');
   await page.getByRole('button', { name: 'Check & prepare response', exact: true }).click();
-  await expect(page.getByText('The server found no blocking requirements in this draft. Review the values before approving.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No blocking requirements were found in this draft. Review the values before approving.', { exact: true })).toBeVisible();
   const reports = await collection(page, 'reports');
   expect(reports).toHaveLength(1);
   expect(reports[0].data.status).toBe('draft');
@@ -656,7 +661,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   // not silently rebase an encrypted unsaved draft after another client saves.
   const organicSource = correctionRecords.find(record => record.data.key === 'organic_operator');
   await page.goto(`/app/fields/${farmId}#facts`);
-  await expect(page.locator('#facts')).toHaveAttribute('open', '');
+  await expect(page.locator('#facts').getByRole('heading', { name: 'Check answers saved about this farm', exact: true })).toBeVisible();
   const organicFact = page.locator('#facts article.panel').filter({ has: page.getByRole('heading', { name: organicSource.data.label, exact: true }) })
     .filter({ has: page.getByText('Propose a correction', { exact: true }) });
   await organicFact.getByText('Propose a correction', { exact: true }).click();
@@ -684,7 +689,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   const concurrent = await secondClient.json();
   expect(concurrent.revision).toBe(ordinary.revision + 1);
   await page.reload();
-  await expect(page.locator('#facts')).toHaveAttribute('open', '');
+  await expect(page.locator('#facts').getByRole('heading', { name: 'Check answers saved about this farm', exact: true })).toBeVisible();
   await editableFact.getByText('Edit this proposal', { exact: true }).click();
   await expect(ordinaryDraft.getByLabel('Value', { exact: true })).toHaveValue('yes');
   await expect(ordinaryDraft).toContainText('Latest saved answer: No');
@@ -712,7 +717,7 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
   await page.getByLabel('Animal group or identification', { exact: true }).fill('Authored calf group A');
   await page.getByLabel('How many animals?', { exact: true }).fill('1.5');
   await page.getByRole('button', { name: 'Check this entry', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save proposed entry', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save entry for checking', exact: true })).toBeDisabled();
   await expect(page.getByLabel('How many animals?', { exact: true })).toHaveValue('1.5');
   expect((await collection(page, 'operations'))).toHaveLength(0);
   await page.getByLabel('How many animals?', { exact: true }).fill('2');
@@ -724,7 +729,7 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
   expect((await collection(page, 'sales'))).toHaveLength(0);
 
   await page.goto(`/app/updates?farm_id=${farmId}`);
-  await expect(page.getByRole('heading', { name: 'What has actually been observed?', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Updates from official websites', exact: true })).toBeVisible();
   await expect(page.getByText(/A changed web page does not by itself establish a changed legal duty/)).toBeVisible();
   const enabled = page.getByRole('checkbox', { name: 'Show relevant source changes inside my farm workspace', exact: true });
   await expect(enabled).toBeChecked();
@@ -1073,7 +1078,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await page.getByLabel('Public data provider', { exact: true }).selectOption('copernicus');
   await page.getByRole('button', { name: 'Find satellite scenes', exact: true }).click();
   await expect(page.getByText('Scene cloud cover unknown', { exact: false })).toBeVisible();
-  const unknownScene = page.locator('article.sat-scene').filter({ hasText: 'AUTHORED-UNKNOWN' });
+  const unknownScene = page.locator('article.sat-scene').filter({ has: page.locator('a[href$="/AUTHORED-UNKNOWN"]') });
   await unknownScene.getByRole('button', { name: 'Describe work I know happened', exact: true }).click();
   await expect(page.getByLabel('Actual work date, if known', { exact: true })).toHaveValue('');
   await page.getByLabel('Work description', { exact: true }).fill('Authored undated observation to check with farmer');
@@ -1159,7 +1164,7 @@ test('Hungarian farmer reads a consented diary page and selected work without im
   expect(JSON.stringify(snapshot.result.payload)).toContain('0.500');
   expect(JSON.stringify(snapshot)).not.toContain(token);
   const disconnectedResponse = page.waitForResponse(response => /\/connections\/[^/]+\/disconnect$/.test(response.url()) && response.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Disconnect / clear active saved credentials', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect this route', exact: true }).click();
   expect((await (await disconnectedResponse).json()).data.credentials_present).toBe(false);
   await page.reload();
   await chooseDiary();
@@ -1209,7 +1214,7 @@ test('Luxembourg farmer reviews an original 2026 parcel export before issuing a 
   await page.getByLabel('Decimal mark in this file', { exact: true }).selectOption(',');
   await page.getByRole('checkbox', { name: 'I checked the holding number, 2026 source year and selected Luxembourg farm against this file.', exact: true }).check();
   await page.getByRole('button', { name: 'Confirm source and show rows', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Check the rows together', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '3. Review and save your rows', exact: true })).toBeVisible();
   await expect(page.getByText('Measured parcel area (a_parcel) · a', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Correct this row', exact: true })).toHaveCount(0);
   await expect(page.getByText('Empty source cell', { exact: true })).toBeVisible();
@@ -1229,21 +1234,19 @@ test('Luxembourg farmer reviews an original 2026 parcel export before issuing a 
   await expect(page).toHaveURL(new RegExp(`/app/fields/${farm.id}#facts$`));
   await page.reload();
   const answers = page.locator('#facts');
-  // The deep-link effect opens this after farm/fact loading. Clicking a summary
-  // based on an earlier attribute read can close the newly opened section.
-  await expect(answers).toHaveAttribute('open', '');
+  await expect(answers.getByRole('heading', { name: 'Check answers saved about this farm', exact: true })).toBeVisible();
   const answer = answers.locator('article.panel').filter({ has: page.getByRole('heading', { name: proposed.data.label, exact: true }) });
-  await expect(answer.getByText('proposed', { exact: true })).toBeVisible();
+  await expect(answer.getByText('Needs review', { exact: true })).toBeVisible();
   await answer.getByLabel('Review note', { exact: true }).fill('Reviewed original source values and units. BIO is the source code, not independent certification or eligibility.');
   await answer.getByRole('button', { name: 'I checked this — confirm answer', exact: true }).click();
-  await expect(answer.getByText('confirmed', { exact: true })).toBeVisible();
+  await expect(answer.getByText('Checked', { exact: true })).toBeVisible();
   await page.goto(`/app/paperwork/${request.id}`);
   await expect(page.getByRole('region', { name: 'Original source tables', exact: true }).getByText('1 confirmed rows · 0 rows waiting for review', { exact: true })).toBeVisible();
   await expect(page.getByText('Add or correct an answer', { exact: true })).toHaveCount(0);
   await openMoreTool(page, '/app/reports');
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByLabel('Reporting year', { exact: true }).fill('2026');
-  await page.getByLabel('Reporting pack', { exact: true }).selectOption('LU-cap-2026');
+  await page.getByLabel('Response format', { exact: true }).selectOption('LU-cap-2026');
   await page.getByRole('checkbox', { name: new RegExp('^' + proposed.data.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).check();
   await page.getByRole('button', { name: 'Prepare preview', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Review your answer', exact: true })).toBeVisible();

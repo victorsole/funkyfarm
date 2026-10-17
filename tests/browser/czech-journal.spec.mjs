@@ -111,8 +111,8 @@ test(title, async ({ page }) => {
   await journal.getByRole('checkbox', { name: 'Include this application in the response', exact: true }).check();
   await journal.getByRole('link', { name: 'Prepare selected applications', exact: true }).click();
   await expect(page.getByLabel('Request to answer', { exact: true })).toHaveValue('');
-  await expect(page.getByLabel('Reporting pack', { exact: true })).toHaveValue('cz-ppp-journal-2026');
-  await page.getByRole('group', { name: 'Confirmed evidence to include', exact: true }).getByRole('checkbox').check();
+  await expect(page.getByLabel('Response format', { exact: true })).toHaveValue('cz-ppp-journal-2026');
+  await page.getByRole('group', { name: 'Checked farm answers to include', exact: true }).getByRole('checkbox').check();
   const prepared = responseFor(page, '/reports');
   await page.getByRole('button', { name: 'Prepare preview', exact: true }).click();
   const draft = await checkedJSON(await prepared);

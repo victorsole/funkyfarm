@@ -78,10 +78,10 @@ function ClaimComparison({ context, farmId, year, caseId, realSource }: { contex
     <p className="parcel-claim-status">{proposed ? 'Proposed values — not yet checked' : uncertain ? 'Source values need review' : 'Values checked by a person — not an authority decision'}</p>
     <h3>{uncertain ? 'Which claim values apply to this field?' : realSource ? 'Compare the claim with the published figures' : 'Compare the claim with the supplied maximum'}</h3>
     <dl className="parcel-claim-values"><div className="parcel-claim-saved"><dt>Area in the saved claim</dt><dd>{showArea(context.declared)}</dd></div><div className="parcel-claim-maximum"><dt>{realSource ? 'Published area × pasture coefficient (calculated)' : 'Maximum area supplied by the source'}</dt><dd>{showArea(context.max)}</dd></div><div className="parcel-claim-coefficient"><dt>Pasture coefficient supplied</dt><dd>{context.coefficient === null ? 'Not established' : `${context.coefficient}%`}</dd></div><div className="parcel-claim-excess"><dt>{realSource ? 'Claim above the calculated comparison' : 'Claim above the supplied maximum'}</dt><dd>{showArea(context.excess)}</dd></div>{context.proposed_claim !== null && <div className="parcel-claim-draft"><dt>Proposed corrected claim — not sent</dt><dd>{showArea(context.proposed_claim)}</dd></div>}</dl>
-    {realSource && <p>This is a calculated comparison, not a maximum area published by SIGPAC or a final eligible-area decision.</p>}
+    {realSource && <p>Area × coefficient is a calculation, not a final eligible-area decision.</p>}
     {proposed && <p>Check these proposed values against the original before using them.</p>}
     {uncertain && <p>Some values are missing, conflicting or no longer tied to a current source. No latest value has been chosen for you. Check which original applies to this field and year.</p>}
-    <p className="parcel-claim-no-cut">Figures to compare, not a smaller field to draw. The physical outline stays unchanged.</p>
+    <p className="parcel-claim-no-cut">These figures do not change your outline.</p>
     <Link className="button button-primary" to={appPath(context.review_href, farmId)!}>{context.status === 'confirmed' ? 'See the checked claim values' : 'Review the saved claim values'}</Link>
     <p className="parcel-claim-next">After checking the values, <Link to={correction}>open the guided correction</Link>. Any actual sending remains a separate step.</p>
     <details><summary>Original sources and limits of this comparison</summary>{realSource && <><p>Original published precision: area {realSource.field.area_ha} ha; coefficient {realSource.field.csp_percent}%. Source retrieval: {realSource.retrieved_at}. Campaign year in that service: {realSource.source.campaign_year ?? 'not established'}.</p><p>Unrounded saved values: claim {text(context.declared)} ha; calculated comparison {text(context.max)} ha; difference {text(context.excess)} ha; proposed correction {text(context.proposed_claim)} ha. Two-decimal display does not change the saved numbers.</p></>}<p>{context.notice}</p><p>A pasture coefficient does not identify a contiguous part of the field. A proposed corrected claim does not replace the saved claim or resize its boundary.</p>{context.problems && <ul>{context.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>}{context.sources.length ? <ul>{context.sources.map((source, index) => <li key={`${source.document_id}:${index}`}><strong>{source.name || 'Original document'}</strong><p>{sourceStatus[source.status]}{source.document_revision !== null ? ` · selected version ${source.document_revision}` : ''}{source.current_revision !== null ? ` · current version ${source.current_revision}` : ''}.</p>{source.document_id !== null && source.href === `/app/documents/${source.document_id}` && <Link to={source.href}>Open the original document</Link>}</li>)}</ul> : <p>No original document is available for this comparison.</p>}<p>The supplied maximum is not a new eligibility certification. The responsible authority decides the actual claim and eligible area under the applicable rules.</p></details>
@@ -147,17 +147,15 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
   const [fieldChoice, setFieldChoice] = useState<number | null>(null); const [issueId, setIssueId] = useState('');
   const [bundle, setBundle] = useState<{ farm: RecordItem; check: Check } | null>(null);
   const [error, setError] = useState(''); const [stale, setStale] = useState(false); const [loading, setLoading] = useState(true);
-  const [reloading, setReloading] = useState(false); const [returned, setReturned] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const pins = useRef<Pins | null>(null); const request = useRef<AbortController | null>(null); const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
-    const invalidate = () => { setReturned(true); setBundle(null); request.current?.abort(); setLoading(false); };
-    window.addEventListener('focus', invalidate); window.addEventListener('online', invalidate);
-    return () => { mounted.current = false; request.current?.abort(); window.removeEventListener('focus', invalidate); window.removeEventListener('online', invalidate); };
+    return () => { mounted.current = false; request.current?.abort(); };
   }, []);
   useEffect(() => {
     const controller = new AbortController(); request.current?.abort(); request.current = controller;
-    let active = true; setLoading(true); setError(''); setStale(false); setBundle(null); setReturned(false);
+    let active = true; setLoading(true); setError(''); setStale(false); setBundle(null);
     async function load() {
       const farm = await (await api.downloadResponse(`/farms/${farmId}`, { signal: controller.signal })).json() as RecordItem;
       if (!active || controller.signal.aborted) return;
@@ -239,7 +237,6 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
     <PageHeader title="Check your fields" description={bundle ? `${text(bundle.farm.data.name)} · ${check?.reporting_year}` : 'Compare your saved fields before preparing the next step.'} />
     <Link to={`/app/fields/${farmId}`}>Back to this farm</Link>
     <nav aria-label="Field check stages"><ol className="parcel-check-steps">{['Fields and map', 'Things to check', 'Prepare the next step'].map((label, index) => <li key={label}><button type="button" aria-label={label} aria-current={stage === index ? 'step' : undefined} disabled={!check} onClick={() => setStage(index)}><span aria-hidden="true">{index + 1}</span>{label}</button></li>)}</ol></nav>
-    {returned && <Notice kind="warning">Your saved records may have changed while you were away. Check these versions again before preparing anything.<div className="actions"><Button onClick={() => setAttempt(value => value + 1)}>Check these saved versions again</Button></div></Notice>}
     {loading && <p role="status">Reading the saved fields and their current checks…</p>}
     {error && <Notice kind="error">{error}<p>No current result is available. An unavailable check is not a completed check.</p><div className="actions">{stale ? <Button loading={reloading} onClick={() => void useLatest()}>Load current farm and case versions</Button> : <Button onClick={() => setAttempt(value => value + 1)}>Try the check again</Button>}</div></Notice>}
     {check && bundle && <>
@@ -250,16 +247,16 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
           <Field label="Field to look at"><select value={String(selectedIndex)} onChange={event => setFieldChoice(Number(event.target.value))}>{check.fields.map((field, index) => <option key={index} value={String(index)}>{field.name}</option>)}</select></Field>
           <div className="parcel-check-map-details">
             <div className="parcel-check-map-panel">
-              <p className="parcel-check-map-source"><span>{spanishSnapshot ? 'Real SIGPAC references · fictional farm exercise' : 'Saved farm coordinates · private outlines'}</span><span>{spanishSnapshot ? 'Official reference in green · private outline in orange' : `Selected field in green${contextOutlines.length ? ' · other fields in blue' : ''}`}</span></p>
+              <p className="parcel-check-map-source"><span>{spanishSnapshot ? 'Demo · real SIGPAC references' : 'Saved farm coordinates'}</span><span>{spanishSnapshot ? 'Reference in green · your outline in orange' : `Selected field in green${contextOutlines.length ? ' · other fields in blue' : ''}`}</span></p>
               <ParcelMap key={`${bundle.farm.id}:${bundle.farm.revision}:${selectedIndex}`} readOnly
                 geometry={selected.geometry_status === 'valid' ? parcel?.geometry ?? null : null} point={parcel?.point}
                 snapshot={spanishSnapshot ? { id: spanishSnapshot.id, reference: spanishSnapshot.field.reference } : null}
                 contextOutlines={contextOutlines} reference={null} sketch={[]} splitLine={[]} mode="edit" onGeometry={noMapEdit} onSketch={noMapEdit} onSplitLine={noMapEdit}
                 country={typeof bundle.farm.data.country === 'string' ? bundle.farm.data.country : null}
                 region={typeof bundle.farm.data.region === 'string' ? bundle.farm.data.region : null} />
-              {hasClaimContext && <p className="parcel-claim-outline"><span>Physical outline, approximate<br />Unchanged by the claim comparison</span><strong>{areaText(selected.outline_area_ha)}</strong></p>}
+              {hasClaimContext && <p className="parcel-claim-outline"><span>Area inside your drawing, about</span><strong>{areaText(selected.outline_area_ha)}</strong></p>}
               {selected.geometry_status !== 'valid' && <p>{selected.geometry_status === 'invalid' ? 'The saved outline needs repair before it can be shown.' : parcel?.point ? 'Only a supplied location is recorded, not a field boundary.' : 'No field outline or location is saved. The map starts with a general overview, not this field’s location.'}</p>}
-              <details><summary>About the map and its sources</summary><p>{spanishSnapshot ? 'The retained SIGPAC source and cached PNOA photograph are real public reference material. The private farm and claim exercise are fictional. Source geometry is not resized to match a coefficient, and it does not establish ownership or current campaign eligibility.' : 'This map uses your saved outline or location. It is not an official register or satellite check. The neutral background is a coordinate grid, not an aerial photograph. Any background you choose has its own source and privacy notice.'}</p><p>The area from an outline is approximate. It is not the area declared in a claim, the supplied maximum or an eligibility decision. This page never cuts the outline into a percentage-sized piece.</p></details>
+              <details><summary>About the map and its sources</summary><p>{spanishSnapshot ? 'The SIGPAC reference and cached PNOA photograph are retained public sources for this demo. They do not establish ownership or current campaign eligibility.' : 'The outline or location comes from your saved farm records. The neutral grid is not a photograph; optional backgrounds have their own source and privacy notice.'}</p><p>Outline area is approximate and separate from claim figures. A coefficient never resizes the field on this page.</p></details>
               {spanishSnapshot && parcel && <SpanishParcelDemo key={`${bundle.farm.id}:${bundle.farm.revision}:${parcel.id}`} farm={bundle.farm} parcel={parcel} onChanged={() => void useLatest()} />}
             </div>
             <div><h3>{selected.name}</h3>

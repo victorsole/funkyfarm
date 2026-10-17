@@ -3,8 +3,6 @@
 .hackathon-demo-badge { justify-self: start; margin: -10px 0 0; padding: 5px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: .75rem; }
 .hackathon-demo-start { display: grid; justify-items: start; gap: 16px; }
 .hackathon-demo-start h2, .hackathon-demo-start p { margin-block: 0; }
-.hackathon-demo-ack { display: flex; gap: 12px; align-items: flex-start; line-height: 1.6; }
-.hackathon-demo-ack input { margin-top: 5px; flex: 0 0 auto; }
 .hackathon-demo-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .hackathon-demo-steps button { display: flex; align-items: flex-start; gap: 10px; padding: 18px 14px; color: var(--ink); background: var(--paper); border: 0; border-right: 1px solid var(--line); text-align: left; cursor: pointer; transition: background 160ms ease; }
 .hackathon-demo-steps button:last-child { border-right: 0; }

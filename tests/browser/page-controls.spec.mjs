@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 const account = fixture.accounts?.owner;
 
 // Complement farmer journeys with navigation and isolated account preferences.
 // This is not an assertion that every button/state has been exercised.
-async function readOnlyBrowser(page, { accountControls = false } = {}) {
+async function readOnlyBrowser(page, { accountControls = false, assistantControls = false } = {}) {
   const errors = [], external = [], writes = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
@@ -15,12 +16,15 @@ async function readOnlyBrowser(page, { accountControls = false } = {}) {
           && !(url.pathname === '/api/v1/auth/login' && request.method() === 'POST')
           && !(accountControls && (
             url.pathname === '/api/v1/account' && request.method() === 'PATCH'
-            || url.pathname === '/api/v1/auth/logout' && request.method() === 'POST'))) {
+            || url.pathname === '/api/v1/auth/logout' && request.method() === 'POST'))
+          && !(assistantControls && request.method() === 'POST' && /^\/api\/v1\/assistant\/oauth\/(?:requests\/[a-f0-9-]+\/consent|connections\/[a-f0-9-]+\/revoke)$/.test(url.pathname))) {
         writes.push(`${request.method()} ${url.pathname}`);
         return route.abort('blockedbyclient');
       }
       return route.continue();
     }
+    if (assistantControls && url.origin + url.pathname === fixture.oauth_registration?.callback)
+      return route.fulfill({ contentType: 'text/html', body: '<h1>Local connector callback</h1><p>No provider was contacted.</p>' });
     const tile = url.protocol === 'https:' && (
       url.hostname === 'tile.openstreetmap.org' && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)
       || url.hostname === 'service.pdok.nl' && url.pathname.startsWith('/hwh/luchtfotorgb/wmts/')
@@ -88,7 +92,7 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   await page.locator('.language-picker select').selectOption('en');
   await page.locator('.account-menu > summary').click();
   await page.getByRole('link', { name: 'Account and settings', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Make yourself at home', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   const initialPreferences = {
     language: await page.getByLabel('Preferred language', { exact: true }).inputValue(),
     country: await page.getByLabel('Default country', { exact: true }).inputValue() || null,
@@ -112,19 +116,43 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   const restoredAccount = { ...beforeAccount, ...restoredPreferences };
   expect(await read(page, '/account')).toEqual(restoredAccount);
 
-  await page.getByText('More farm tools', { exact: true }).click();
-  await page.getByRole('navigation', { name: 'More farm tasks', exact: true }).getByRole('link', { name: 'Guidance', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Find the right guidance', exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: /^Tools\b/ }).click();
+  await expect(page.getByRole('heading', { name: 'Farm tools', exact: true })).toBeVisible();
+  const toolPaths = ['fields', 'record-work', 'documents', 'imports', 'satellite', 'easy-form', 'paperwork', 'cases', 'tasks', 'checks', 'reports', 'connections', 'guidance', 'updates', 'adviser', 'community', 'help', 'assistant/connect', 'demo', 'examples', 'settings'];
+  const tools = page.locator('main .tools-index a');
+  await expect(tools).toHaveCount(toolPaths.length);
+  expect(await tools.evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual(toolPaths.map(path => `/app/${path}`));
+  for (const path of toolPaths) {
+    await page.locator('main').locator(`a[href="/app/${path}"]`).click();
+    await expect(page).toHaveURL(url => url.pathname === `/app/${path}`);
+    await expect(page.getByRole('heading', { name: 'This page could not open.', exact: true })).toHaveCount(0);
+    await expect(page.locator('main pre')).toHaveCount(0);
+    await expect(page.locator('main')).not.toContainText(/\bFICTIONAL\b/);
+    await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: /^Tools\b/ }).click();
+    await expect(page.getByRole('heading', { name: 'Farm tools', exact: true })).toBeVisible();
+  }
+  await page.locator('main').getByRole('link', { name: /^Forms and guidance\b/ }).click();
+  await expect(page.getByRole('heading', { name: 'Guidance for your farm', exact: true })).toBeVisible();
   await page.getByLabel('Country', { exact: true }).selectOption('DE');
   await page.getByLabel('Reporting year', { exact: true }).fill('2026');
-  await page.getByRole('button', { name: /^Düngeportal NRW — Schlagbezogene Pflanzenschutzanwendungen/ }).click();
-  await expect(page.getByRole('heading', { name: 'What this pack can and cannot do', exact: true })).toBeVisible();
-  await expect(page.getByText('Available preparation: sourced draft mapping', { exact: true })).toBeVisible();
-  await page.getByText('Required answers and checks', { exact: true }).click();
-  await expect(page.getByText('Applicator full name · required', { exact: true })).toBeVisible();
-  const officialSources = page.locator('section.card').filter({ has: page.getByRole('heading', { name: 'Official sources', exact: true }) }).getByRole('link');
+  const countryChoice = page.getByLabel('Country', { exact: true });
+  await countryChoice.focus(); await countryChoice.press('ArrowDown'); await countryChoice.press('ArrowUp');
+  await expect(countryChoice).toHaveValue('DE');
+  const guide = page.getByRole('link', { name: /^Read guidance: Düngeportal NRW — Schlagbezogene Pflanzenschutzanwendungen/ });
+  const guideHref = await guide.getAttribute('href');
+  await guide.click();
+  await expect(page).toHaveURL(url => url.pathname.startsWith('/app/guidance/') && url.searchParams.get('country') === 'DE' && url.searchParams.get('year') === '2026');
+  await expect(page.getByRole('heading', { name: 'Information to gather', exact: true })).toBeVisible();
+  await expect(page.getByText('Checklist and draft', { exact: true })).toBeVisible();
+  await expect(page.getByText('Applicator full name', { exact: true })).toBeVisible();
+  await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  await expect(page).toHaveURL(url => url.pathname + url.search === guideHref);
+  const officialSources = page.locator('section.card').filter({ has: page.getByRole('heading', { name: 'Source documents', exact: true }) }).getByRole('link');
   expect(await officialSources.count()).toBeGreaterThan(0);
   for (const link of await officialSources.all()) expect(await link.getAttribute('href')).toMatch(/^https:\/\//);
+  await expect(page.locator('main pre')).toHaveCount(0);
+  await page.getByRole('link', { name: 'All guidance', exact: true }).click();
+  await expect(countryChoice).toHaveValue('DE');
   const unavailableYear = page.waitForResponse(response => {
     const url = new URL(response.url());
     return url.pathname === '/api/v1/packs' && url.searchParams.get('country') === 'DE' && url.searchParams.get('year') === '2199' && response.request().method() === 'GET';
@@ -133,16 +161,18 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   const unavailableResponse = await unavailableYear;
   expect(unavailableResponse.ok()).toBeTruthy();
   expect((await unavailableResponse.json()).items).toEqual([]);
-  await expect(page.getByRole('button', { name: /^Düngeportal NRW — Schlagbezogene Pflanzenschutzanwendungen/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Read guidance: Düngeportal NRW — Schlagbezogene Pflanzenschutzanwendungen/ })).toHaveCount(0);
   // Common dossiers also declare the 2026 edition; none may masquerade as 2199 guidance.
-  await expect(page.getByText("No packs found for these choices. A missing format is not replaced with a different country's form.", { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /General farm records$/ })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'What this pack can and cannot do', exact: true })).toHaveCount(0);
+  await expect(page.getByText('No guidance is available for these choices. Try another topic or year.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Read guidance:/ })).toHaveCount(0);
+  await page.getByLabel('Reporting year', { exact: true }).fill('3000');
+  await expect(page.getByText('Enter a reporting year from 1900 to 2200.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Reporting year', { exact: true })).toBeEditable();
   await page.getByLabel('Reporting year', { exact: true }).fill('2026');
   for (const title of ['Farm records', 'Inspection evidence', 'Aid application evidence', 'Inputs and treatment evidence', 'Environmental and scheme evidence']) {
-    await expect(page.getByRole('button', { name: `${title} · General farm records`, exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: `Read guidance: ${title}`, exact: true })).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: 'What this pack can and cannot do', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Information to gather', exact: true })).toHaveCount(0);
 
   for (const [from, target] of [
     [`/app/farm/${fixture.farm.id}?from=legacy#facts`, `/app/fields/${fixture.farm.id}?from=legacy#facts`],
@@ -174,15 +204,31 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   expect(safety).toEqual({ errors: [], external: [], writes: [] });
 });
 
-test('page controls: assistant connection guidance and invalid consent stay read-only', async ({ page }) => {
+test('page controls: assistant instructions never bypass farm consent or human review', async ({ page }) => {
   test.skip(!account, 'Requires the shared fictional owner browser fixture.');
   test.setTimeout(120_000);
-  const safety = await readOnlyBrowser(page);
+  const safety = await readOnlyBrowser(page, { assistantControls: true });
   await signIn(page);
   await page.goto('/app/help');
-  await page.getByRole('link', { name: 'Choose an assistant and its farm access', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Get the instruction for my assistant', exact: true })).toHaveAttribute('href', '/app/assistant/connect');
+  const footerConnection = page.locator('footer.workspace-footer').getByRole('link', { name: 'Connect an AI assistant', exact: true });
+  await expect(footerConnection).toHaveAttribute('href', '/app/assistant/connect');
+  await footerConnection.click();
+  await expect(page).toHaveURL(/\/app\/assistant\/connect$/);
+  await expect(page.getByRole('dialog', { name: 'Connect an AI assistant', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Use your own assistant', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reload granted access', exact: true })).toBeEnabled();
+  const initialConnections = await read(page, '/assistant/oauth/connections');
+  await page.getByRole('button', { name: 'Copy instruction', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: /Instruction copied\.|Your browser could not copy the instruction\./ })).toBeVisible();
+  await page.getByText('Read or copy the instruction yourself', { exact: true }).click();
+  const instruction = await page.getByLabel('Instruction for your assistant', { exact: true }).inputValue();
+  expect(instruction).toContain(`${new URL(page.url()).origin}/app`);
+  expect(instruction).toContain('one question at a time'); expect(instruction).toContain('only after I choose the farms and permissions');
+  expect(instruction).toContain('Do not confirm records, approve reports, send or file anything for me.');
+  expect(instruction).not.toMatch(/password=|access_token=|request=|code=/);
+  expect(await read(page, '/assistant/oauth/connections')).toEqual(initialConnections);
+  await page.getByText('Connection setup and compatibility', { exact: true }).click();
   const config = await read(page, '/assistant/oauth/config');
   if (config.available) {
     await expect(page.getByLabel('MCP server address', { exact: true })).toHaveValue(config.resource);
@@ -191,9 +237,9 @@ test('page controls: assistant connection guidance and invalid consent stay read
     await page.getByLabel('Your assistant', { exact: true }).selectOption('chatgpt');
     await expect(page.getByRole('link', { name: 'Open ChatGPT', exact: true })).toHaveAttribute('href', 'https://chatgpt.com/');
     await page.getByRole('button', { name: 'Copy server address', exact: true }).click();
-    await expect(page.getByText(/MCP server address copied\.|Select and copy the server address shown below\./)).toBeVisible();
+    await expect(page.getByText(/Connection address copied\.|Select and copy the server address shown below\./)).toBeVisible();
   } else {
-    await expect(page.getByText(/No public connector is configured\./)).toBeVisible();
+    await expect(page.getByText(/The remote connection is not available on this installation\./)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Copy server address', exact: true })).toHaveCount(0);
   }
   const reloaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/assistant/oauth/connections' && response.request().method() === 'GET');
@@ -205,5 +251,49 @@ test('page controls: assistant connection guidance and invalid consent stay read
   await expect(page.getByRole('button', { name: 'Allow selected farm access', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Reload this page', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('This connection request is not valid. Start again from your assistant.');
+  if (config.available && fixture.oauth_registration) {
+    const { client_id: clientId, callback } = fixture.oauth_registration;
+    const beforeFarm = await read(page, `/farms/${fixture.farm.id}`);
+    const beforeRequest = await read(page, `/requests/${fixture.request.id}`);
+    async function beginConsent(state) {
+      const challenge = createHash('sha256').update('browser-acceptance-verifier-for-local-consent-only-0123456789').digest('base64url');
+      const query = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: callback, code_challenge: challenge, code_challenge_method: 'S256', scope: 'farm:read farm:propose offline_access', resource: config.resource, state });
+      await page.goto(`/api/v1/assistant/oauth/authorize?${query}`);
+      await expect(page.getByRole('heading', { name: 'Choose what your assistant can access', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Allow selected farm access', exact: true })).toBeDisabled();
+      await expect(page.getByRole('checkbox', { name: /Also stage facts/ })).not.toBeChecked();
+      await expect(page.getByRole('checkbox', { name: /Keep this connection available/ })).not.toBeChecked();
+    }
+    await beginConsent('browser-declined-local-only');
+    await page.getByRole('button', { name: 'Decline connection', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Local connector callback', exact: true })).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('error')).toBe('access_denied');
+    expect(new URL(page.url()).searchParams.has('code')).toBe(false);
+    expect((await read(page, '/assistant/oauth/connections')).total).toBe(initialConnections.total);
+    await beginConsent('browser-selected-local-only');
+    const farmChoice = page.getByRole('checkbox', { name: fixture.farm.data.name, exact: true });
+    await farmChoice.check();
+    const allow = page.getByRole('button', { name: 'Allow selected farm access', exact: true });
+    await expect(allow).toBeDisabled();
+    await page.getByRole('checkbox', { name: 'I want the selected farm information returned to this assistant when it uses these tools. I have checked the callback domain and permissions.', exact: true }).check();
+    await expect(allow).toBeEnabled();
+    await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+    await page.waitForLoadState('networkidle'); await expect(farmChoice).toBeChecked();
+    await allow.click();
+    await expect(page.getByRole('heading', { name: 'Local connector callback', exact: true })).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('state')).toBe('browser-selected-local-only');
+    expect(new URL(page.url()).searchParams.has('code')).toBe(true);
+    const connections = await read(page, '/assistant/oauth/connections');
+    const granted = connections.items.find(item => item.data.client_id === clientId && !item.data.revoked_at);
+    expect(granted).toBeTruthy(); expect(granted.data.farm_ids).toEqual([fixture.farm.id]);
+    expect(granted.data.permissions).toEqual(['read']); expect(granted.data.last_issued_at ?? null).toBeNull();
+    await page.goto('/app/assistant/connect');
+    const connection = page.locator('article.panel').filter({ has: page.getByRole('heading', { name: granted.data.client_name, exact: true }) });
+    await connection.getByRole('button', { name: 'Revoke this connection', exact: true }).click();
+    await expect(connection.getByText('Revoked', { exact: true })).toBeVisible();
+    expect((await read(page, '/assistant/oauth/connections')).items.find(item => item.id === granted.id).data.revoked_at).toBeTruthy();
+    expect(await read(page, `/farms/${fixture.farm.id}`)).toEqual(beforeFarm);
+    expect(await read(page, `/requests/${fixture.request.id}`)).toEqual(beforeRequest);
+  }
   expect(safety).toEqual({ errors: [], external: [], writes: [] });
 });

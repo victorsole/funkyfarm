@@ -8,7 +8,7 @@ from uuid import uuid4
 from conftest import PROJECT, confirm, fact_data, farm_data
 
 
-def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, authored_model):
+def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, authored_model, oauth_registration):
     onboarding = farmers("Browser new farmer")
     owner = farmers("Browser report owner")
     adviser = farmers("Browser adviser")
@@ -44,7 +44,7 @@ def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, autho
     invitation = owner.post("/invitations", json={"email": adviser.email, "role": "adviser", "farm_ids": [farm["id"]], "permissions": ["read", "review"], "expires_in_days": 1}, expected=201).json()
     accounts = {name: {"email": farmer.email, "password": farmer.password, "workspace_id": farmer.workspace_id}
                 for name, farmer in (("onboarding", onboarding), ("owner", owner), ("adviser", adviser), ("seller", seller), ("intake", intake), ("specialist", specialist), ("peer", peer), ("land", land), ("luxembourg", luxembourg), ("czech", czech), ("focused", focused))}
-    settings = {"accounts": accounts, "farm": farm, "private": private, "fact": fact, "request": request, "invitation": invitation, "sales_farm": sales_farm,
+    settings = {"accounts": accounts, "oauth_registration": oauth_registration, "farm": farm, "private": private, "fact": fact, "request": request, "invitation": invitation, "sales_farm": sales_farm,
         "intake_farm": intake_farm, "specialist_farm": specialist_farm, "peer_farm": peer_farm, "land_farm": land_farm, "luxembourg_farm": luxembourg_farm, "czech_farm": czech_farm, "focused_farm": focused_farm, "inspection": inspection, "adviser_id": adviser.user_id}
     directory = browser_app["directory"]
     environment = {**os.environ, "FUNKYFARM_BROWSER_URL": browser_app["url"],

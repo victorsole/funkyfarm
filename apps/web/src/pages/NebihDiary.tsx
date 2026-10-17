@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api';
 import { useSession } from '../auth';
 import { Button, Field, Notice } from '../components';
@@ -14,12 +14,42 @@ type DiaryResult = {
 };
 type DiaryRead = RecordItem<{ connection_revision: number; read_kind: string; read_at: string; result: DiaryResult }>;
 
+function sourceRows(payload: SourceValue | null) {
+  const rows: { label: string; value: string | null; oversized?: boolean }[] = [];
+  const pending = payload ? [{ node: payload, path: '' }] : [];
+  let visited = 0; let characters = 0; let limited = false;
+  while (pending.length && visited < 5000 && rows.length < 500) {
+    const { node, path } = pending.pop()!; visited += 1;
+    const label = path ? `${path} / ${node.name}` : node.name;
+    const nil = ['true', '1'].includes(node.attributes?.['{http://www.w3.org/2001/XMLSchema-instance}nil'] || '');
+    if (nil || !node.children.length || node.text !== null) {
+      const raw = nil ? null : node.text;
+      const oversized = (raw?.length ?? 0) > 50000 - characters;
+      rows.push({ label, value: oversized ? null : raw, oversized });
+      if (oversized) limited = true; else characters += raw?.length ?? 0;
+    }
+    for (const [name, raw] of Object.entries(node.attributes || {})) {
+      if (name === '{http://www.w3.org/2001/XMLSchema-instance}nil') continue;
+      if (rows.length >= 500) { limited = true; break; }
+      const oversized = raw.length > 50000 - characters;
+      rows.push({ label: `${label} / ${name}`, value: oversized ? null : raw, oversized });
+      if (oversized) limited = true; else characters += raw.length;
+    }
+    const available = Math.max(0, 5000 - visited - pending.length);
+    if (node.children.length > available) limited = true;
+    for (let index = Math.min(node.children.length, available) - 1; index >= 0; index -= 1) pending.push({ node: node.children[index], path: label });
+  }
+  return { rows, limited: limited || pending.length > 0 };
+}
+
 function ReadDetails({ record }: { record: DiaryRead }) {
   const [showValues, setShowValues] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const preview = useMemo(() => showValues ? sourceRows(record.data.result.payload) : { rows: [], limited: false }, [showValues, record.data.result.payload]);
   function value(key: string) {
     const nodes = record.data.result.payload?.children.filter(child => child.name === key) || [];
     const nil = nodes[0]?.attributes?.['{http://www.w3.org/2001/XMLSchema-instance}nil'];
-    return nodes.length === 1 && !nodes[0].children.length && !['true', '1'].includes(nil || '') && nodes[0].text ? nodes[0].text : 'Not supplied';
+    return nodes.length === 1 && !nodes[0].children.length && !['true', '1'].includes(nil || '') && nodes[0].text !== null ? nodes[0].text === '' ? 'Blank text' : nodes[0].text : 'Not supplied';
   }
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(record.data, null, 2)], { type: 'application/json' }));
@@ -34,7 +64,8 @@ function ReadDetails({ record }: { record: DiaryRead }) {
     {!!record.data.result.messages.length && <section><h3>Messages from Nébih</h3><ul>{record.data.result.messages.map((message, index) => <li key={index}>{message.text || 'No message text supplied'}{message.code && <small className="muted"> · source code {message.code}</small>}</li>)}</ul></section>}
     <p>Nothing in this read has changed your field boundaries, confirmed farm records or official diary.</p>
     <Button variant="secondary" onClick={download}>Download this saved read</Button>
-    <details onToggle={event => setShowValues(event.currentTarget.open)}><summary>See the retained source values</summary><p>Source codes and dates are not converted into crop names, units or map coordinates. Security details are removed. The downloaded file contains the full saved read, not an authority-import file.</p>{showValues && <pre>{JSON.stringify(record.data.result.payload, null, 2).slice(0, 50000)}</pre>}{showValues && JSON.stringify(record.data.result.payload).length > 50000 && <p>The preview is shortened. Download the saved read to see all retained values.</p>}</details>
+    <Button variant="ghost" aria-expanded={showValues} onClick={() => setShowValues(value => !value)}>{showValues ? 'Hide source values' : 'See the retained source values'}</Button>
+    {showValues && <section aria-label="Retained Nébih source values"><p className="muted">Source labels and codes are kept as returned. Download the saved read for the complete original values.</p>{preview.rows.length ? <><dl className="evidence-list">{preview.rows.slice(offset, offset + 20).map((row, index) => <div key={offset + index}><dt style={{ overflowWrap: 'anywhere' }}>{row.label}</dt><dd style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{row.oversized ? 'Long value: available in the saved download' : row.value === null ? 'Not supplied' : row.value === '' ? 'Blank text' : row.value}</dd></div>)}</dl><div className="actions"><Button variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 20))}>Previous values</Button><span>{offset + 1}–{Math.min(offset + 20, preview.rows.length)} of {preview.rows.length} preview values</span><Button variant="secondary" disabled={offset + 20 >= preview.rows.length} onClick={() => setOffset(value => value + 20)}>Next values</Button></div></> : <p>No source values were returned.</p>}{preview.limited && <p className="muted">This preview is limited. The saved download retains the complete read without shortening values.</p>}</section>}
   </div>;
 }
 

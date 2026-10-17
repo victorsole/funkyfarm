@@ -52,6 +52,10 @@ async function request(path: string, method = 'GET', body?: unknown, options?: M
       payload?.error?.message ?? `The workspace could not complete this request (${response.status}).`,
       payload?.error?.details ?? {});
   }
+  const actionPath = path.startsWith(`${PREFIX}/`) ? path.slice(PREFIX.length) : path;
+  if (method === 'POST' && (actionPath === '/invitations/accept' || /^\/invitations\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/revoke$/i.test(actionPath))) {
+    window.dispatchEvent(new Event('workspaces-changed'));
+  }
   return response;
 }
 

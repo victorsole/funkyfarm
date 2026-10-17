@@ -1,16 +1,21 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, errorMessage } from '../api';
 import { Button, Field, Notice, PageHeader, useRecords, useSession } from '../components';
 import type { Page, RecordItem } from '../types';
 import { FieldMap, type FieldGeometry, type FieldPoint } from './FieldsMap';
+import './satellite.css';
 
 type Parcel = { id: string; name: string; greenhouse?: boolean; geometry?: FieldGeometry; point?: FieldPoint; approximate_area_ha?: number | null };
 type Scene = { id: string; datetime: string; platform?: string; cloud_cover: number | null; provider_url: string; assets?: Record<string, unknown> };
 type Analysis = { scene_id: string; acquired_at: string; status: string; ndvi_mean: number | null; ndvi_median: number | null; valid_land_pixels: number; total_field_pixels: number; valid_fraction: number; preview_png_base64: string; warnings: string[] };
 type SearchData = { farm_id: string; parcel_id: string; field_name: string; provider: string; retrieved_at: string; start_date: string; end_date: string; items: Scene[]; analyses?: Analysis[]; warnings: string[]; has_more?: boolean; interpretation_status: string; imagery_download: string };
+const resultLabels: Record<string, string> = { measured_context: 'Measured from clear image pixels', greenhouse_not_assessed: 'Not measured under greenhouse cover', insufficient_clear_pixels: 'Not enough clear pixels to measure' };
 
 export function SatellitePage() {
+  const [query] = useSearchParams();
+  const suppliedFarm = query.get('farm_id') || '';
+  const requestedFarm = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(suppliedFarm) ? suppliedFarm.toLowerCase() : '';
   const farms = useRecords('farms');
   const { session } = useSession();
   const [farmId, setFarmId] = useState('');
@@ -24,7 +29,7 @@ export function SatellitePage() {
   const [success, setSuccess] = useState('');
   const [operationScene, setOperationScene] = useState('');
   const field = fields.find(item => item.id === fieldId);
-  useEffect(() => { setFarmId(''); setFields([]); setSearches([]); setSelected(null); setFieldId(''); setError(''); setSuccess(''); }, [session?.workspace.id]);
+  useEffect(() => { setFarmId(requestedFarm); setFields([]); setSearches([]); setSelected(null); setFieldId(''); setError(''); setSuccess(''); }, [session?.workspace.id, requestedFarm]);
   useEffect(() => {
     let current = true;
     setFields([]); setFieldId(''); setSearches([]); setSelected(null); setError(''); setSuccess('');
@@ -54,7 +59,7 @@ export function SatellitePage() {
     try {
       const updated = await api.post<RecordItem<SearchData>>(`/satellite/searches/${selected.id}/analyse`, { scene_id: sceneId, expected_revision: selected.revision });
       retain(updated);
-      setSuccess('Actual field pixels processed. Review clear-pixel coverage and the retained limitations.');
+      setSuccess('The image was measured. Check how much of the field was clear enough to use.');
     } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
   }
   async function download() {
@@ -81,8 +86,7 @@ export function SatellitePage() {
     } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
   }
   return <div className="satellite-page">
-    <style>{`.satellite-page .sat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}.satellite-page .sat-preview{width:100%;max-width:440px;max-height:440px;object-fit:contain;image-rendering:pixelated;background:#e8ece4;border-radius:12px}.satellite-page .sat-scene{border-top:1px solid var(--border,#d9ddd3);padding:20px 0}.satellite-page .sat-history{display:flex;gap:8px;flex-wrap:wrap}.satellite-page .sat-stat{font-size:2rem;font-variant-numeric:tabular-nums}.satellite-page .sat-table{overflow:auto}.satellite-page table{width:100%;border-collapse:collapse}.satellite-page th,.satellite-page td{text-align:left;padding:10px;border-bottom:1px solid #d9ddd3}@media(max-width:760px){.satellite-page .sat-grid{grid-template-columns:1fr}}`}</style>
-    <PageHeader title="A view from above" description="Compare real Sentinel-2 scenes with what you know about your field. Images can support a question; you decide what happened." action={<Link className="button button-secondary" to="/app/fields">My fields</Link>} />
+    <PageHeader title="A view from above" description="Find satellite images of your field and compare them with your own work records." action={<Link className="button button-secondary" to="/app/fields">My fields</Link>} />
     {error && <Notice kind="error">{error}</Notice>}{success && <Notice kind="success">{success}</Notice>}
     {farms.error && <Notice kind="error">{farms.error}</Notice>}
     <section className="card"><div className="sat-grid"><div>
@@ -103,8 +107,8 @@ export function SatellitePage() {
     {selected && <section className="card"><PageHeader title={selected.data.field_name} description={`${selected.data.provider} · retrieved ${new Date(selected.data.retrieved_at).toLocaleString()}`} action={<Button variant="secondary" disabled={busy} onClick={() => void download()}>Download metadata</Button>} />
       <details><summary>What these images can and cannot tell you</summary><ul>{selected.data.warnings.map((warning,index) => <li key={index}>{warning}</li>)}</ul><p>{selected.data.imagery_download}</p><p><a href="https://registry.opendata.aws/sentinel-2-l2a-cogs/" target="_blank" rel="noreferrer">Sentinel-2 data source and reuse terms</a></p></details>
       {!selected.data.items.length && <Notice>No matching scenes were returned. This means no match under these search conditions; it does not mean no farming activity occurred.</Notice>}
-      {!!selected.data.analyses?.length && <div className="sat-table"><h2>Measured vegetation context</h2><p>Each row uses actual acquired pixels. Different clear pixels, clouds or field boundaries can make dates unsuitable for direct comparison.</p><table><thead><tr><th scope="col">Image date</th><th scope="col">Mean NDVI</th><th scope="col">Clear land pixels</th><th scope="col">Result</th></tr></thead><tbody>{[...selected.data.analyses].sort((a,b) => a.acquired_at.localeCompare(b.acquired_at)).map(analysis => <tr key={analysis.scene_id}><td>{new Date(analysis.acquired_at).toLocaleDateString()}</td><td>{analysis.ndvi_mean ?? 'Withheld'}</td><td>{analysis.valid_land_pixels} / {analysis.total_field_pixels}</td><td>{analysis.status.replaceAll('_',' ')}</td></tr>)}</tbody></table></div>}
-      {selected.data.items.map(scene => { const analysis = selected.data.analyses?.find(item => item.scene_id === scene.id); return <article className="sat-scene" key={scene.id}><div className="sat-grid"><div><h3>{new Date(scene.datetime).toLocaleString()}</h3><p>{scene.platform ?? 'Sentinel-2'} · {scene.cloud_cover === null ? 'Scene cloud cover unknown' : `${scene.cloud_cover.toLocaleString()}% scene cloud cover`}</p><p className="muted">{scene.id}</p><div className="actions"><a href={scene.provider_url} target="_blank" rel="noreferrer">Original provider metadata</a>{!analysis && Object.keys(scene.assets ?? {}).length >= 4 && <Button variant="secondary" loading={busy} disabled={!field?.geometry} onClick={() => void analyse(scene.id)}>Read field pixels &amp; preview</Button>}<Button variant="ghost" disabled={busy} onClick={() => setOperationScene(scene.id)}>Describe work I know happened</Button></div>{analysis && <><p className="sat-stat">{analysis.ndvi_mean === null ? 'NDVI withheld' : `NDVI ${analysis.ndvi_mean}`}</p><p>{Math.round(analysis.valid_fraction * 100)}% clear land pixels · {analysis.valid_land_pixels} usable pixels · 10 m image / 20 m quality mask</p><ul>{analysis.warnings.map((warning,index) => <li key={index}>{warning}</li>)}</ul></>}</div><div>{analysis && <figure><img className="sat-preview" src={`data:image/png;base64,${analysis.preview_png_base64}`} alt={`Actual Sentinel-2 true-colour pixels within the supplied ${selected.data.field_name} outline on ${new Date(scene.datetime).toLocaleDateString()}; clouds may be visible.`} /><figcaption className="muted">Acquired true-colour pixels · nearest-pixel display · Copernicus Sentinel data, processed by Earth Search.</figcaption></figure>}</div></div></article>; })}
+      {!!selected.data.analyses?.length && <div className="sat-table"><h2>Greenness measured from the image</h2><p>NDVI measures greenness in the image. Clouds, dates and field boundaries affect the result; it does not prove that a particular farm job was done.</p><table><thead><tr><th scope="col">Image date</th><th scope="col">Greenness index (NDVI)</th><th scope="col">Clear land pixels</th><th scope="col">Result</th></tr></thead><tbody>{[...selected.data.analyses].sort((a,b) => a.acquired_at.localeCompare(b.acquired_at)).map(analysis => <tr key={analysis.scene_id}><td>{new Date(analysis.acquired_at).toLocaleDateString()}</td><td>{analysis.ndvi_mean ?? 'Withheld'}</td><td>{analysis.valid_land_pixels} / {analysis.total_field_pixels}</td><td>{resultLabels[analysis.status] ?? 'Open the image details to check this result'}</td></tr>)}</tbody></table></div>}
+      {selected.data.items.map(scene => { const analysis = selected.data.analyses?.find(item => item.scene_id === scene.id); return <article className="sat-scene" key={scene.id}><div className="sat-grid"><div><h3>{new Date(scene.datetime).toLocaleString()}</h3><p>{scene.platform ?? 'Sentinel-2'} · {scene.cloud_cover === null ? 'Scene cloud cover unknown' : `${scene.cloud_cover.toLocaleString()}% scene cloud cover`}</p><div className="actions"><a href={scene.provider_url} target="_blank" rel="noreferrer">Read the original image details</a>{!analysis && Object.keys(scene.assets ?? {}).length >= 4 && <Button variant="secondary" loading={busy} disabled={!field?.geometry} onClick={() => void analyse(scene.id)}>Measure this field</Button>}<Button variant="ghost" disabled={busy} onClick={() => setOperationScene(scene.id)}>Describe work I know happened</Button></div>{analysis && <><p className="sat-stat">{analysis.ndvi_mean === null ? 'Greenness not measured' : `Greenness ${analysis.ndvi_mean}`}</p><p>{Math.round(analysis.valid_fraction * 100)}% clear land pixels · {analysis.valid_land_pixels} usable pixels · 10 m image / 20 m quality mask</p><ul>{analysis.warnings.map((warning,index) => <li key={index}>{warning}</li>)}</ul></>}</div><div>{analysis && <figure><img className="sat-preview" src={`data:image/png;base64,${analysis.preview_png_base64}`} alt={`Actual Sentinel-2 true-colour pixels within the supplied ${selected.data.field_name} outline on ${new Date(scene.datetime).toLocaleDateString()}; clouds may be visible.`} /><figcaption className="muted">Acquired true-colour pixels · nearest-pixel display · Copernicus Sentinel data, processed by Earth Search.</figcaption></figure>}</div></div></article>; })}
       {selected.data.has_more && <Notice>Only the first ten matching scenes are shown. Narrow the dates for more targeted evidence.</Notice>}
       {operationScene && <form onSubmit={proposeOperation} className="card"><h2>Describe what you know happened</h2><p>The image date is not the work date. Leave the date blank if you do not know it; this record stays proposed until reviewed.</p><div className="form-grid"><Field label="Work description"><input name="title" required maxLength={300} /></Field><Field label="Type of work"><select name="type"><option value="observation">Field observation</option><option value="mowing">Mowing</option><option value="harvest">Harvest</option><option value="cultivation">Cultivation</option><option value="other">Other work</option></select></Field><Field label="Actual work date, if known"><input name="date" type="date" /></Field><Field label="What supports your description?"><textarea name="note" required minLength={5} maxLength={4000} /></Field></div><div className="actions"><Button type="submit" loading={busy}>Save proposed work</Button><Button variant="ghost" disabled={busy} onClick={() => setOperationScene('')}>Cancel</Button></div></form>}
     </section>}

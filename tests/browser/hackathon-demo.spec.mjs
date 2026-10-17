@@ -34,11 +34,14 @@ async function importActualReceipt(page, farmId, workspaceId) {
   const kinds = ['facts', 'operations', 'purchases', 'sales', 'tasks'];
   const totals = await Promise.all(kinds.map(async kind => (await read(page, `/${kind}?farm_id=${farmId}`, workspaceId)).total));
   const receipt = Buffer.from('Supplier: Browser receipt merchant\nDate: 2026-09-14\nInvoice number: TEST-RECEIPT-007\nQuantity: 2.50\nUnit: litres\nTotal: 12.30 EUR\n');
-  await importing.getByLabel('What are you importing?', { exact: true }).selectOption('document');
-  await importing.getByLabel('File to read', { exact: true }).setInputFiles({ name: 'actual-browser-receipt.txt', mimeType: 'text/plain', buffer: receipt });
+  await importing.getByLabel('File or photo', { exact: true }).setInputFiles({ name: 'actual-browser-receipt.txt', mimeType: 'text/plain', buffer: receipt });
+  const tab = await page.context().newPage(); await tab.goto('about:blank'); await page.bringToFront(); await tab.close();
+  await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  await page.waitForLoadState('networkidle');
+  expect(await importing.getByLabel('File or photo', { exact: true }).evaluate(input => [...input.files].map(file => file.name))).toEqual(['actual-browser-receipt.txt']);
   const uploaded = responseFor(page, '/documents', 'POST');
   const extracted = page.waitForResponse(response => /^\/api\/v1\/documents\/[a-f0-9-]+\/extract$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST');
-  await importing.getByRole('button', { name: 'Save and read receipt', exact: true }).click();
+  await importing.getByRole('button', { name: 'Read this file', exact: true }).click();
   const document = await checked(await uploaded); expect(document.data.farm_id).toBe(farmId);
   const extractedDocument = await checked(await extracted);
   const preview = page.getByRole('region', { name: 'Read values from the original', exact: true });
@@ -48,11 +51,11 @@ async function importActualReceipt(page, farmId, workspaceId) {
   const original = await page.request.get(`/api/v1/documents/${document.id}/file`, { headers: { 'X-Workspace-ID': workspaceId } });
   expect(original.status()).toBe(200); expect(original.headers()['cache-control']).toContain('no-store');
   expect(await original.body()).toEqual(receipt);
-  await expect(page.getByRole('link', { name: 'Edit values and save a proposal', exact: true })).toHaveAttribute('href', `/app/documents/${document.id}?farm_id=${farmId}&purpose=purchases`);
+  await expect(page.getByRole('link', { name: 'Review details and save', exact: true })).toHaveAttribute('href', `/app/documents/${document.id}?farm_id=${farmId}`);
   await importing.getByRole('button', { name: 'Refresh saved records', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Saved records from this source', exact: true }).locator('article')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Saved records from this source', exact: true })).toHaveCount(0);
   expect(await Promise.all(kinds.map(async kind => (await read(page, `/${kind}?farm_id=${farmId}`, workspaceId)).total))).toEqual(totals);
-  await page.getByRole('link', { name: 'Edit values and save a proposal', exact: true }).click();
+  await page.getByRole('link', { name: 'Review details and save', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/documents/${document.id}\\?`));
   await page.getByLabel('Save as', { exact: true }).selectOption('purchases');
   await page.getByRole('region', { name: 'Supplier', exact: true }).getByRole('button', { name: 'Use this checked value', exact: true }).click();
@@ -129,7 +132,9 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const asset = await page.request.get(logoPath); expect(asset.ok()).toBeTruthy();
   const png = await asset.body(); expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   expect(createHash('sha256').update(png).digest('hex')).toBe(logoHash);
-  await page.getByRole('link', { name: 'Try the Spain case', exact: true }).click();
+  for (const label of ['Try the field map', 'Try a record import', 'Try the paperwork checks'])
+    await expect(page.getByRole('link', { name: label, exact: true })).toHaveAttribute('href', '/login?next=%2Fapp%2Fdemo');
+  await page.getByRole('link', { name: 'Start demo', exact: true }).click();
   await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fdemo$/i);
   await displayedLogo(page.locator('.auth-story > .brand img'));
   // The allowed demo destination must survive the normal account-form toggle.
@@ -142,9 +147,8 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await expect(page).toHaveURL(/\/app\/demo$/);
   await displayedLogo(page.getByRole('complementary').getByRole('img', { name: 'Funkyfarmers', exact: true }));
   const originalFarm = await read(page, `/farms/${fixture.farm.id}`, fixture.accounts.owner.workspace_id);
-  const start = page.getByRole('button', { name: 'Start the guided demo', exact: true });
-  await expect(start).toBeDisabled(); expect(starts).toHaveLength(0);
-  await page.getByRole('checkbox', { name: 'I understand this creates a separate workspace with made-up farm records.', exact: true }).check();
+  const start = page.getByRole('button', { name: 'Start demo', exact: true });
+  await expect(start).toBeEnabled(); expect(starts).toHaveLength(0);
   const created = responseFor(page, '/examples/workspace', 'POST'); await start.click();
   const response = await created;
   expect(response.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
@@ -156,6 +160,17 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   expect(facts.every(Boolean)).toBe(true); expect(facts.every(item => item.status === 'proposed')).toBe(true);
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(example.workspace.id);
   await expect(page.getByRole('heading', { name: 'From field to paperwork.', exact: true })).toBeVisible();
+  const initialChapters = page.getByRole('navigation', { name: 'Demo chapters', exact: true });
+  await page.getByRole('button', { name: 'Next: import my records', exact: true }).click();
+  await expect(initialChapters.getByRole('button', { name: /^Import my records\b/ })).toHaveAttribute('aria-current', 'step');
+  for (const label of ['Sample receipt', 'Sample CSV']) {
+    const sampleDownload = page.waitForEvent('download'); await page.getByRole('button', { name: label, exact: true }).click();
+    const sample = await sampleDownload; expect(await sample.failure()).toBeNull();
+    expect(sample.suggestedFilename()).toMatch(label === 'Sample CSV' ? /\.csv$/ : /\.txt$/);
+  }
+  await page.getByRole('button', { name: 'Next: before and after filing', exact: true }).click();
+  await expect(initialChapters.getByRole('button', { name: /^Before and after filing\b/ })).toHaveAttribute('aria-current', 'step');
+  await initialChapters.getByRole('button', { name: /^Check my fields\b/ }).click();
   const demoURL = page.url(); const before = await read(page, `/farms/${farm.id}`, example.workspace.id);
   expect(before.data.origin).toBe(sigpac.origin);
   const stagedParcel = before.data.parcels.find(item => item.external_id === official.reference); expect(stagedParcel).toBeTruthy();
@@ -216,25 +231,25 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await expect(steps.getByRole('button')).toHaveCount(3);
   await steps.getByRole('button', { name: /^Check my fields\b/ }).click();
   await expect(page.getByRole('heading', { name: 'D04: why does the claim need attention?', exact: true })).toBeVisible();
-  await page.getByText('What if the pasture was cleared?', { exact: true }).click();
-  await page.getByRole('link', { name: 'Open the evidence task', exact: true }).click();
+  await page.getByRole('link', { name: 'Check what evidence is needed', exact: true }).click();
   const evidenceTask = own.find(item => item.alias === 'es-lease-evidence'); expect(evidenceTask).toBeTruthy();
   await expect(page.getByRole('heading', { name: evidenceTask.label, exact: true })).toBeVisible();
   await expect(page.getByText(/No actual land-use right, scrub-clearance date, lease, geotagged photo or authority decision is seeded/)).toBeVisible();
   await page.goto(demoURL);
   await steps.getByRole('button', { name: /^Check my fields\b/ }).click();
   await page.getByRole('link', { name: 'Review D04’s saved figures', exact: true }).click();
-  const answers = page.locator('#facts'); await expect(answers).toHaveAttribute('open', '');
+  const answers = page.locator('#facts'); await expect(answers.getByRole('heading', { name: 'Check answers saved about this farm', exact: true })).toBeVisible();
   for (const fact of facts) {
     const card = answers.locator('article.panel').filter({ has: page.getByRole('heading', { name: fact.label, exact: true }) });
-    await expect(card.getByText('proposed', { exact: true })).toBeVisible();
-    await card.getByText('Source and history', { exact: true }).click();
-    await expect(card.locator('pre').first()).toContainText('document_id');
+    await expect(card.getByText('Needs review', { exact: true })).toBeVisible();
+    await expect(card.getByRole('heading', { name: 'Where this answer came from', exact: true })).toBeVisible();
+    expect(await card.getByRole('link').count()).toBeGreaterThan(0);
+    await expect(card.locator('pre')).toHaveCount(0);
     await card.getByLabel('Review note', { exact: true }).fill('Compared the exact fictional source value and campaign. This confirms the training transcription only, not eligibility or filing. The physical outline stays intact.');
     const reviewed = responseFor(page, `/facts/${fact.id}/review`, 'POST');
     await card.getByRole('button', { name: 'I checked this — confirm answer', exact: true }).click();
     expect((await checked(await reviewed)).data.review_status).toBe('confirmed');
-    await expect(card.getByText('confirmed', { exact: true })).toBeVisible();
+    await expect(card.getByText('Checked', { exact: true })).toBeVisible();
   }
   const after = await read(page, `/farms/${farm.id}`, example.workspace.id);
   expect(after).toEqual(before);
@@ -394,10 +409,9 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await page.goto(demoURL);
   await steps.getByRole('button', { name: /^Import my records\b/ }).click();
   await importActualReceipt(page, farm.id, example.workspace.id);
-  await page.getByText('About this demo and adviser access', { exact: true }).click();
-  await expect(page.getByRole('link', { name: 'Open Adviser view or invite an adviser', exact: true })).toHaveAttribute('href', '/app/adviser');
+  await expect(page.getByRole('link', { name: 'Work with an adviser', exact: true })).toHaveAttribute('href', '/app/adviser');
   await page.getByRole('link', { name: 'Try the other farm situations', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Your private sample workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose a situation', exact: true })).toBeVisible();
   expect((await read(page, `/cases/${savedCase.id}`, example.workspace.id)).data.status).toBe('draft');
   expect((await read(page, `/cases/${savedCase.id}/events?limit=100`, example.workspace.id)).items.some(item => ['sent', 'receipt', 'accepted'].includes(item.data.action))).toBe(false);
   expect(await read(page, `/farms/${fixture.farm.id}`, fixture.accounts.owner.workspace_id)).toEqual(originalFarm);

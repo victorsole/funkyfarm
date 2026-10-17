@@ -1,0 +1,3 @@
+econ_id,holding_id,year,total_output_eur,comment
+0007,FARM-AUTHORED-0001,2026,100,complete first row
+0008,FARM-AUTHORED-0001,2026,200,"unfinished quoted cell

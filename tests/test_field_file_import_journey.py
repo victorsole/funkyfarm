@@ -7,6 +7,7 @@ boundary and clean only their generated identities. No domain parser is mocked.
 from copy import deepcopy
 import hashlib
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -230,6 +231,14 @@ def test_file_parser_access_and_country_handoffs_fail_closed_without_provider_fe
         ("geojson", json.dumps({"type": "FeatureCollection", "features": [feature,
             _feature({"type": "Point", "coordinates": [14, 50]}, name="Do not skip this invalid row")]}), "field_import_invalid"),
     ]
+    # The supplied hackathon guide explicitly labels its parcel WKT/coordinates
+    # as synthetic local metres with no geographic CRS. This wholly authored
+    # analogue must not become a WGS84 field by deleting the source CRS label.
+    local_contents = (Path(__file__).parent / "fixtures" / "import-polish" / "local-metres-authored.geojson").read_text(encoding="utf-8")
+    unsafe.append(("geojson", local_contents, "field_import_crs"))
+    unlabeled_local = json.loads(local_contents)
+    unlabeled_local.pop("crs")
+    unsafe.append(("geojson", json.dumps(unlabeled_local), "invalid_geometry"))
     for axis in range(3):
         malformed = deepcopy(feature)
         point = malformed["geometry"]["coordinates"][0][0]
@@ -242,6 +251,8 @@ def test_file_parser_access_and_country_handoffs_fail_closed_without_provider_fe
     for format, contents, code in unsafe:
         failure = owner.post(path, expected=422, json=_upload(farm, contents, format)).json()
         assert failure["error"]["code"] == code
+    owner.post(path, expected=422, json=_upload(farm,
+        "POLYGON ((1000 2000,1100 2000,1100 2100,1000 2100,1000 2000))", "wkt"))
     assert (len(authored_stac["calls"]), len(authored_stac["public_calls"])) == provider_before
     assert owner.get(f"/farms/{farm['id']}").json() == farm
     assert owner.get(f"/farms/{farm['id']}/field-proposals").json()["total"] == 0

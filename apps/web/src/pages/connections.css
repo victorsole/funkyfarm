@@ -11,6 +11,14 @@
 .connections-page .field { margin-bottom: 20px; }
 .connections-page .check-row { margin: 24px 0; }
 .connections-page .connection-result pre { max-height: 420px; overflow-y: auto; }
+.connections-page .connection-intro { max-width: 740px; color: var(--muted); line-height: 1.65; margin-bottom: 24px; }
+.connections-page .connection-version-details { margin-block: 18px; font-size: .8rem; }
+.connection-parcel-results > ul { list-style: none; padding: 0; }
+.connection-parcel-results > ul > li { padding: 18px 0; border-top: 1px solid var(--line); }
+.connection-parcel-results dl { display: grid; gap: 8px; margin-block: 14px; }
+.connection-parcel-results dl > div { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 16px; }
+.connection-parcel-results dt { margin: 0; font-size: .78rem; text-transform: none; letter-spacing: 0; }
+.connection-parcel-results dd { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .connections-page .connection-picker .form-grid { grid-template-columns: 1fr; }
   .connections-page .connection-section-heading { align-items: flex-start; gap: 8px; }

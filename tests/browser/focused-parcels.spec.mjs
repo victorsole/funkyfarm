@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 const sharedFixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 // Keep these four journeys' sign-ins and original-farm assertions together,
@@ -59,9 +60,8 @@ async function isolated(page) {
 }
 async function startExample(page) {
   await page.goto('/app/examples');
-  const create = page.getByRole('button', { name: 'Create my sample workspace', exact: true });
-  await expect(create).toBeDisabled();
-  await page.getByRole('checkbox', { name: 'I understand these are made-up records in a separate workspace.', exact: true }).check();
+  const create = page.getByRole('button', { name: 'Start demo', exact: true });
+  await expect(create).toBeEnabled();
   const saved = responseFor(page, '/examples/workspace', 'POST');
   await create.click();
   const response = await saved; expect(response.status()).toBe(201);
@@ -69,7 +69,7 @@ async function startExample(page) {
   expect(response.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
   const example = await checked(response);
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(example.workspace.id);
-  await expect(page.getByRole('heading', { name: 'Your private sample workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose a situation', exact: true })).toBeVisible();
   expect(example.scenarios).toHaveLength(7); expect(example.farm_ids).toHaveLength(7);
   return example;
 }
@@ -112,7 +112,8 @@ test('focused farmer checks a sample farm, edits an outline and adds a separatel
   await inspectReadOnlyMap(page);
   await expect(page.getByText('Unknown. The responsible authority decides.', { exact: true })).toBeVisible();
   const field = page.getByLabel('Field to look at', { exact: true });
-  await field.selectOption('1'); await field.selectOption('0');
+  await field.focus(); await field.press('Home'); await field.press('ArrowDown');
+  await expect(field).toHaveValue('1'); await field.press('ArrowUp'); await expect(field).toHaveValue('0');
   await page.getByRole('button', { name: /^Look at \d+ things? to check$/ }).click();
   const issueButtons = page.getByRole('navigation', { name: 'Things to check', exact: true }).getByRole('button');
   for (const issue of await issueButtons.all()) await issue.click();
@@ -137,8 +138,29 @@ test('focused farmer checks a sample farm, edits an outline and adds a separatel
   const previousCorner = await corner.getAttribute('aria-label');
   await corner.press('ArrowLeft');
   await expect(corner).not.toHaveAttribute('aria-label', previousCorner);
+  const fine = workspace.getByRole('region', { name: 'Fine-tune a boundary corner', exact: true });
+  await fine.getByLabel('Selected boundary corner', { exact: true }).selectOption('1');
+  await fine.getByRole('button', { name: 'Focus this corner', exact: true }).click();
+  const longitude = fine.getByLabel('Selected corner longitude', { exact: true });
+  const latitude = fine.getByLabel('Selected corner latitude', { exact: true });
+  const priorLongitude = await longitude.inputValue(); const priorLatitude = await latitude.inputValue();
+  await fine.getByLabel('Nudge distance', { exact: true }).selectOption('0.1');
+  await fine.getByRole('button', { name: 'Nudge north', exact: true }).click();
+  await expect(latitude).not.toHaveValue(priorLatitude);
+  await workspace.getByRole('button', { name: 'Undo last boundary adjustment', exact: true }).click();
+  // Undo clears corner selection; explicitly select the restored corner again.
+  await fine.getByLabel('Selected boundary corner', { exact: true }).selectOption('1');
+  await expect(latitude).toHaveValue(priorLatitude);
+  await longitude.fill(String(Number(priorLongitude) + 0.000001));
+  await fine.getByRole('button', { name: 'Apply corner position', exact: true }).click();
+  await expect(longitude).not.toHaveValue(priorLongitude);
   await workspace.getByLabel('Field name', { exact: true }).fill('FICTIONAL browser west meadow');
   await workspace.getByLabel('What changed, or where did this outline come from?', { exact: true }).fill('FICTIONAL browser review of the original outline; no official LPIS update.');
+  const tab = await page.context().newPage(); await tab.goto('about:blank'); await page.bringToFront(); await tab.close();
+  await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  await page.waitForLoadState('networkidle');
+  await expect(workspace.getByLabel('Field name', { exact: true })).toHaveValue('FICTIONAL browser west meadow');
+  await expect(longitude).not.toHaveValue(priorLongitude);
   const saved = responseFor(page, `/farms/${farm.id}/field-proposals`, 'POST');
   await workspace.getByRole('button', { name: 'Save for comparison', exact: true }).click();
   const proposal = await checked(await saved);
@@ -178,30 +200,29 @@ test('focused judge opens all seven sample situations and starts a fresh workspa
   await page.getByRole('button', { name: 'Save answer and progress', exact: true }).click();
   const editedTask = await checked(await changed);
   await page.goto(savedURL);
-  await expect(page.getByRole('heading', { name: 'Your private sample workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose a situation', exact: true })).toBeVisible();
   const cards = page.locator('article.demo-farm-card'); await expect(cards).toHaveCount(7);
   for (let index = 0; index < 7; index += 1) {
     const card = cards.nth(index);
-    await card.getByRole('button', { name: 'Show me what to do', exact: true }).click();
-    const detail = page.locator('#demo-scenario-detail'); await expect(detail).toBeFocused();
-    await expect(detail.getByRole('heading', { level: 2 })).toHaveText(example.scenarios[index].title);
-    await expect(detail.locator('ol > li')).toHaveCount(example.scenarios[index].expected_actions.length);
+    await card.getByRole('link', { name: 'Open this situation', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/examples/${example.scenarios[index].id}\\?`));
+    const detail = page.getByRole('region', { name: 'Situation guide', exact: true });
+    await expect(detail.getByRole('heading', { name: 'Your task', exact: true })).toBeVisible();
+    await expect(detail.locator('ol > li')).toHaveCount(3);
     for (const link of await detail.getByRole('link').all()) expect(await link.getAttribute('href')).toMatch(/^\/app\//);
+    const situationURL = page.url();
+    const start = detail.getByRole('link', { name: 'Start this situation', exact: true });
+    const destination = await start.getAttribute('href'); await start.click();
+    await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === destination);
+    await page.goto(situationURL);
+    await page.getByRole('link', { name: 'Back to all situations', exact: true }).click();
+    await expect(cards).toHaveCount(7);
   }
-  await page.getByText('Saved records and sample details', { exact: true }).click();
-  await expect(page.getByText(example.notice, { exact: true })).toBeVisible();
   const refreshed = responseFor(page, `/examples/workspace/${example.run_id}`);
-  await page.getByRole('button', { name: 'Refresh progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh saved progress', exact: true }).click();
   expect((await checked(await refreshed)).run_id).toBe(example.run_id);
-  const beforeRestart = page.url();
-  await page.getByRole('button', { name: 'Start a fresh sample run', exact: true }).click();
-  const fresh = page.getByRole('button', { name: 'Create a fresh sample workspace', exact: true }); await expect(fresh).toBeDisabled();
-  await page.getByRole('button', { name: 'Keep working here', exact: true }).click();
-  await expect(page).toHaveURL(beforeRestart);
-  await page.getByRole('button', { name: 'Start a fresh sample run', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Keep this workspace and my changes, and create another fictional sample workspace.', exact: true }).check();
   const restarted = responseFor(page, `/examples/workspace/${example.run_id}/start-again`, 'POST');
-  await fresh.click();
+  await page.getByRole('button', { name: 'Start a fresh demo', exact: true }).click();
   const response = await restarted;
   expect(response.request().postDataJSON()).toEqual({ expected_revision: example.revision, acknowledged: true });
   const next = await checked(response); expect(next.workspace.id).not.toBe(example.workspace.id); expect(next.run_id).not.toBe(example.run_id);
@@ -220,7 +241,7 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   const example = await startExample(page); const farm = farmFor(example, 'cz-mock-amendment-window');
   await page.goto('/app/home'); await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByRole('link', { name: 'Fix a mistake in filed paperwork', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Correct something you already sent', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fix a mistake in filed paperwork', exact: true })).toBeVisible();
   const originalWrites = safety.writes.length;
   await expect(page.getByRole('heading', { name: 'Which application are you correcting?', exact: true })).toBeFocused();
   await page.getByLabel('Application year', { exact: true }).fill('2026');
@@ -237,15 +258,34 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'When did you send it, and is the original saved here?', exact: true })).toBeFocused();
   await expect(page.getByLabel('Date you actually sent the original, if known', { exact: true })).toHaveValue('');
+  const attachment = page.getByRole('region', { name: 'Attach a photo or document', exact: true });
+  // A valid, local human-supplied PNG exercises attachment transport and pins,
+  // not automatic image reading, geolocation or evidence of actual farm work.
+  const photoBytes = readFileSync(new URL('../../apps/web/public/assets/funkyfarmers-logo.png', import.meta.url));
+  await attachment.locator('input[type="file"]').first().setInputFiles({ name: 'browser-original-photo.png', mimeType: 'image/png', buffer: photoBytes });
+  await expect(attachment.getByRole('img', { name: 'Selected photo: browser-original-photo.png', exact: true })).toBeVisible();
+  await expect(attachment.getByRole('checkbox', { name: 'Read the text for me, for checking only', exact: true })).not.toBeChecked();
+  const uploaded = responseFor(page, '/documents', 'POST');
+  await attachment.getByRole('button', { name: 'Save and attach file', exact: true }).click();
+  const photo = await checked(await uploaded); expect(photo.data.farm_id).toBe(farm.id);
+  await expect(page.getByText('File attached to your draft. Save this step to keep it in the case.', { exact: true })).toBeVisible();
+  const originalPhoto = await page.request.get(`/api/v1/documents/${photo.id}/file`, { headers: { 'X-Workspace-ID': example.workspace.id } });
+  expect(await originalPhoto.body()).toEqual(photoBytes);
+  await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('link', { name: 'Read saved document: browser-original-photo.png', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Date you actually sent the original, if known', { exact: true })).toHaveValue('');
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Does this describe your original?', exact: true })).toBeFocused();
   await page.getByLabel('Name this correction', { exact: true }).fill('FICTIONAL browser correction');
   await expect(page.locator('.correction-readback')).toContainText('FICTIONAL-CAP-CZ-WINDOW-2026');
-  expect(safety.writes.slice(originalWrites)).toEqual([]);
+  expect(safety.writes.slice(originalWrites)).toEqual(['POST /api/v1/documents']);
   const create = page.getByRole('button', { name: 'Save original and continue', exact: true }); await expect(create).toBeDisabled();
   await page.getByRole('checkbox', { name: 'I have described an original I actually sent. A saved or approved app report alone does not establish that it was sent.', exact: true }).check();
   const created = responseFor(page, '/cases', 'POST'); await create.click();
   const record = await checked(await created); expect(record.data.focused_review_required).toBe(true);
+  expect(record.data.references).toContainEqual(expect.objectContaining({ kind: 'documents', id: photo.id, revision: photo.revision, role: 'original' }));
+  expect(record.data.original_submitted_at).toBeNull(); expect(record.data.cap_context.filed_on).toBeNull();
   await expect(page).toHaveURL(new RegExp(`/app/cases/${record.id}/correction\\?step=2$`));
   await page.getByRole('textbox', { name: 'What is wrong, and what should change?', exact: true }).fill('FICTIONAL training: compare the corrected east edge against the retained original; do not treat private preparation as filing.');
   const detailsWrites = safety.writes.length;
@@ -258,7 +298,8 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   await choices.getByRole('button', { name: 'Choose this record', exact: true }).click();
   await page.getByLabel('Find a saved record', { exact: true }).selectOption('documents');
   await page.getByLabel('Use this record as', { exact: true }).selectOption('notice');
-  await choices.getByRole('button', { name: 'Choose this record', exact: true }).click();
+  const deadlineSource = example.records.find(item => item.alias === 'cz-window-notice'); expect(deadlineSource).toBeTruthy();
+  await choices.locator('ul.record-list > li').filter({ has: page.locator(`a[href="/app/documents/${deadlineSource.id}"]`) }).getByRole('button', { name: 'Choose this record', exact: true }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check what you want to correct', exact: true })).toBeFocused();
   expect(safety.writes.slice(detailsWrites)).toEqual([]);
@@ -347,7 +388,7 @@ test('focused adviser opens only a delegated farm and its correction, then loses
   await page.getByRole('button', { name: 'Give an adviser access', exact: true }).click();
   await page.getByLabel('Adviser’s email', { exact: true }).fill(fixture.accounts.adviser.email);
   await page.getByRole('group', { name: 'Farms this adviser may access', exact: true }).getByRole('checkbox', { name: farm.label, exact: true }).check();
-  await page.getByRole('checkbox', { name: 'Allow reviewing and confirming evidence', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Allow checking and confirming records', exact: true }).check();
   const invited = responseFor(page, '/invitations', 'POST');
   await page.getByRole('button', { name: 'Create private invitation', exact: true }).click();
   const invitation = await checked(await invited);

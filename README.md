@@ -31,6 +31,8 @@ npm run dev
 
 Open `http://127.0.0.1:5189`. The API runs on port `8139`.
 
+For a populated local jury account, run `.venv/Scripts/python.exe scripts/seed_jury.py --create-local-jury` while the API is running. It creates or resumes seven sample farms and private adviser conversations. Sign-in details and the demo link stay in `runtime/jury/local-credentials.json`; do not publish that file.
+
 Software licensed under [AGPL-3.0-or-later](LICENSE).
 
 The current logo was supplied by the project owner and is used unchanged. Notices for earlier third-party artwork remain with those assets.

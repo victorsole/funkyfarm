@@ -191,23 +191,23 @@ function Correction({ farm, parcel, onChanged }: { farm: RecordItem; parcel: Par
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return <section className="spanish-parcel-demo" aria-label="Guided public parcel correction">
-    <p className="spanish-parcel-demo-notice">Staged private claim on real public parcels, not a real farmer’s holding or proof of ownership. Changes here do not update SIGPAC.</p>
-    <section><h3>1. Spot the problem</h3><p>The retained reference for {snapshot.field.reference} has {holes(snapshot.field.geometry)} holes. The current private outline has {holes(parcel.geometry)}.</p>
-      {matched ? <Notice kind="success">The current saved outline matches the retained source geometry.</Notice> : <p>This example starts with holes filled in the private outline. Compare the current saved outline with the reference on the map before restoring them.</p>}
-      <p>Reference area: {snapshot.field.area_ha} ha · land-use code {snapshot.field.use_code} · CSP {snapshot.field.csp_percent}%.</p>
+    <p className="spanish-parcel-demo-notice">Demo · changes here do not update SIGPAC.</p>
+    <section><h3>1. Spot the problem</h3><p>{snapshot.field.label} has {holes(snapshot.field.geometry)} gaps to keep outside the field. Compare the orange outline with the green reference.</p><p>Your drawing currently has {holes(parcel.geometry)} gaps.</p>
+      {matched ? <Notice kind="success">The current saved outline matches the retained source geometry.</Notice> : <p>The demo starts with these gaps filled in. Check the drawing before correcting it.</p>}
+      <p>Published area: {snapshot.field.area_ha} ha · land use {snapshot.field.use_code} · pasture coefficient {snapshot.field.csp_percent}%.</p>
       <div className="spanish-parcel-demo-actions"><a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">Read the official source attributes</a><Button variant="ghost" onClick={download}>Download the retained source GeoJSON</Button></div>
     </section>
-    <section><h3>2. Save a correction</h3><p>Use the retained source outline, including its holes. The crop, name and other fields stay as they are.</p>
+    <section><h3>2. Save a correction</h3><p>Save a new drawing with the gaps left out. The crop, name and other fields stay the same.</p>
       {!canReview && <p>Your current access is read-only. Ask an owner or a permitted adviser to review the change.</p>}
       {draft.error && <Notice kind="warning">{draft.error}</Notice>}
       <Button disabled={!canReview || !draft.ready || !!proposal || !!draft.value.proposalId || matched} loading={busy} onClick={() => void save()}>Save the boundary correction</Button>
     </section>
-    <section><h3>3. Review and apply</h3>{!proposal ? <><p>{draft.value.proposalId ? 'The saved proposal must be loaded and checked before it can be applied.' : 'Save the proposed correction first. Saving alone leaves the current field unchanged.'}</p>{draft.value.proposalId && <Button variant="ghost" disabled={busy} onClick={() => { setError(''); setAttempt(value => value + 1); }}>Reload saved proposal</Button>}</> : <>
+    <section><h3>3. Review and apply</h3>{!proposal ? <><p>{draft.value.proposalId ? 'Open your saved correction and check it before applying it.' : 'Save your correction first. Your field stays unchanged until you apply it.'}</p>{draft.value.proposalId && <Button variant="ghost" disabled={busy} onClick={() => { setError(''); setAttempt(value => value + 1); }}>Reload saved proposal</Button>}</> : <>
       <p><strong>Saved proposal:</strong> {proposal.data.status === 'approved' ? 'Approved in private farm records' : proposal.data.status === 'proposed' ? 'Awaiting your review' : 'Set aside'}.</p>
-      <p>Current crop retained: {String(proposal.data.parcel?.crop || 'Not recorded')} · proposed holes: {holes(proposal.data.parcel?.geometry)} · source year: not established.</p>
+      <p>Crop unchanged: {String(proposal.data.parcel?.crop || 'Not recorded')} · gaps in the new drawing: {holes(proposal.data.parcel?.geometry)} · source year: unknown.</p>
       {!!warnings.length && <ul aria-label="Correction warnings">{warnings.map((warning, index) => <li key={index}>{warningText(warning)}</li>)}</ul>}
       {!!overlaps.length && <ul aria-label="Overlapping fields">{overlaps.map((field: { id: string; name: string }) => <li key={field.id}>{field.name}</li>)}</ul>}
-      {stale && <Notice kind="warning">The farm changed after this proposal. Compare the current fields and prepare a fresh proposal in the map review.</Notice>}
+      {stale && <Notice kind="warning">Your farm changed since this correction was saved. Check the current drawing in the full map review.</Notice>}
       {proposal.data.status === 'proposed' && <form onSubmit={event => { event.preventDefault(); void apply(); }}>
         <Field label="Review note"><textarea required maxLength={4000} value={draft.value.approval?.note ?? note} disabled={busy || !!draft.value.approval || !canReview || stale} onChange={event => setNote(event.target.value)}/></Field>
         <label><input type="checkbox" required checked={acknowledged} disabled={busy || !canReview || stale} onChange={event => setAcknowledged(event.target.checked)}/>I compared the current outline, proposed holes, crop and retained reference.</label>

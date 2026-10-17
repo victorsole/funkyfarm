@@ -9,10 +9,19 @@
 .hackathon-demo-link { color: var(--blue); font-size: .76rem; font-weight: 650; white-space: nowrap; text-underline-offset: 4px; }
 .farm-demo-entry { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
 .farm-demo-entry strong { color: var(--forest); }
-@media (max-width: 1100px) { .workspace-topbar .folio-label { display: none; } }
+.workspace-topbar > .language-picker { margin-left: auto; }
+.tools-index { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.tools-index section { margin: 0; }
+.tools-index h2 { font-size: 1.5rem; }
+.tools-index ul { list-style: none; margin: 0; padding: 0; }
+.tools-index li + li { border-top: 1px solid var(--line); }
+.tools-index li a { display: grid; gap: 4px; min-height: 64px; padding: 12px 0; text-decoration: none; }
+.tools-index li a:hover strong { text-decoration: underline; text-underline-offset: 4px; }
+.tools-index li span { color: var(--muted); font-size: .8rem; line-height: 1.5; }
+@media (max-width: 600px) { .tools-index { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {
   .sidebar .brand { width: 44%; max-width: 170px; }
   .sidebar .brand > img.funkyfarmers-logo { width: 170px; height: auto; }
   .sidebar .workspace-label { margin-top: 0; }
-  .sidebar .primary-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sidebar .primary-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }

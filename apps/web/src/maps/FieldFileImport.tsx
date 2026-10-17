@@ -34,7 +34,7 @@ function SuppliedOutline({ geometry, name }: { geometry: Geometry; name: string 
   const cosine = Math.max(0.001, Math.cos(latitude * Math.PI / 180));
   const scale = Math.min(320 / Math.max((east - west) * cosine, 0.000001), 170 / Math.max(north - south, 0.000001));
   const paths = polygons.map(polygon => polygon.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${180 + (point[0] - longitude) * cosine * scale} ${105 - (point[1] - latitude) * scale}`).join(' ') + ' Z').join(' '));
-  return <figure style={{ margin: '1rem 0' }}><svg viewBox="0 0 360 210" role="img" aria-labelledby={id} style={{ display: 'block', width: '100%', maxHeight: 240, background: '#eef1e9', border: '1px solid #c9d0c0', borderRadius: 10 }}><title id={id}>Outline supplied in the file for {name}</title>{paths.map((path, index) => <path key={index} d={path} fill="#86a77e" fillOpacity=".55" fillRule="evenodd" stroke="#344c3b" strokeWidth="2" vectorEffect="non-scaling-stroke" />)}</svg><figcaption className="muted">Outline from the saved file preview. No background map, official boundary or ownership check is implied.</figcaption></figure>;
+  return <figure style={{ margin: '1rem 0' }}><svg viewBox="0 0 360 210" role="img" aria-labelledby={id} style={{ display: 'block', width: '100%', maxHeight: 240, background: '#eef1e9', border: '1px solid #c9d0c0', borderRadius: 10 }}><title id={id}>Outline supplied in the file for {name}</title>{paths.map((path, index) => <path key={index} d={path} fill="#86a77e" fillOpacity=".55" fillRule="evenodd" stroke="#344c3b" strokeWidth="2" vectorEffect="non-scaling-stroke" />)}</svg><figcaption className="muted">Saved file outline</figcaption></figure>;
 }
 
 function GeometrySummary({ value }: { value: PreviewRow['geometry_summary'] }) {
@@ -67,7 +67,6 @@ function FileImportForm({ farm, onProposed, disabled = false, scope }: Props & {
   const current = (captured: string, attempt: number) => mounted.current && currentBinding.current === captured && generation.current === attempt;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current += 1; request.current?.abort(); }; }, []);
   useEffect(() => { generation.current += 1; request.current?.abort(); request.current = null; setBusy(''); setAcknowledged(false); }, [binding]);
-  useEffect(() => { const clear = () => setAcknowledged(false); window.addEventListener('focus', clear); window.addEventListener('online', clear); return () => { window.removeEventListener('focus', clear); window.removeEventListener('online', clear); }; }, []);
 
   function validatePreview(record: Preview, id?: string) {
     if (record.kind !== 'field_imports' || id && record.id !== id || record.workspace_id !== session?.workspace.id || record.data.farm_id !== farm.id || !Number.isInteger(record.revision) || record.revision < 1 || !Array.isArray(record.data.rows) || record.data.rows.length < 1 || record.data.rows.length > 100) throw new Error('The workspace did not return a complete preview for this farm. Reopen the saved preview before continuing.');

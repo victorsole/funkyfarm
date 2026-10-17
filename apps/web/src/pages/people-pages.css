@@ -1,0 +1,7 @@
+.admin-private-people { margin-block: 28px; }
+.admin-private-people > ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0; list-style: none; }
+.admin-private-people > ul > li { display: grid; gap: 8px; padding: 18px; border: 1px solid var(--line); border-left: 3px solid var(--forest); border-radius: 6px; background: var(--lime-soft); }
+.admin-private-people li > span { color: var(--muted); font-size: .76rem; }
+.adviser-follow-up { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+.adviser-follow-up > h3 { margin-top: 20px; }
+@media (max-width: 650px) { .admin-private-people > ul { grid-template-columns: 1fr; } }
