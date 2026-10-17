@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from .connectors import read_parcels
-from .connectors.vault import encrypt_credentials
+from .connectors import nebih
+from .connectors.vault import decrypt_credentials, encrypt_credentials
 from .db import fetch_record, idempotent, insert_record, list_records, transaction, update_record
 from .models import ApiError
 from .security import Session, require_roles, require_session
@@ -34,7 +35,7 @@ class Capability(Input):
     country: str
     workflow_id: Workflow
     title: str
-    mode: Literal["public_read", "portal_handoff"]
+    mode: Literal["public_read", "private_read", "portal_handoff"]
     live_read: bool = False
     live_write: bool = False
     automatic_filing: bool = False
@@ -43,6 +44,7 @@ class Capability(Input):
     limitations: list[str]
     sources: list[dict]
     documented_connections: list[dict] = Field(default_factory=list)
+    configuration_ready: bool = False
 
 
 class CreateConnection(Input):
@@ -63,6 +65,19 @@ class Credentials(Revision):
 class ReadParcels(Input):
     bbox: list[float] = Field(min_length=4, max_length=4)
     limit: int = Field(default=50, ge=1, le=100)
+
+
+class ReadDiary(Revision):
+    consent: Literal[True]
+    page: int = Field(default=1, ge=1, le=100000, strict=True)
+    page_size: int = Field(default=50, ge=1, le=50, strict=True)
+
+
+class ReadDiaryOperations(Revision):
+    consent: Literal[True]
+    field_read_id: UUID
+    site_id: str = Field(min_length=1, max_length=20)
+    use_id: str = Field(min_length=1, max_length=20)
 
 
 class Preview(Input):
@@ -121,6 +136,11 @@ def capabilities():
         official_url="https://api.pdok.nl/rvo/gewaspercelen/ogc/v1", setup_requirements=["Activate public read for the selected Dutch farm.", "Provide a small longitude/latitude map extent. No agency credentials are needed."],
         limitations=["Public parcel candidates only; not a private RVO claim or property register.", "Dataset edition may differ from the reporting year. Review its metadata before reuse.", "Nothing is automatically imported into confirmed farm facts, sent to RVO, or judged eligible."],
         sources=[{"url": "https://www.pdok.nl/ogc-apis/-/article/basisregistratie-gewaspercelen-brp-", "title": "PDOK official BRP OGC API"}]).model_dump())
+    result.append(Capability(id="hu-nebih-egn-read", country="HU", workflow_id="inputs", title="Read my Nébih farm diary", mode="private_read", live_read=True,
+        configuration_ready=nebih.configured(), official_url="https://portal.nebih.gov.hu/nebih-api",
+        setup_requirements=["The operator needs Nébih software approval, service access and an approved network connection or certificate.", "The farm owner supplies a token for the correct eGN diary only after operator setup is available.", "Choose a page of fields, then choose a recorded crop use to read its work records. Review the diary, year and farm before reusing anything."],
+        limitations=["The adapter has not been tested with an authority account. Configuration does not establish approval or successful access.", "Only two read operations are implemented. No write, finalise, LPIS correction or CAP application is sent.", "Each read is a partial snapshot. Source codes, dates, units and coordinates are retained as supplied; they are not guessed or converted into confirmed farm facts.", "A farm-sharing invitation does not grant a government mandate. Disconnect here and revoke the token at Nébih when access should stop."],
+        sources=[{"url": "https://portal.nebih.gov.hu/documents/10182/501576/DATAPLANT-EGN-WHITEBOOK_2026_v0.23.pdf", "title": "Nébih eGN 2026 v0.23 service manual"}, {"url": "https://portal.nebih.gov.hu/documents/10182/560688569/Nebih-API+csatlakozas+utmutato.pdf", "title": "Nébih API connection guide"}]).model_dump())
     return result
 
 
@@ -192,6 +212,10 @@ def activate(connection_id: UUID, body: Revision, session: Session = Depends(req
     with transaction(session) as conn:
         record = _connection(conn, connection_id)
         capability = _capability(record["data"]["capability_id"])
+        if capability["mode"] == "private_read":
+            if not capability["configuration_ready"] or not record["data"].get("credentials_present"):
+                raise ApiError(409, "private_read_setup_required", "Operator setup and a saved diary token are needed before this read can be enabled.")
+            return _public(update_record(conn, "connections", record["id"], body.expected_revision, {**record["data"], "status": "private_read_enabled"}))
         if not capability["live_read"]:
             raise ApiError(409, "adapter_not_available", "This authority integration is not live. Use a reviewed manual handoff; no credentials or filing action can activate it.")
         return _public(update_record(conn, "connections", record["id"], body.expected_revision, {**record["data"], "status": "public_read_ready"}))
@@ -208,15 +232,73 @@ def disconnect(connection_id: UUID, body: Revision, session: Session = Depends(r
 
 
 @router.post("/{connection_id}/credentials")
-def save_credentials(connection_id: UUID, body: Credentials, session: Session = Depends(require_session)):
+def save_credentials(connection_id: UUID, body: Credentials, request: Request, session: Session = Depends(require_session)):
     require_roles(session, "owner")
     with transaction(session) as conn:
         record = _connection(conn, connection_id)
         values = {key: value.get_secret_value() for key, value in ((key, getattr(body, key)) for key in ("username", "password", "api_key")) if value is not None}
+        private = record["data"]["capability_id"] == "hu-nebih-egn-read"
+        if private:
+            _human_browser(request)
+            if not nebih.configured():
+                raise ApiError(409, "private_read_setup_required", "Nébih operator setup is not available. Do not enter a diary token yet.")
+            if set(values) != {"api_key"} or not 1 <= len(values["api_key"]) <= 50 or any(ord(char) < 33 for char in values["api_key"]):
+                raise ApiError(422, "invalid_credentials", "Provide only the token copied from the correct eGN diary, up to 50 characters.")
         if not values or any(not value or len(value) > 8192 for value in values.values()):
             raise ApiError(422, "invalid_credentials", "Provide bounded, non-empty credential values.")
         encrypted = encrypt_credentials(session.workspace_id, record["id"], values)
-        return _public(update_record(conn, "connections", record["id"], body.expected_revision, {**record["data"], "credential_ciphertext": encrypted, "credentials_present": True, "status": "not_connected", "credential_notice": "Stored encrypted and unverified. No authenticated authority adapter is enabled."}))
+        notice = "Diary token stored encrypted and unverified. Enable read access separately; no authority request has been made." if private else "Stored encrypted and unverified. No authenticated authority adapter is enabled."
+        return _public(update_record(conn, "connections", record["id"], body.expected_revision, {**record["data"], "credential_ciphertext": encrypted, "credentials_present": True, "status": "not_connected", "credential_notice": notice}))
+
+
+def _private_diary(conn, connection_id, revision, session):
+    # Token replacement/disconnect cannot overtake an in-flight authorised read.
+    conn.execute("SELECT id FROM records WHERE id=%s AND kind='connections' AND deleted_at IS NULL FOR SHARE", (connection_id,))
+    record = _connection(conn, connection_id)
+    if record["revision"] != revision:
+        raise ApiError(409, "revision_conflict", "This connection changed. Review its current state before reading again.")
+    if record["data"].get("capability_id") != "hu-nebih-egn-read" or record["data"].get("status") != "private_read_enabled":
+        raise ApiError(409, "read_not_enabled", "Enable the Nébih diary read for this farm first.")
+    if not nebih.configured():
+        raise ApiError(503, "private_read_setup_required", "Nébih operator setup is unavailable. No authority request was made.")
+    credentials = decrypt_credentials(str(session.workspace_id), record["id"], record["data"].get("credential_ciphertext", ""))
+    token = credentials.get("api_key")
+    if not isinstance(token, str) or not 1 <= len(token) <= 50:
+        raise ApiError(409, "diary_token_required", "Ask the farm owner to save the correct diary token again.")
+    return record, token
+
+
+def _retain_diary_read(conn, record, result, kind, parent_id=None):
+    return insert_record(conn, "connection_reads", {"farm_id": record["data"]["farm_id"], "connection_id": record["id"],
+        "connection_revision": record["revision"], "provider": "hu-nebih-egn", "read_kind": kind, "field_read_id": parent_id,
+        "read_at": _now(), "result": result, "status": "needs_attention" if result["blocked"] else "unreviewed_candidates"})
+
+
+@router.post("/{connection_id}/read-diary")
+def read_diary(connection_id: UUID, body: ReadDiary, request: Request, session: Session = Depends(require_session)):
+    require_roles(session, "owner", "adviser")
+    _human_browser(request)
+    with transaction(session) as conn:
+        record, token = _private_diary(conn, connection_id, body.expected_revision, session)
+        return _retain_diary_read(conn, record, nebih.read_diary(token, body.page, body.page_size), "fields")
+
+
+@router.post("/{connection_id}/read-diary-operations")
+def read_diary_operations(connection_id: UUID, body: ReadDiaryOperations, request: Request, session: Session = Depends(require_session)):
+    require_roles(session, "owner", "adviser")
+    _human_browser(request)
+    with transaction(session) as conn:
+        record, token = _private_diary(conn, connection_id, body.expected_revision, session)
+        parent = fetch_record(conn, "connection_reads", str(body.field_read_id))
+        data = parent["data"]
+        matches = (data.get("provider") == "hu-nebih-egn" and data.get("read_kind") == "fields"
+            and data.get("connection_id") == record["id"] and data.get("farm_id") == record["data"]["farm_id"]
+            and data.get("connection_revision") == record["revision"] and not data.get("result", {}).get("blocked", True))
+        sites = data.get("result", {}).get("sites", []) if matches else []
+        if not any(site.get("id") == body.site_id and any(use.get("id") == body.use_id for use in site.get("uses", [])) for site in sites):
+            raise ApiError(409, "diary_selection_changed", "Choose a recorded crop use from a fresh field read for this connection.")
+        result = nebih.read_operations(token, body.site_id, body.use_id)
+        return _retain_diary_read(conn, record, result, "operations", parent["id"])
 
 
 @router.post("/{connection_id}/read")

@@ -223,7 +223,91 @@ def authored_model():
 
 
 @pytest.fixture(scope="session")
-def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model):
+def authored_nebih():
+    """Authored SOAP1.1 authority responses; no authority socket is ever used."""
+    from cryptography.fernet import Fernet
+    from xml.etree import ElementTree as ET
+    from xml.sax.saxutils import escape
+
+    soap = "http://schemas.xmlsoap.org/soap/envelope/"
+    gn = "http://gazdanaplo.aap.nebih.gov.hu/"
+    state = {"mode": "happy", "calls": []}
+    config = {"FUNKYFARM_NEBIH_ENABLED": "1", "FUNKYFARM_NEBIH_ENVIRONMENT": "test", "FUNKYFARM_NEBIH_ACCESS_MODE": "ip",
+        "FUNKYFARM_NEBIH_USERNAME": "authored-nebih-user", "FUNKYFARM_NEBIH_PASSWORD": "authored-nebih-password",
+        "FUNKYFARM_NEBIH_SYSTEM_ID": "authored-system", "FUNKYFARM_CONNECTIONS_KEY": Fernet.generate_key().decode("ascii")}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            state["calls"].append({"path": self.path, "headers": dict(self.headers), "body": body})
+            root = ET.fromstring(body)
+            wrapper = root.find(f"{{{soap}}}Body")[0]
+            operation = wrapper.tag.split("}")[-1]
+            message_id = wrapper.findtext("callContext/messageId")
+            params = {item.findtext("key"): item.findtext("value") for item in wrapper.findall("callContext/parameterList/parameter")}
+            page = int(params.get("pagenumber", "1"))
+            site_id, use_id = "0007" + str(page), "0009" + str(page)
+            if operation == "getGnNovtermAdatokE1":
+                business = f'<gazdalkodasi-naplo-novterm><gn-termohely-list><gn-termohely><id>{site_id}</id><allapot-kod>0007</allapot-kod><gn-hasznositas-list><gn-hasznositas-extend><id>{use_id}</id><kultura-list xsi:nil="true"/><allapot/><allapot-kod>0</allapot-kod><gazdalkodasi-ev-kod>2026</gazdalkodasi-ev-kod></gn-hasznositas-extend></gn-hasznositas-list></gn-termohely></gn-termohely-list></gazdalkodasi-naplo-novterm>'
+            elif operation == "getGnNovtermMuveletekE1":
+                site_id, use_id = wrapper.findtext("callParameter/termohely-id"), wrapper.findtext("callParameter/hasznositas-id")
+                business = f'<gn-termohely><id>{site_id}</id><gn-hasznositas-list><gn-hasznositas-muvelet><id>{use_id}</id><novenyterm-muvelet-list><novenyterm-muvelet-extend><id>00101</id><hasznositas-id>{use_id}</hasznositas-id><muvelet-csoport-kod>0003</muvelet-csoport-kod><idopont-kezdet>2026-06-11</idopont-kezdet><agrotechnika><muvelet-tipus-kod>0007</muvelet-tipus-kod><muvelet>Authored művelet, not confirmed work</muvelet><teruletmeret xsi:type="xs:decimal">1.2500</teruletmeret><fajlagos-menny>0.500</fajlagos-menny><fajlagos-menny-me-kod>0042</fajlagos-menny-me-kod></agrotechnika></novenyterm-muvelet-extend></novenyterm-muvelet-list></gn-hasznositas-muvelet></gn-hasznositas-list></gn-termohely>'
+            else:
+                self.send_error(400)
+                return
+            mode = state["mode"]
+            if operation == "getGnNovtermMuveletekE1" and mode == "wrong_site":
+                business = business.replace(f"<id>{site_id}</id>", "<id>99999</id>", 1)
+            elif operation == "getGnNovtermMuveletekE1" and mode == "wrong_use":
+                business = business.replace(f"<gn-hasznositas-muvelet><id>{use_id}</id>", "<gn-hasznositas-muvelet><id>99999</id>", 1)
+            severity = {"unknown": "UNRECOGNISED", "warning": "WARNING", "error": "ERROR"}.get(mode, "INFO")
+            token = wrapper.findtext("tokenAdat/token", "")
+            echo = escape("Authored echo: " + " ".join([token, config["FUNKYFARM_NEBIH_PASSWORD"]]))
+            context = f'<resultContext><messageId>{message_id}</messageId><highestMessageSeverity>{severity}</highestMessageSeverity><messageList><message><code>0000</code><severity>INFO</severity><sourceSystemCode>AUTHORED</sourceSystemCode><text>101</text></message><message><code>AUTHORED-ECHO</code><severity>{severity}</severity><text>{echo}</text></message></messageList></resultContext>'
+            content = f'<s:Envelope xmlns:s="{soap}" xmlns:g="{gn}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema"><s:Body><g:{operation}Response><result>{context}{business}</result></g:{operation}Response></s:Body></s:Envelope>'.encode()
+            status = 200
+            if mode == "fault":
+                content = f'<s:Envelope xmlns:s="{soap}"><s:Body><s:Fault><faultcode>Server</faultcode><faultstring>{echo}</faultstring></s:Fault></s:Body></s:Envelope>'.encode()
+            elif mode == "dtd":
+                content = b'<!DOCTYPE x [<!ENTITY harmless "DTD must still be rejected">]>' + content
+            elif mode == "malformed":
+                content = b'<not-complete>'
+            elif mode in {"oversize", "stream_oversize"}:
+                content = b' ' * (4 * 1024 * 1024 + 1)
+            elif mode == "wrong_namespace":
+                content = content.replace(gn.encode(), b"https://authored.invalid/not-the-contract")
+            elif mode in {"redirect", "http_error"}:
+                status, content = (302 if mode == "redirect" else 503), echo.encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "text/xml; charset=utf-8")
+            if mode != "stream_oversize":
+                self.send_header("Content-Length", str(len(content)))
+            if mode in {"encoding", "deflate"}:
+                self.send_header("Content-Encoding", "deflate" if mode == "deflate" else "gzip")
+            if mode == "redirect":
+                self.send_header("Location", "https://authored.invalid/must-not-follow")
+            self.end_headers()
+            try:
+                self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        yield {"url": f"http://127.0.0.1:{server.server_port}/nebih", "state": state, "config": config}
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regulatory, authored_model, authored_nebih):
     runtime_url = checked_database("FUNKYFARM_TEST_DATABASE_URL")
     checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
     directory = tmp_path_factory.mktemp("funkyfarm-http")
@@ -249,6 +333,8 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
         "FUNKYFARM_OLLAMA_BASE_URL": authored_model["url"],
         "FUNKYFARM_OLLAMA_MODEL": authored_model["model"],
         "FUNKYFARM_OLLAMA_MODEL_DIGEST": "sha256:" + authored_model["digest"],
+        **authored_nebih["config"],
+        "FUNKYFARM_TEST_NEBIH_URL": authored_nebih["url"],
     }
     url = f"http://127.0.0.1:{port}/api/v1"
     with (directory / "server.log").open("w+", encoding="utf-8") as log:

@@ -2,7 +2,7 @@
 
 All API routing, authentication, PostgreSQL authorization, geometry validation,
 metadata interpretation and record review use the ordinary application code.
-The local fixture proves the provider contract, not live Copernicus availability.
+The local fixtures prove provider contracts, not live availability or authority approval.
 """
 
 import os
@@ -44,8 +44,17 @@ def create_app():
         raise RuntimeError("Authored STAC fixture must use loopback.")
 
     actual_transport = httpx.HTTPTransport.handle_request
+    diary_endpoint = os.environ["FUNKYFARM_TEST_NEBIH_URL"]
+    if urlsplit(diary_endpoint).hostname != "127.0.0.1":
+        raise RuntimeError("Authored Nébih transport must use loopback.")
 
     def public_parcel_transport(transport, request):
+        if request.url.host == "intesztfelirapi.nebih.gov.hu":
+            if str(request.url) != "https://intesztfelirapi.nebih.gov.hu/peif/aap/services/GazdanaploService" or request.method != "POST":
+                raise RuntimeError("Only the reviewed Nébih TEST/IP SOAP URL may use the fixture.")
+            forwarded = httpx.Request(request.method, diary_endpoint, headers=request.headers,
+                                      stream=request.stream, extensions=request.extensions)
+            return actual_transport(transport, forwarded)
         if request.url.host == "api.pdok.nl":
             if request.url.scheme != "https" or request.url.path != "/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items":
                 raise RuntimeError("Only the reviewed PDOK public parcel request may use the fixture.")
@@ -57,8 +66,8 @@ def create_app():
             raise RuntimeError("Acceptance HTTP must stay at an authored local provider.")
         return actual_transport(transport, request)
 
-    # Keep configured_base, the real streaming/parser limits and every request
-    # header. Change only the socket destination of this reviewed public URL.
+    # Keep the reviewed provider URLs, streaming/parser limits and headers.
+    # Change only their socket destination to an authored loopback server.
     httpx.HTTPTransport.handle_request = public_parcel_transport
 
     def authored_provider(payload):

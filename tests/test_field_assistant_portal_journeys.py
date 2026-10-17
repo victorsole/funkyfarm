@@ -190,3 +190,197 @@ def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_ha
         assert handoff.json()["data"]["authority_acceptance_verified"] is False
     assert len(authored_stac["calls"]) == before
     assert owner.get(f"/reports/{issued['id']}").json()["data"]["filing_status"] == "not_filed"
+
+
+def test_hungarian_diary_reads_keep_tokens_private_pages_explicit_and_sources_unconfirmed(farmers, service_url, authored_nebih, monkeypatch):
+    import json
+    from uuid import UUID
+    from xml.etree import ElementTree as ET
+    import psycopg
+    from cryptography.fernet import Fernet
+    from conftest import checked_database
+    from funkyfarm.connectors import nebih
+
+    owner, outsider = farmers("Fictional Hungarian diary owner"), farmers("Unrelated diary account")
+    farm = owner.create("farms", {**farm_data("Authored Hungarian crop holding"), "country": "HU", "region": None})
+    other_farm = owner.create("farms", {**farm_data("Separate Hungarian diary holding"), "country": "HU", "region": None})
+    untouched = owner.get(f"/farms/{farm['id']}").json()
+    before_records = {kind: owner.get(f"/{kind}").json()["items"] for kind in ("facts", "operations", "reports")}
+    state, config = authored_nebih["state"], authored_nebih["config"]
+    token, rotated_token = "AUTHORED-DIARY-TOKEN-ONE", "AUTHORED-DIARY-TOKEN-TWO"
+    secrets = [token, rotated_token, config["FUNKYFARM_NEBIH_PASSWORD"], config["FUNKYFARM_CONNECTIONS_KEY"]]
+
+    def private(response):
+        assert all(secret not in response.text for secret in secrets), "Authority secrets must not appear in a public response."
+        return response.json()
+
+    def request(browser, path, body, expected=200):
+        response = browser.post(path, json=body)
+        assert response.status_code == expected, f"{path}: {response.status_code} {response.text[:800]}"
+        return private(response)
+
+    def leaves(tree):
+        if tree is None:
+            return []
+        return [(tree["name"], tree["text"]), *(pair for child in tree["children"] for pair in leaves(child))]
+
+    def nodes(tree):
+        return [tree, *(node for child in tree["children"] for node in nodes(child))]
+
+    # The adapter remains opt-in even when an operator has installed the code.
+    with monkeypatch.context() as disabled:
+        disabled.setenv("FUNKYFARM_NEBIH_ENABLED", "0")
+        assert nebih.configured() is False
+    capability = next(item for item in owner.get("/connections/capabilities", params={"country": "HU", "workflow_id": "inputs"}).json()["items"] if item["id"] == "hu-nebih-egn-read")
+    assert capability["mode"] == "private_read" and capability["configuration_ready"] is True
+    assert capability["live_write"] is False and capability["automatic_filing"] is False
+    connection = owner.post("/connections", expected=201, json={"farm_id": farm["id"], "capability_id": capability["id"]}).json()
+    path = f"/connections/{connection['id']}"
+    credential_body = {"expected_revision": connection["revision"], "api_key": token}
+    owner.post(path + "/credentials", expected=403, json=credential_body)
+    with httpx.Client(base_url=service_url + "/", timeout=10, trust_env=False) as anonymous:
+        assert anonymous.post(path + "/read-diary", json={"expected_revision": 1, "consent": True}).status_code == 401
+    with human_browser(owner, service_url) as browser, human_browser(outsider, service_url) as unrelated:
+        assert unrelated.get(path).status_code == 404 and unrelated.get(path + "/reads").status_code == 404
+        request(browser, path + "/activate", {"expected_revision": connection["revision"]}, 409)
+        for invalid in ({"api_key": "x" * 51}, {"username": "not-a-diary-token", "api_key": token}, {"api_key": "token with space"}):
+            request(browser, path + "/credentials", {"expected_revision": connection["revision"], **invalid}, 422)
+        connection = request(browser, path + "/credentials", credential_body)
+        assert connection["data"]["credentials_present"] is True and connection["data"]["status"] == "not_connected"
+        assert "credential_ciphertext" not in connection["data"]
+        admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
+        with psycopg.connect(admin_url, connect_timeout=5) as db:
+            stored = db.execute("SELECT data FROM funkyfarm.records WHERE id=%s AND workspace_id=%s AND kind='connections'", (connection["id"], owner.workspace_id)).fetchone()[0]
+        ciphertext = stored["credential_ciphertext"]
+        assert token not in json.dumps(stored)
+        clear = json.loads(Fernet(config["FUNKYFARM_CONNECTIONS_KEY"].encode()).decrypt(ciphertext.encode()))
+        assert clear == {"workspace_id": owner.workspace_id, "connection_id": connection["id"], "credentials": {"api_key": token}}
+        connection = request(browser, path + "/activate", {"expected_revision": connection["revision"]})
+        assert connection["data"]["status"] == "private_read_enabled"
+        read_body = {"expected_revision": connection["revision"], "consent": True, "page": 1, "page_size": 1}
+        before = len(state["calls"])
+        for invalid in ({"consent": False}, {"consent": None}, {"page": 0}, {"page": True}, {"page_size": 51}, {"url": "http://127.0.0.1/private"}):
+            request(browser, path + "/read-diary", {**read_body, **invalid}, 422)
+        request(browser, path + "/read-diary", {"expected_revision": connection["revision"]}, 422)
+        owner.post(path + "/read-diary", expected=403, json=read_body)
+        request(unrelated, path + "/read-diary", read_body, 404)
+        assistant = request(browser, "/assistant/credentials", {"name": "Authored no-raw-diary credential", "farm_ids": [farm["id"]], "permissions": ["read"], "expires_in_days": 1}, 201)
+        with httpx.Client(base_url=service_url + "/", headers={"Authorization": "Bearer " + assistant["token"]}, timeout=10, trust_env=False) as automated:
+            assert automated.post(path + "/read-diary", json=read_body).status_code in {401, 403}
+        assert len(state["calls"]) == before
+        first = request(browser, path + "/read-diary", read_body)
+        assert len(state["calls"]) == before + 1, "One explicit read must make exactly one provider call."
+        result = first["data"]["result"]
+        assert first["data"]["status"] == "unreviewed_candidates" and first["data"]["connection_revision"] == connection["revision"]
+        assert result["sites"] == [{"id": "00071", "uses": [{"id": "00091"}]}]
+        assert result["page"] == 1 and result["page_size"] == 1 and result["total_sites"] == 101 and result["partial"] is True
+        assert result["scope"] == "paged_sites_only" and result["environment"] == "test" and result["blocked"] is False
+        assert result["source_url"] == "https://intesztfelirapi.nebih.gov.hu/peif/aap/services/GazdanaploService"
+        assert ("allapot-kod", "0007") in leaves(result["payload"])
+        nil = next(node for node in nodes(result["payload"]) if node["name"] == "kultura-list")
+        assert nil["text"] == "" and nil["attributes"] == {"{http://www.w3.org/2001/XMLSchema-instance}nil": "true"}
+        empty = next(node for node in nodes(result["payload"]) if node["name"] == "allapot")
+        assert empty["text"] == "" and empty["attributes"] == {}
+        assert ("allapot-kod", "0") in leaves(result["payload"]), "Nil, empty and literal zero must remain different source values."
+        assert result["representation"] == "sanitized_business_tree" and result["redactions_applied"] is True
+        assert "[redacted]" in json.dumps(result["messages"])
+        second = request(browser, path + "/read-diary", {**read_body, "page": 2})
+        assert len(state["calls"]) == before + 2 and second["data"]["result"]["sites"][0]["id"] == "00072"
+        operation_body = {"expected_revision": connection["revision"], "consent": True, "field_read_id": first["id"], "site_id": "00071", "use_id": "00091"}
+        owner.post(path + "/read-diary-operations", expected=403, json=operation_body)
+        request(browser, path + "/read-diary-operations", {**operation_body, "consent": False}, 422)
+        request(browser, path + "/read-diary-operations", {**operation_body, "site_id": "00072", "use_id": "00092"}, 409)
+        operations = request(browser, path + "/read-diary-operations", operation_body)
+        assert len(state["calls"]) == before + 3 and operations["data"]["field_read_id"] == first["id"]
+        assert operations["data"]["result"]["selection_verified"] is True
+        assert operations["data"]["result"]["requested_site_id"] == "00071" and operations["data"]["result"]["requested_use_id"] == "00091"
+        values = leaves(operations["data"]["result"]["payload"])
+        assert ("idopont-kezdet", "2026-06-11") in values and ("teruletmeret", "1.2500") in values
+        assert ("fajlagos-menny", "0.500") in values and ("fajlagos-menny-me-kod", "0042") in values
+        typed = next(node for node in nodes(operations["data"]["result"]["payload"]) if node["name"] == "teruletmeret")
+        assert typed["attributes"] == {"{http://www.w3.org/2001/XMLSchema-instance}type": "xs:decimal"}
+        assert typed["type_namespaces"] == {"xs": "http://www.w3.org/2001/XMLSchema"} and typed["text"] == "1.2500"
+        # Inspect the real emitted XML independently of the adapter's parser.
+        for index, call in enumerate(state["calls"][before:before + 3]):
+            headers = {key.lower(): value for key, value in call["headers"].items()}
+            assert headers["host"] == "intesztfelirapi.nebih.gov.hu" and headers["soapaction"] == '""'
+            assert headers["content-type"] == "text/xml; charset=utf-8" and "authorization" not in headers and "cookie" not in headers
+            assert headers["accept-encoding"] == "identity"
+            assert farm["id"].encode() not in call["body"] and owner.email.encode() not in call["body"]
+            soap = "http://schemas.xmlsoap.org/soap/envelope/"
+            wsse = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+            envelope = ET.fromstring(call["body"])
+            assert envelope.tag == f"{{{soap}}}Envelope"
+            username = envelope.find(f"{{{soap}}}Header/{{{wsse}}}Security/{{{wsse}}}UsernameToken")
+            assert [node.tag for node in username] == [f"{{{wsse}}}Username", f"{{{wsse}}}Password"]
+            assert username[0].text == config["FUNKYFARM_NEBIH_USERNAME"] and username[1].text == config["FUNKYFARM_NEBIH_PASSWORD"]
+            assert username[1].attrib["Type"] == "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
+            wrapper = envelope.find(f"{{{soap}}}Body")[0]
+            operation = "getGnNovtermAdatokE1" if index < 2 else "getGnNovtermMuveletekE1"
+            assert wrapper.tag == "{http://gazdanaplo.aap.nebih.gov.hu/}" + operation
+            assert [node.tag for node in wrapper] == ["callContext", "tokenAdat", "callParameter"]
+            assert UUID(wrapper.findtext("callContext/messageId"))
+            assert (first, second, operations)[index]["data"]["result"]["message_id"] == wrapper.findtext("callContext/messageId")
+            assert [node.tag for node in wrapper.find("tokenAdat")] == ["token", "kulsorendszer"]
+            assert wrapper.findtext("tokenAdat/token") == token and wrapper.findtext("tokenAdat/kulsorendszer") == config["FUNKYFARM_NEBIH_SYSTEM_ID"]
+            if index < 2:
+                assert [node.tag for node in wrapper.find("callContext")] == ["messageId", "parameterList"]
+                pairs = [(item.findtext("key"), item.findtext("value")) for item in wrapper.findall("callContext/parameterList/parameter")]
+                assert pairs == [("pagesize", "1"), ("pagenumber", str(index + 1))]
+                assert list(wrapper.find("callParameter")) == []
+            else:
+                assert [node.tag for node in wrapper.find("callContext")] == ["messageId"]
+                assert [(node.tag, node.text) for node in wrapper.find("callParameter")] == [("termohely-id", "00071"), ("hasznositas-id", "00091")]
+        try:
+            for mode in ("wrong_site", "wrong_use"):
+                state["mode"] = mode
+                retained_count, calls = owner.get(path + "/reads").json()["total"], len(state["calls"])
+                assert request(browser, path + "/read-diary-operations", operation_body, 502)["error"]["code"] == "nebih_selection_mismatch"
+                assert len(state["calls"]) == calls + 1 and owner.get(path + "/reads").json()["total"] == retained_count
+            for mode in ("unknown", "warning", "error"):
+                state["mode"] = mode
+                blocked = request(browser, path + "/read-diary", read_body)
+                assert blocked["data"]["status"] == "needs_attention" and blocked["data"]["result"]["blocked"] is True
+                request(browser, path + "/read-diary-operations", {**operation_body, "field_read_id": blocked["id"]}, 409)
+            for mode, code in (("redirect", "nebih_read_failed"), ("http_error", "nebih_read_failed"), ("fault", "nebih_soap_fault"),
+                               ("dtd", "nebih_response_xml"), ("malformed", "nebih_response_xml"), ("oversize", "nebih_response_large"),
+                               ("stream_oversize", "nebih_response_large"), ("encoding", "nebih_response_encoding"), ("deflate", "nebih_response_encoding"), ("wrong_namespace", "nebih_response_schema")):
+                state["mode"] = mode
+                retained_count = owner.get(path + "/reads").json()["total"]
+                calls = len(state["calls"])
+                failed = request(browser, path + "/read-diary", read_body, 502)
+                assert failed["error"]["code"] == code and len(state["calls"]) == calls + 1
+                assert owner.get(path + "/reads").json()["total"] == retained_count
+        finally:
+            state["mode"] = "happy"
+        connection = request(browser, path + "/credentials", {"expected_revision": connection["revision"], "api_key": rotated_token})
+        assert connection["data"]["status"] == "not_connected"
+        calls = len(state["calls"])
+        assert request(browser, path + "/read-diary-operations", operation_body, 409)["error"]["code"] == "revision_conflict"
+        request(browser, path + "/read-diary-operations", {**operation_body, "expected_revision": connection["revision"]}, 409)
+        connection = request(browser, path + "/activate", {"expected_revision": connection["revision"]})
+        request(browser, path + "/read-diary-operations", {**operation_body, "expected_revision": connection["revision"]}, 409)
+        assert len(state["calls"]) == calls
+        other = owner.post("/connections", expected=201, json={"farm_id": other_farm["id"], "capability_id": capability["id"]}).json()
+        other_path = f"/connections/{other['id']}"
+        other = request(browser, other_path + "/credentials", {"expected_revision": other["revision"], "api_key": rotated_token})
+        other = request(browser, other_path + "/activate", {"expected_revision": other["revision"]})
+        request(browser, other_path + "/read-diary-operations", {**operation_body, "expected_revision": other["revision"]}, 409)
+        assert len(state["calls"]) == calls
+        fresh = request(browser, path + "/read-diary", {**read_body, "expected_revision": connection["revision"]})
+        assert fresh["data"]["connection_revision"] == connection["revision"]
+        assert ET.fromstring(state["calls"][-1]["body"]).find(f"{{{soap}}}Body")[0].findtext("tokenAdat/token") == rotated_token
+        connection = request(browser, path + "/disconnect", {"expected_revision": connection["revision"]})
+        assert connection["data"]["credentials_present"] is False
+        calls = len(state["calls"])
+        request(browser, path + "/read-diary", {**read_body, "expected_revision": connection["revision"]}, 409)
+        assert len(state["calls"]) == calls
+        assert "credential_ciphertext" not in json.dumps(private(owner.get(path)))
+        private(owner.get(path + "/reads"))
+        with psycopg.connect(admin_url, connect_timeout=5) as db:
+            stored_reads = db.execute("SELECT data FROM funkyfarm.records WHERE kind='connection_reads' AND workspace_id=%s AND data->>'connection_id'=%s", (owner.workspace_id, connection["id"])).fetchall()
+            disconnected = db.execute("SELECT data FROM funkyfarm.records WHERE kind='connections' AND id=%s AND workspace_id=%s", (connection["id"], owner.workspace_id)).fetchone()[0]
+        assert "credential_ciphertext" not in disconnected
+        assert stored_reads and all(secret not in json.dumps(stored_reads) for secret in secrets)
+    assert owner.get(f"/farms/{farm['id']}").json() == untouched
+    assert {kind: owner.get(f"/{kind}").json()["items"] for kind in before_records} == before_records

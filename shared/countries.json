@@ -3413,8 +3413,8 @@
           "workflow_id": "inputs",
           "mode": "credentialed_api",
           "availability": "not_configured",
-          "evidence_status": "documented_operation_not_account_tested",
-          "checked_date": "2026-10-16",
+          "evidence_status": "implemented_read_transport_not_account_tested",
+          "checked_date": "2026-10-17",
           "reporting_year": null,
           "setup_requirements": [
             "Submit the provider connection application; Nébih reviews it and concludes a software-specific agreement.",
@@ -3423,10 +3423,12 @@
             "Use the agreed network access or certificate authentication and current service/security specification."
           ],
           "supported_operations": [
-            "Report farming-log data through the documented eGN service after provider and farmer access setup."
+            "Read one explicitly requested page of diary fields through getGnNovtermAdatokE1 after approved operator setup and a farm owner's diary token.",
+            "Read work for a crop-use reference selected from that same connection's retained field read through getGnNovtermMuveletekE1."
           ],
           "limitations": [
-            "No eGN credentials, production token or API adapter are configured.",
+            "The read-only adapter is implemented but disabled until dedicated operator access is configured. No authority account or live interoperability has been verified.",
+            "Responses remain unreviewed private snapshots. No writes, finalisation, automatic field changes or confirmed farm facts are enabled by this connection.",
             "eGN reporting is not the Hungarian unified CAP application.",
             "An API catalogue does not establish farmer eligibility or permission to submit every module."
           ],
