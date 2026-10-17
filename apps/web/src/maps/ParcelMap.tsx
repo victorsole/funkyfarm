@@ -260,7 +260,7 @@ export function ParcelMap(props: ParcelMapProps) {
   useEffect(() => {
     if (!ready || fitted.current || movedByUser.current || !positionsOf(props).length) return;
     fitSupplied();
-  }, [ready, props.geometry, props.reference, props.point]);
+  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude]);
 
   useEffect(() => {
     if (!ready || !outlines.current || !handles.current || !map.current) return;
@@ -328,7 +328,7 @@ export function ParcelMap(props: ParcelMapProps) {
       if (focusedCorner.current === index) element.focus({ preventScroll: true });
     });
     return () => { cleanups.forEach(cleanup => cleanup()); };
-  }, [ready, props.geometry, props.reference, props.point, props.sketch, props.splitLine, props.mode, props.referenceCandidates, selectedPart]);
+  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.referenceCandidates, selectedPart]);
 
   return <div className="parcel-map-editor" inert={props.disabled}>
     <div className="parcel-map-toolbar" aria-label="Map view controls">

@@ -23,7 +23,8 @@ def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, autho
     field_id = str(uuid4())
     outline = {"type": "Polygon", "coordinates": [[[5, 52], [5.002, 52], [5.002, 52.001], [5, 52.001], [5, 52]]]}
     land_farm = land.create("farms", {**farm_data("Fictional Dutch arable comparison"), "country": "NL", "region": None, "farm_type": "arable", "area_ha": 9,
-        "parcels": [{"id": field_id, "name": "Farmer's current wheat field", "crop": "Current wheat", "geometry": outline}]})
+        "parcels": [{"id": field_id, "name": "Farmer's current wheat field", "crop": "Current wheat", "geometry": outline,
+                     "point": {"latitude": 52.0005, "longitude": 5.001}}]})
     inspection = specialist.create("requests", {"farm_id": specialist_farm["id"], "title": "Authored inspection evidence request", "recipient": "Fictional inspection adviser", "country": "SK", "region": None,
         "reporting_year": 2026, "deadline": "2026-11-17", "pack_id": "inspection-evidence", "requirements": [], "status": "draft"})
     peer_invitation = peer.post("/invitations", expected=201, json={"email": adviser.email, "role": "adviser", "farm_ids": [peer_farm["id"]], "permissions": ["read", "review"], "expires_in_days": 1}).json()

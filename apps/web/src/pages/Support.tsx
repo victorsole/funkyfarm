@@ -6,6 +6,7 @@ import { useRecords } from '../hooks';
 import { useSession } from '../auth';
 import type { Pack, Page, RecordItem } from '../types';
 import { countries, useReviewAccess } from './Core';
+import { FarmChecklists } from './Checklists';
 
 const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
 const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
@@ -23,16 +24,40 @@ export function GuidancePage() {
   const [checklistVersion,setChecklistVersion] = useState(0); const [country,setCountry] = useState(''); const [year,setYear] = useState(String(new Date().getFullYear())); const [packs,setPacks] = useState<Pack[]>([]); const [selected,setSelected] = useState<Pack | null>(null); const [guidance,setGuidance] = useState<any>(null); const [error,setError] = useState<unknown>(null); const [busy,setBusy] = useState(false); const [message,setMessage] = useState('');
   useEffect(() => {let active=true; setError(null); setSelected(null); setGuidance(null); api.get<Page<Pack>>(`/packs?${country ? `country=${country}&` : ''}year=${encodeURIComponent(year)}`).then(p => {if(active) setPacks(p.items);}).catch(e=> {if(active) setError(e);}); return()=>{active=false;};},[country,year]);
   async function choose(pack: Pack) {setSelected(pack); setGuidance(null); setError(null); try {setGuidance(await api.get(`/guidance?pack_id=${encodeURIComponent(pack.id)}`));} catch(e) {setError(e);} }
-  return <><PageHeader title="Find the right guidance" description="Read the source, check the edition and see what each reporting pack can prepare."/><ErrorNotice error={error}/>{message && <Notice kind="success">{message}</Notice>}<section className="card"><div className="form-grid"><Field label="Country"><select value={country} onChange={e=>setCountry(e.target.value)}><option value="">All EU countries</option>{countries.map(c=><option key={c} value={c}>{countryNames.of(c)}</option>)}</select></Field><Field label="Reporting year"><input type="number" min="1900" max="2200" value={year} onChange={e=>setYear(e.target.value)}/></Field></div>{!packs.length && <p>No packs found for these choices. A missing format is not replaced with a different country's form.</p>}<ul className="record-list">{packs.map(p=><li key={p.id}><Button variant="ghost" onClick={()=>void choose(p)}>{p.name || p.title || p.id} · {countryNames.of(p.country)}</Button></li>)}</ul></section>{selected && <section className="card"><h2>{selected.title || selected.name || selected.id}</h2><p>{selected.description}</p>{!guidance ? <Notice>Opening source guidance…</Notice> : <><Notice>{guidance.message}</Notice><p>Edition {guidance.version}{guidance.effective_date ? ` · effective ${guidance.effective_date}` : ''}</p><p>Available preparation: {String(guidance.capability).replaceAll('_',' ')}</p><h3>What this pack can and cannot do</h3><ul>{(Array.isArray(guidance.limits) ? guidance.limits : [guidance.limits]).map((l: any,i: number)=><li key={i}>{text(l)}</li>)}</ul><h3>Official sources</h3><ul>{guidance.sources.map((s: any,i: number)=><li key={i}><a href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>{s.edition ? ` · ${s.edition}` : ''}</li>)}</ul><details><summary>Required answers and checks</summary><ul>{guidance.fields.map((f: any,i: number)=><li key={i}>{f.label || f.fact_key || f.field}{f.required ? ' · required' : ''}{f.description ? ` — ${f.description}` : ''}</li>)}</ul><pre>{JSON.stringify(guidance.checks,null,2)}</pre></details>{canReview && <form className="stack" onSubmit={async e=>{e.preventDefault(); const f=new FormData(e.currentTarget); setBusy(true); setError(null); setMessage(''); try {await api.post('/checklists/from-pack',{farm_id:f.get('farm_id'),pack_id:selected.id,...(f.get('deadline') ? {deadline:f.get('deadline')} : {})}); setChecklistVersion(v => v + 1); setMessage('Checklist created. Review the evidence checklist below.');} catch(e){setError(e);} finally{setBusy(false);}}}><h3>Prepare an evidence checklist</h3><Field label="Farm"><FarmSelect farms={farms.items}/></Field><Field label="Deadline (optional)"><input name="deadline" type="date"/></Field><div><Button type="submit" loading={busy}>Create checklist for this farm</Button></div></form>}</>}</section>}<FarmChecklists key={checklistVersion}/><section className="card"><h2>Changes that need your attention</h2>{notifications.error && <Notice kind="error">{notifications.error}</Notice>}{!notifications.items.length && <p className="muted">No reviewed changes recorded for your workspace.</p>}{notifications.items.map(n=><article className="panel" key={n.id}><h3>{n.data.title || 'Reviewed source change'}</h3><p>{n.data.explanation || n.data.message}</p><p>{n.data.required_action}</p><p>Effective {n.data.effective_date || 'date not supplied'}</p></article>)}</section></>;
-}
-
-function FarmChecklists() {
-  const canReview = useReviewAccess();
-  const checklists = useRecords('checklists');
-  const facts = useRecords('facts');
-  const [error,setError] = useState<unknown>(null);
-  const [busy,setBusy] = useState(false);
-  return <section className="card"><h2>Your evidence checklists</h2><ErrorNotice error={error}/>{checklists.error && <Notice kind="error">{checklists.error}</Notice>}{facts.error && <Notice kind="error">{facts.error}</Notice>}{!checklists.items.length && <p className="muted">Choose a pack above to prepare a checklist.</p>}{checklists.items.map(c => <details key={`${c.id}-${c.revision}`}><summary>{c.data.title} · {c.data.status === 'complete' ? 'Evidence reviewed' : 'Needs review'}</summary><p>{c.data.meaning}</p>{(c.data.items || []).map((item: any) => <article className="panel" key={item.key}><h3>{item.label}</h3>{item.status === 'complete' ? <p>Evidence reviewed. {item.note}</p> : !canReview ? <p className="muted">Ask the farm owner for review permission to complete this checklist.</p> : <form className="stack" onSubmit={async e => {e.preventDefault(); const f = new FormData(e.currentTarget); setBusy(true); setError(null); try {await api.post(`/checklists/${c.id}/items/${encodeURIComponent(item.key)}/complete`,{expected_revision:c.revision,evidence_fact_ids:f.getAll('fact_ids'),note:f.get('note')}); await checklists.reload();} catch(e) {setError(e);} finally {setBusy(false);} }}><fieldset><legend>Which confirmed evidence supports this answer?</legend>{facts.items.filter(f=>f.data.farm_id === c.data.farm_id && f.data.key === item.key && f.data.review_status === 'confirmed').map(f=><label className="field" key={f.id}><span><input type="checkbox" name="fact_ids" value={f.id}/> {text(f.data.value)} {f.data.unit || ''} · {f.data.period || 'Standing detail'}</span></label>)}</fieldset><p><Link to={`/app/farm/${c.data.farm_id}#facts`}>Add or review supporting facts</Link></p><Field label="What did you check? Explain any disagreement between sources."><textarea name="note" required/></Field><div><Button type="submit" loading={busy}>Confirm evidence for this item</Button></div></form>}</article>)}</details>)}</section>;
+  return <>
+    <PageHeader title="Find the right guidance" description="Read the source, check the edition and see what each reporting pack can prepare."/>
+    <ErrorNotice error={error}/>{message && <Notice kind="success">{message}</Notice>}
+    <section className="card">
+      <div className="form-grid">
+        <Field label="Country"><select value={country} onChange={e=>setCountry(e.target.value)}><option value="">All EU countries</option>{countries.map(c=><option key={c} value={c}>{countryNames.of(c)}</option>)}</select></Field>
+        <Field label="Reporting year"><input type="number" min="1900" max="2200" value={year} onChange={e=>setYear(e.target.value)}/></Field>
+      </div>
+      {!packs.length && <p>No packs found for these choices. A missing format is not replaced with a different country's form.</p>}
+      <ul className="record-list">{packs.map(p=><li key={p.id}><Button variant="ghost" onClick={()=>void choose(p)}>{p.name || p.title || p.id} · {p.country ? countryNames.of(p.country) : 'General farm records'}</Button></li>)}</ul>
+    </section>
+    {selected && <section className="card"><h2>{selected.title || selected.name || selected.id}</h2><p>{selected.description}</p>{!guidance ? <Notice>Opening source guidance…</Notice> : <>
+      <Notice>{guidance.message}</Notice>
+      <p>Edition {guidance.version}{guidance.effective_date ? ` · effective ${guidance.effective_date}` : ''}</p>
+      <p>Available preparation: {String(guidance.capability).replaceAll('_',' ')}</p>
+      <h3>What this pack can and cannot do</h3><ul>{(Array.isArray(guidance.limits) ? guidance.limits : [guidance.limits]).map((l: any,i: number)=><li key={i}>{text(l)}</li>)}</ul>
+      <h3>Official sources</h3><ul>{guidance.sources.map((s: any,i: number)=><li key={i}><a href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>{s.edition ? ` · ${s.edition}` : ''}</li>)}</ul>
+      <details><summary>Required answers and checks</summary><ul>{guidance.fields.map((f: any,i: number)=><li key={i}>{f.label || f.fact_key || f.field}{f.required ? ' · required' : ''}{f.description ? ` — ${f.description}` : ''}</li>)}</ul><pre>{JSON.stringify(guidance.checks,null,2)}</pre></details>
+      {canReview && <form className="stack" onSubmit={async e=>{
+        e.preventDefault(); const f=new FormData(e.currentTarget); setBusy(true); setError(null); setMessage('');
+        try { await api.post('/checklists/from-pack',{farm_id:f.get('farm_id'),pack_id:selected.id,...(f.get('deadline') ? {deadline:f.get('deadline')} : {})}); setChecklistVersion(v => v + 1); setMessage('Checklist created. Review the evidence checklist below.'); }
+        catch(e){setError(e);} finally{setBusy(false);}
+      }}>
+        <h3>Prepare an evidence checklist</h3><Field label="Farm"><FarmSelect farms={farms.items}/></Field><Field label="Deadline (optional)"><input name="deadline" type="date"/></Field>
+        <div><Button type="submit" loading={busy}>Create checklist for this farm</Button></div>
+      </form>}
+    </>}</section>}
+    <FarmChecklists key={checklistVersion}/>
+    <section className="card"><h2>Changes that need your attention</h2>
+      {notifications.error && <Notice kind="error">{notifications.error}</Notice>}
+      {!notifications.items.length && <p className="muted">No reviewed changes recorded for your workspace.</p>}
+      {notifications.items.map(n=><article className="panel" key={n.id}><h3>{n.data.title || 'Reviewed source change'}</h3><p>{n.data.explanation || n.data.message}</p><p>{n.data.required_action}</p><p>Effective {n.data.effective_date || 'date not supplied'}</p></article>)}
+    </section>
+  </>;
 }
 
 export function SettingsPage() {

@@ -528,6 +528,53 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   const liveChecks = await (await page.request.get(`/api/v1/compliance/farms/${farmId}?year=2026`)).json();
   expect(liveChecks.issues.some(issue => issue.code === 'national_deadline_unknown')).toBe(true);
 
+  const treatmentChecklist = checklists.find(record => record.data.compliance_rule_id === 'eu-ppp-closed-space-use');
+  expect(treatmentChecklist).toBeTruthy();
+  await page.goto(`/app/guidance?checklist_id=${treatmentChecklist.id}`);
+  const savedChecklist = page.locator(`#checklist-${treatmentChecklist.id}`);
+  await expect(savedChecklist).toHaveAttribute('open', '');
+  const actionReview = await (await page.request.get(`/api/v1/checklists/${treatmentChecklist.id}/review`)).json();
+  const evidenceAction = actionReview.items.find(item => item.mode === 'evidence' && item.can_complete && item.evidence.some(record => record.id === work.id));
+  expect(evidenceAction, 'The saved missing-record action must become reviewable using the actual confirmed application.').toBeTruthy();
+  const evidenceLabel = actionReview.checklist.data.items.find(item => item.key === evidenceAction.key).label;
+  const evidenceCard = savedChecklist.locator('article.panel').filter({ has: page.getByRole('heading', { name: evidenceLabel, exact: true }) });
+  await expect(evidenceCard.getByRole('button', { name: 'Confirm evidence for this item', exact: true })).toBeDisabled();
+  await evidenceCard.getByRole('group', { name: 'Which saved evidence did you check?', exact: true }).getByRole('checkbox', { name: work.data.title, exact: false }).check();
+  await evidenceCard.getByLabel('What did you check?', { exact: true }).fill('Compared the actual 11 June glasshouse entry: 400 m² treated, 0.01 l/m² dose, with no invented total litres.');
+  await evidenceCard.getByRole('button', { name: 'Confirm evidence for this item', exact: true }).click();
+  await expect(evidenceCard.getByText('Evidence reviewed.', { exact: true })).toBeVisible();
+  const followup = (await collection(page, 'tasks')).find(task => task.data.checklist_id === treatmentChecklist.id && task.data.checklist_item_key === evidenceAction.key);
+  expect(followup).toBeTruthy();
+  await evidenceCard.getByLabel('What follow-up work did you finish?', { exact: true }).fill('Finished checking the actual glasshouse notebook and its saved treatment evidence, while keeping the other follow-ups open.');
+  await expect(evidenceCard.getByRole('button', { name: 'Finish follow-up', exact: true })).toBeDisabled();
+  await evidenceCard.getByRole('checkbox', { name: 'I finished this follow-up work.', exact: true }).check();
+  await evidenceCard.getByRole('button', { name: 'Finish follow-up', exact: true }).click();
+  await expect(evidenceCard.getByRole('button', { name: 'Finish follow-up', exact: true })).toHaveCount(0);
+  expect((await (await page.request.get(`/api/v1/tasks/${followup.id}`)).json()).data.status).toBe('done');
+  expect((await collection(page, 'tasks')).some(task => task.id !== followup.id && task.data.status === 'open')).toBe(true);
+  const humanAction = actionReview.items.find(item => item.mode === 'human_review');
+  expect(humanAction).toBeTruthy();
+  const humanLabel = actionReview.checklist.data.items.find(item => item.key === humanAction.key).label;
+  const humanCard = savedChecklist.locator('article.panel').filter({ has: page.getByRole('heading', { name: humanLabel, exact: true }) });
+  await humanCard.getByLabel('What did you check?', { exact: true }).fill('Read the cited source and recorded that national timing still needs an adviser; this is not legal acceptance.');
+  await expect(humanCard.getByRole('button', { name: 'Save this review', exact: true })).toBeDisabled();
+  await humanCard.getByRole('checkbox', { name: 'I reviewed this step and recorded what still needs attention. This is not confirmation of legal compliance.', exact: true }).check();
+  await humanCard.getByRole('button', { name: 'Save this review', exact: true }).click();
+  await expect(humanCard.getByText('Review saved. Check the farm checks page for any remaining follow-up.', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(evidenceCard.getByText('Evidence reviewed.', { exact: true })).toBeVisible();
+  await expect(humanCard.getByText('Review saved. Check the farm checks page for any remaining follow-up.', { exact: true })).toBeVisible();
+  const persistedChecklist = await (await page.request.get(`/api/v1/checklists/${treatmentChecklist.id}`)).json();
+  expect(persistedChecklist.data.items.find(item => item.key === evidenceAction.key).evidence_operation_ids).toContain(work.id);
+  expect(persistedChecklist.data.items.find(item => item.key === humanAction.key).status).toBe('review_recorded');
+  const afterReview = await (await page.request.get(`/api/v1/compliance/farms/${farmId}?year=2026`)).json();
+  expect(afterReview.issues.some(issue => issue.code === 'national_deadline_unknown')).toBe(true);
+  await page.goto('/app/home');
+  await expect(page.getByRole('heading', { name: `Home at ${fixture.specialist_farm.data.name}`, exact: true })).toBeVisible();
+  await expect(page.locator('#next-task').getByText(followup.data.title, { exact: true })).toHaveCount(0);
+  const homeProgress = await (await page.request.get(`/api/v1/workflow/home?farm_id=${farmId}`)).json();
+  expect(homeProgress.next_actions.some(action => action.record_id === followup.id)).toBe(false);
+
   await page.goto(`/app/paperwork/${fixture.inspection.id}`);
   await page.getByRole('button', { name: 'Confirm request details', exact: true }).click();
   await expect(page.getByText('Request details confirmed. The evidence still needs its own review.', { exact: true })).toBeVisible();
@@ -550,6 +597,90 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   await page.reload();
   await expect(page.getByRole('progressbar', { name: 'Questions with a confirmed answer', exact: true })).toHaveAttribute('value', '1');
   expect((await (await page.request.get(`/api/v1/requests/${fixture.inspection.id}`)).json()).data.status).toBe('review');
+
+  await page.goto(`/app/checks?farm_id=${farmId}&year=2026`);
+  await page.getByText('Change a saved farm answer', { exact: true }).click();
+  const corrections = page.locator('details').filter({ has: page.getByText('Change a saved farm answer', { exact: true }) });
+  const organicCorrection = corrections.locator('article.admin-check').filter({ has: page.getByRole('heading', { name: 'Is this farm an organic operator?', exact: true }) });
+  await organicCorrection.getByRole('button', { name: 'Change this answer', exact: true }).click();
+  await organicCorrection.getByLabel('Is this farm an organic operator?', { exact: true }).selectOption('no');
+  const usesCorrection = corrections.locator('article.admin-check').filter({ has: page.getByRole('heading', { name: 'Which types of professional plant-protection use take place?', exact: true }) });
+  await usesCorrection.getByRole('button', { name: 'Change this answer', exact: true }).click();
+  await expect(usesCorrection.getByRole('checkbox', { name: 'closed space', exact: true })).toBeChecked();
+  await usesCorrection.getByRole('checkbox', { name: 'surface', exact: true }).check();
+  const correctionResponse = page.waitForResponse(response => response.url().endsWith(`/compliance/farms/${farmId}/profile`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Save answers for review', exact: true }).click();
+  const correctionRecords = (await (await correctionResponse).json()).facts;
+  expect(correctionRecords).toHaveLength(2);
+  expect(correctionRecords.find(record => record.data.key === 'organic_operator').data.value).toBe(false);
+  expect(correctionRecords.find(record => record.data.key === 'ppp_use_type').data.value).toEqual(['closed_space', 'surface']);
+  for (const record of correctionRecords) {
+    expect(record.data.review_status).toBe('proposed');
+    expect((await (await page.request.get(`/api/v1/facts/${record.data.supersedes_id}`)).json()).data.review_status).toBe('confirmed');
+    const proposedCard = page.locator('article.admin-check').filter({ has: page.getByRole('heading', { name: record.data.label, exact: true }) })
+      .filter({ has: page.getByRole('button', { name: 'Confirm this answer', exact: true }) });
+    await proposedCard.getByLabel('Where did you check this answer?', { exact: true }).fill('Corrected the fictional 2026 activity notebook: native No and both actual use types, with earlier answers retained in history.');
+    await proposedCard.getByRole('checkbox', { name: 'I read this saved answer and checked that it is correct for this farm and year.', exact: true }).check();
+    await proposedCard.getByRole('button', { name: 'Confirm this answer', exact: true }).click();
+    await expect(proposedCard).toHaveCount(0);
+    expect((await (await page.request.get(`/api/v1/facts/${record.data.supersedes_id}`)).json()).data.review_status).toBe('rejected');
+  }
+  await page.reload();
+  await page.getByText('Change a saved farm answer', { exact: true }).click();
+  await expect(organicCorrection).toContainText('Saved answer: No');
+  await expect(usesCorrection).toContainText('Saved answer: closed space, surface');
+  const correctedProfile = await (await page.request.get(`/api/v1/compliance/farms/${farmId}?year=2026`)).json();
+  expect(correctedProfile.profile_review.find(item => item.key === 'organic_operator').current_value).toBe(false);
+  expect(correctedProfile.profile_review.find(item => item.key === 'ppp_use_type').current_value).toEqual(['closed_space', 'surface']);
+
+  // The ordinary farm answer editor must retain native values too, and may
+  // not silently rebase an encrypted unsaved draft after another client saves.
+  const organicSource = correctionRecords.find(record => record.data.key === 'organic_operator');
+  await page.goto(`/app/fields/${farmId}#facts`);
+  if (await page.locator('#facts').getAttribute('open') === null) await page.getByText('Check answers saved about this farm', { exact: true }).click();
+  const organicFact = page.locator('#facts article.panel').filter({ has: page.getByRole('heading', { name: organicSource.data.label, exact: true }) })
+    .filter({ has: page.getByText('Propose a correction', { exact: true }) });
+  await organicFact.getByText('Propose a correction', { exact: true }).click();
+  const ordinaryCorrection = organicFact.locator('form');
+  await expect(ordinaryCorrection.getByLabel('Kind of value', { exact: true })).toHaveValue('boolean');
+  await expect(ordinaryCorrection.getByLabel('Value', { exact: true })).toHaveValue('no');
+  await ordinaryCorrection.getByLabel('Value', { exact: true }).selectOption('yes');
+  await ordinaryCorrection.getByLabel('Where did you check this?', { exact: true }).fill('Authored ordinary-editor correction; this Boolean must remain a proposal until separately reviewed.');
+  const newFactResponse = page.waitForResponse(response => response.url().endsWith('/api/v1/facts') && response.request().method() === 'POST');
+  await ordinaryCorrection.getByRole('button', { name: 'Propose correction', exact: true }).click();
+  const ordinary = await (await newFactResponse).json();
+  expect(ordinary.data.value).toBe(true);
+  expect(ordinary.data.review_status).toBe('proposed');
+  const editableFact = page.locator('#facts article.panel').filter({ has: page.getByRole('heading', { name: ordinary.data.label, exact: true }) })
+    .filter({ has: page.getByText('Edit this proposal', { exact: true }) });
+  await editableFact.getByText('Edit this proposal', { exact: true }).click();
+  const ordinaryDraft = editableFact.locator('form');
+  await expect(ordinaryDraft.getByLabel('Value', { exact: true })).toHaveValue('yes');
+  await ordinaryDraft.getByLabel('Where did you check this?', { exact: true }).fill('Unsaved authored Boolean draft, compared only after the concurrent saved version is displayed.');
+  await expect(ordinaryDraft.getByText('Saving draft on this device…', { exact: true })).toHaveCount(0);
+  const session = await (await page.request.get('/api/v1/auth/session')).json();
+  const secondClient = await page.request.patch(`/api/v1/facts/${ordinary.id}`, { headers: { 'X-CSRF-Token': session.csrf_token },
+    data: { expected_revision: ordinary.revision, data: { value: false, notes: 'Concurrent independent HTTP client saved a different Boolean.' } } });
+  expect(secondClient.ok(), await secondClient.text()).toBe(true);
+  const concurrent = await secondClient.json();
+  expect(concurrent.revision).toBe(ordinary.revision + 1);
+  await page.reload();
+  if (await page.locator('#facts').getAttribute('open') === null) await page.getByText('Check answers saved about this farm', { exact: true }).click();
+  await editableFact.getByText('Edit this proposal', { exact: true }).click();
+  await expect(ordinaryDraft.getByLabel('Value', { exact: true })).toHaveValue('yes');
+  await expect(ordinaryDraft).toContainText('Latest saved answer: No');
+  await expect(ordinaryDraft.getByRole('button', { name: 'Save proposed answer', exact: true })).toBeDisabled();
+  await expect(ordinaryDraft.getByRole('button', { name: 'Keep my changes after comparing', exact: true })).toBeDisabled();
+  await ordinaryDraft.getByRole('checkbox', { name: 'I compared my draft with the latest saved answer.', exact: true }).check();
+  await ordinaryDraft.getByRole('button', { name: 'Keep my changes after comparing', exact: true }).click();
+  const savedDraftResponse = page.waitForResponse(response => response.url().endsWith(`/api/v1/facts/${ordinary.id}`) && response.request().method() === 'PATCH');
+  await ordinaryDraft.getByRole('button', { name: 'Save proposed answer', exact: true }).click();
+  const savedResponse = await savedDraftResponse;
+  expect(savedResponse.request().postDataJSON().expected_revision).toBe(concurrent.revision);
+  expect((await savedResponse.json()).data.value).toBe(true);
+  const ordinaryHistory = await (await page.request.get(`/api/v1/facts/${ordinary.id}/history`)).json();
+  expect(ordinaryHistory.items.some(item => item.revision === concurrent.revision && item.data.value === false)).toBe(true);
+  expect((await (await page.request.get(`/api/v1/facts/${organicSource.id}`)).json()).data.review_status).toBe('confirmed');
 });
 
 test('Czech mixed farmer keeps animal records, source alerts and human help under explicit controls', async ({ page, browser }) => {
@@ -666,6 +797,8 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
 
 test('Dutch arable farmer compares historical LPIS evidence, exports a draft and reviews a private split', async ({ page }) => {
   const tiles = await authoredMapTiles(page);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
   await signIn(page, 'land');
   const farm = fixture.land_farm;
   const originalField = farm.data.parcels[0];
@@ -678,6 +811,43 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await expect(workspace.getByLabel('Which field?', { exact: true })).toHaveValue(originalField.id);
   await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
   const beforeMapNavigation = await cornerLabels(workspace);
+  expect(originalField.point).toEqual({ latitude: 52.0005, longitude: 5.001 });
+  const boundaryMap = workspace.getByRole('group', { name: 'Field boundary map', exact: true });
+  await boundaryMap.scrollIntoViewIfNeeded();
+  const corner = workspace.getByRole('button', { name: 'Corner 2; longitude 5.002, latitude 52', exact: true });
+  const heldCorner = await corner.elementHandle();
+  const markerBox = await corner.boundingBox();
+  const mapBox = await boundaryMap.boundingBox();
+  expect(markerBox && mapBox).toBeTruthy();
+  await page.mouse.move(markerBox.x + markerBox.width / 2, markerBox.y + markerBox.height / 2);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(markerBox.x + markerBox.width / 2 - 12, markerBox.y + markerBox.height / 2 - 12, { steps: 5 });
+    // An ordinary controlled parent edit must not tear down an active Leaflet
+    // marker simply because the parcel also has a freshly constructed point.
+    const dragNote = workspace.getByLabel('What changed, or where did this outline come from?', { exact: true });
+    // Keep the map at the same screen coordinates while typing into the
+    // ordinary textarea; scrolling it into view would move our pointer target.
+    await dragNote.evaluate(element => element.focus({ preventScroll: true }));
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.insertText('Authored note changed while a boundary corner is being dragged.');
+    await expect(dragNote).toHaveValue('Authored note changed while a boundary corner is being dragged.');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await heldCorner.evaluate(element => element.isConnected), 'A parent note edit must retain the marker under the held pointer.').toBe(true);
+    const pane = boundaryMap.locator('.leaflet-map-pane');
+    const beforePan = await pane.evaluate(element => element.style.transform);
+    await page.mouse.move(mapBox.x + mapBox.width - 8, mapBox.y + mapBox.height / 2, { steps: 12 });
+    await expect.poll(() => pane.evaluate(element => element.style.transform)).not.toBe(beforePan);
+    expect(await heldCorner.evaluate(element => element.isConnected), 'Automatic map panning must not destroy the active drag.').toBe(true);
+  } finally {
+    await page.mouse.up();
+  }
+  await expect.poll(() => cornerLabels(workspace)).not.toEqual(beforeMapNavigation);
+  expect(pageErrors).toEqual([]);
+  expect((await (await page.request.get(`/api/v1/farms/${farm.id}`)).json()).data.parcels).toEqual(farm.data.parcels);
+  await workspace.getByRole('button', { name: 'Undo last boundary adjustment', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
+  expect(await cornerLabels(workspace)).toEqual(beforeMapNavigation);
   const publicReads = [];
   page.on('request', request => { if (/\/api\/v1\/connections\/[^/]+\/read$/.test(request.url()) && request.method() === 'POST') publicReads.push(request.postDataJSON()); });
   await workspace.getByRole('button', { name: 'Zoom in', exact: true }).click();
@@ -829,4 +999,5 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   expect((await collection(page, 'facts'))).toHaveLength(0);
   expect(tiles.calls.every(call => !call.url.includes(farm.id) && !call.url.includes(fixture.accounts.land.email)
     && !String(call.headers.referer || '').includes(farm.id) && !call.headers.authorization && !call.headers.cookie)).toBe(true);
+  expect(pageErrors).toEqual([]);
 });

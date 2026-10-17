@@ -21,8 +21,8 @@ FIELDS = {
     "operations": {"farm_id", "title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "field_id", "group_id", "crop", "product", "operator", "hours", "note", "notes", "document_id", "external_id", "origin", "period", "temporal_basis", "sources", "review_status", "treatment_type", "product_authorisation", "dose", "dose_unit", "treated_size", "treated_unit", "treated_location", "start_time", "eppo_code", "bbch_stage", "batch_number", "contractor", "label_time_required", "label_growth_stage_required"},
     "purchases": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "supplier", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
     "sales": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "buyer", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
-    "tasks": {"farm_id", "title", "description", "due_date", "status", "assignee", "request_id", "document_id", "notes", "checklist_id", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
-    "checklists": {"farm_id", "title", "pack_id", "version", "scheme", "items", "notes", "deadline", "request_id", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
+    "tasks": {"farm_id", "title", "description", "due_date", "status", "assignee", "request_id", "document_id", "notes", "checklist_id", "checklist_item_key", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
+    "checklists": {"farm_id", "title", "pack_id", "version", "scheme", "items", "notes", "deadline", "request_id", "reporting_year", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
     "settings": {"language", "country", "region", "reporting_year", "notifications"},
 }
 
@@ -204,6 +204,8 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             _string(data, field, required=True, maximum=300)
         if "value" not in data:
             _invalid("A fact needs a value; null is allowed when the value is unknown.")
+        from .compliance import validate_profile_value
+        data["value"] = validate_profile_value(data.get("key"), data["value"])
         if "review_status" in patch and patch["review_status"] != "proposed":
             _invalid("Confirm or reject facts through the explicit review action.")
         if old and old.get("review_status") == "confirmed":
@@ -298,14 +300,30 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             data.setdefault("status", "open")
             if not isinstance(data["status"], str) or data["status"] not in {"open", "in_progress", "done", "cancelled"}:
                 _invalid("Choose a supported task status.")
+            if data["status"] == "done" and data.get("checklist_id"):
+                from .obligations import require_task_evidence
+                require_task_evidence(conn, data)
         if kind == "checklists":
             if not isinstance(data.get("items", []), list):
                 _invalid("Checklist items must be a list.")
+            managed = bool(old and (old.get("compliance_rule_id") or old.get("pack_id")
+                                    or any(isinstance(item, dict) and "reviewed_by" in item for item in old.get("items", []))))
+            if managed and "items" in patch and patch["items"] != old.get("items"):
+                raise ApiError(422, "checklist_review_required", "Use this checklist item's evidence or source-review action; a checkbox cannot replace its checks.")
+            allowed = {"key", "label", "done", "evidence_ids", "deadline", "note"}
+            if managed:
+                allowed |= {"check", "status", "evidence_fact_ids", "evidence_operation_ids", "evidence_purchase_ids", "evidence_sale_ids", "evidence_revisions", "reviewed_by", "reviewed_at", "reviewed_input_fingerprint", "remaining_issues", "official_field", "candidate_fact_ids", "required", "unit", "temporal_basis", "period", "parcel_id", "resolved_conflicting_fact_ids"}
             for item in data.get("items", []):
-                if not isinstance(item, dict) or set(item) - {"key", "label", "done", "evidence_ids", "deadline", "note"}:
+                if not isinstance(item, dict) or set(item) - allowed:
                     _invalid("Checklist items may record actions and evidence, not compliance approvals.")
                 for evidence_id in item.get("evidence_ids", []):
                     fetch_record(conn, "documents", _uuid(evidence_id, "evidence_id"))
+        if kind in {"tasks", "checklists"}:
+            protected = {"compliance_rule_id", "compliance_version", "compliance_hash", "source_citations", "checklist_item_key"}
+            if old and old.get("compliance_rule_id"):
+                protected |= {"farm_id", "checklist_id", "scheme", "version", "pack_id", "reporting_year"}
+            if any(key in patch and (not old or patch[key] != old.get(key)) for key in protected):
+                raise ApiError(422, "generated_provenance_protected", "Generated rule provenance and action links are set by the source-backed workflow, not ordinary record edits.")
         if kind in {"operations", "purchases", "sales"}:
             if old and old.get("review_status") == "confirmed":
                 raise ApiError(409, "confirmed_record_immutable", "Create a proposed correction; this reviewed record retains its history.")

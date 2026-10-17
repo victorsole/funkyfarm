@@ -14,6 +14,17 @@ struct SharedIntake: Codable, Identifiable {
 enum IntakeInbox {
     static let group = "group.eu.funkyfarm.intake"
     static let maximumFileBytes = 20 * 1_024 * 1_024
+    static let maximumDocumentBytes = 12 * 1_024 * 1_024
+    static let documentTypes: [UTType] = [.pdf, .png, .jpeg, .plainText]
+    static func documentType(_ type: UTType) -> UTType? {
+        if type.conforms(to: .commaSeparatedText) || type.conforms(to: .spreadsheet) { return nil }
+        return documentTypes.first { type.conforms(to: $0) }
+    }
+    static func validateDocument(bytes: Data, mime: String) throws {
+        guard !bytes.isEmpty, bytes.count <= maximumDocumentBytes else { throw NSError(domain: "Intake", code: 2, userInfo: [NSLocalizedDescriptionKey: "Choose a nonempty document no larger than 12 MiB."]) }
+        guard ["application/pdf", "image/png", "image/jpeg", "text/plain"].contains(mime) else { throw NSError(domain: "Intake", code: 5, userInfo: [NSLocalizedDescriptionKey: "Choose PDF, PNG, JPEG or UTF-8 plain text. Bring CSV records through Import records instead."]) }
+        if mime == "text/plain", String(data: bytes, encoding: .utf8) == nil { throw NSError(domain: "Intake", code: 5, userInfo: [NSLocalizedDescriptionKey: "The text document must use UTF-8 encoding."]) }
+    }
     static func directory() throws -> URL {
         guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
             throw NSError(domain: "Intake", code: 1, userInfo: [NSLocalizedDescriptionKey: "The shared intake container is unavailable. Check the app-group signing entitlement."])
@@ -25,12 +36,13 @@ enum IntakeInbox {
         return directory
     }
     static func save(bytes: Data, filename: String, type: UTType) throws {
-        guard bytes.count <= maximumFileBytes else { throw NSError(domain: "Intake", code: 2, userInfo: [NSLocalizedDescriptionKey: "A shared file must be at most 20 MB."]) }
+        guard let supported = documentType(type), let mime = supported.preferredMIMEType else { throw NSError(domain: "Intake", code: 5, userInfo: [NSLocalizedDescriptionKey: "Share PDF, PNG, JPEG or UTF-8 plain text. Use Import records for CSV files."]) }
+        try validateDocument(bytes: bytes, mime: mime)
         let root = try directory()
         guard try list().count < 20 else { throw NSError(domain: "Intake", code: 3, userInfo: [NSLocalizedDescriptionKey: "Review the existing 20 shared files in funkyfarm before adding more."]) }
         let id = UUID()
-        let stored = id.uuidString + "." + (type.preferredFilenameExtension ?? "bin")
-        let item = SharedIntake(id: id, filename: URL(fileURLWithPath: filename).lastPathComponent, storedName: stored, mimeType: type.preferredMIMEType ?? "application/octet-stream", date: Date())
+        let stored = id.uuidString + "." + (supported.preferredFilenameExtension ?? "bin")
+        let item = SharedIntake(id: id, filename: URL(fileURLWithPath: filename).lastPathComponent, storedName: stored, mimeType: mime, date: Date())
         try bytes.write(to: root.appendingPathComponent(stored), options: [.atomic, .completeFileProtection])
         do { try JSONEncoder().encode(item).write(to: root.appendingPathComponent(id.uuidString + ".json"), options: [.atomic, .completeFileProtection]) }
         catch { try? FileManager.default.removeItem(at: root.appendingPathComponent(stored)); throw error }

@@ -284,8 +284,73 @@ function FieldChangeForm({farm,field,close,saved}:{farm:RecordItem;field:any;clo
 function FactForm({ farmId, reload, previous }: { farmId: string; reload: () => Promise<void>; previous?: RecordItem }) {
   const canReview = useReviewAccess();
   const [error, setError] = useState<unknown>(null); const [busy,setBusy] = useState(false); const [success,setSuccess] = useState(false);
+  const original = previous?.data.value;
+  const originalType = original === null ? 'null' : typeof original === 'boolean' ? 'boolean' : typeof original === 'number' ? 'number' : Array.isArray(original) && original.every(item => typeof item === 'string' && !item.includes('\n')) ? 'list' : typeof original === 'object' ? 'json' : 'text';
+  const initialValue = original == null ? '' : originalType === 'list' ? original.join('\n') : originalType === 'boolean' ? original ? 'yes' : 'no' : originalType === 'json' ? JSON.stringify(original, null, 2) : String(original);
+  const startingValue = { label: previous?.data.label || '', key: previous?.data.key || '', value: initialValue, value_type: originalType, unit: previous?.data.unit || '', period: previous?.data.period || '', temporal_basis: previous?.data.temporal_basis || 'static', note: '', base_revision: String(previous?.revision ?? 0) };
+  const draft = usePrivateDraft<Record<string, string>>(`fact:${farmId}:${previous?.id || 'new'}`, startingValue);
+  const value = draft.value;
+  const type = value.value_type || originalType;
+  const baseRevision = Number(value.base_revision ?? -1);
+  const stale = !!previous && baseRevision !== previous.revision;
+  const [compared, setCompared] = useState(false);
+  useEffect(() => { setCompared(false); }, [previous?.revision, value.base_revision]);
+  const set = (key: string, next: string) => draft.setValue(old => ({ ...old, [key]: next }));
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !draft.ready) return;
+    setError(null); setSuccess(false); setBusy(true);
+    try {
+      if (stale) throw new Error('The saved answer changed after this draft began. Compare both versions below before saving. Your draft is kept.');
+      const raw = value.value ?? '';
+      let answer: unknown = raw;
+      if (type === 'number') {
+        if (!raw.trim()) throw new Error('Enter a number, or choose unknown / not supplied.');
+        answer = Number(raw.replace(',', '.'));
+        if (!Number.isFinite(answer)) throw new Error('Enter a valid number.');
+      } else if (type === 'boolean') {
+        if (!['yes', 'no', 'true', 'false'].includes(raw)) throw new Error('Choose Yes or No.');
+        answer = raw === 'yes' || raw === 'true';
+      } else if (type === 'list') {
+        answer = raw.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+        if (!(answer as string[]).length) throw new Error('Add at least one value, or choose unknown / not supplied.');
+      } else if (type === 'json') {
+        try { answer = JSON.parse(raw); } catch { throw new Error('The structured value is not valid JSON. Keep its original structure or ask your adviser.'); }
+      } else if (type === 'null') answer = null;
+      const data = {
+        farm_id: farmId, key: value.key || String(value.label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'manual_answer',
+        label: value.label, value: answer, unit: value.unit || null, period: value.period || null, temporal_basis: value.temporal_basis,
+        sources: previous ? [...(previous.data.sources || []), { kind: 'correction', record_id: previous.id, revision: baseRevision, note: value.note }] : [{ kind: 'manual', note: value.note }],
+        review_status: 'proposed', ...(previous?.data.review_status === 'confirmed' ? { supersedes_id: previous.id } : {}),
+      };
+      if (previous?.data.review_status === 'proposed') await api.patch(`/facts/${previous.id}`, { expected_revision: baseRevision, data });
+      else await api.post('/facts', { data });
+      await draft.clear(); await reload(); setSuccess(true);
+    } catch (cause) { setError(cause); } finally { setBusy(false); }
+  }
   if (!canReview) return <p className="muted">You have read access to these answers. Ask the farm owner for review permission to make changes.</p>;
-  return <DraftForm draftKey={`fact:${farmId}:${previous?.id || 'new'}`} className="stack" onSubmit={async e => { e.preventDefault(); const element = e.currentTarget; const f = new FormData(element); setError(null); setSuccess(false); setBusy(true); try { const raw = String(f.get('value')); let value: unknown = raw; if (f.get('value_type') === 'number') { if (!raw.trim()) throw new Error('Enter a number, or choose unknown / not supplied.'); value = Number(raw); if (!Number.isFinite(value)) throw new Error('Enter a valid number.'); } if (f.get('value_type') === 'null') value = null; const data = {farm_id:farmId,key:f.get('key') || String(f.get('label')).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'manual_answer',label:f.get('label'),value,unit:f.get('unit') || null,period:f.get('period') || null,temporal_basis:f.get('temporal_basis'),sources:previous ? [...(previous.data.sources || []), {kind:'correction',record_id:previous.id,revision:previous.revision,note:f.get('note')}] : [{kind:'manual',note:f.get('note')}],review_status:'proposed',...(previous?.data.review_status === 'confirmed' ? {supersedes_id:previous.id} : {})}; if (previous?.data.review_status === 'proposed') await api.patch(`/facts/${previous.id}`,{expected_revision:previous.revision,data}); else await api.post('/facts',{data}); await reload(); setSuccess(true); element.reset(); } catch(failure) { setError(failure); } finally {setBusy(false);} }}><Failure error={error}/>{success && <Notice kind="success">Proposed answer saved. Check and confirm it before using it.</Notice>}<div className="form-grid"><Field label="What does this describe?"><input name="label" defaultValue={previous?.data.label} required placeholder="For example, total farm area"/></Field><details><summary>Reference used on a form (optional)</summary><Field label="Answer reference"><input name="key" defaultValue={previous?.data.key} placeholder="Leave blank if you do not have a form reference"/></Field></details><Field label="Value"><input name="value" defaultValue={previous?.data.value === null ? '' : show(previous?.data.value ?? '')}/></Field><Field label="Kind of value"><select name="value_type" defaultValue={typeof previous?.data.value === 'number' ? 'number' : previous?.data.value === null ? 'null' : 'text'}><option value="text">Text</option><option value="number">Number</option><option value="null">Unknown / not supplied</option></select></Field><Field label="Unit (if relevant)"><input name="unit" defaultValue={previous?.data.unit || ''} placeholder="For example, ha or kg"/></Field><Field label="Does this belong to a year or a date?"><select name="temporal_basis" defaultValue={previous?.data.temporal_basis || 'static'}><option value="static">A standing detail, not a yearly observation</option><option value="campaign_year">Campaign year</option><option value="calendar_date">Exact date</option></select></Field><Field label="Year or date (if relevant)"><input name="period" defaultValue={previous?.data.period || ''} placeholder="2026 or 2026-10-16"/></Field><Field label="Where did you check this?"><input name="note" required placeholder="Source or reason for the correction"/></Field></div><div><Button type="submit" loading={busy}>{previous?.data.review_status === 'confirmed' ? 'Propose correction' : previous ? 'Save proposed answer' : 'Save for review'}</Button></div></DraftForm>;
+  return <form className="stack" onSubmit={submit}><Failure error={error}/>{success && <Notice kind="success">Proposed answer saved. Check and confirm it before using it.</Notice>}{draft.error && <Notice kind="warning">{draft.error}</Notice>}
+    {draft.ready && stale && <Notice kind="warning"><p>The saved answer changed, or this older draft has no recorded starting version. Your entries are kept below.</p>
+      <p>Latest saved answer: <strong>{typeof original === 'boolean' ? original ? 'Yes' : 'No' : show(original)}</strong> {previous?.data.unit || ''} · {previous?.data.period || 'Standing detail'} · revision {previous?.revision}</p>
+      <label className="check-row"><input type="checkbox" checked={compared} onChange={event => setCompared(event.target.checked)}/>I compared my draft with the latest saved answer.</label>
+      <div className="actions"><Button variant="secondary" disabled={busy || !compared} onClick={() => set('base_revision', String(previous!.revision))}>Keep my changes after comparing</Button><Button variant="ghost" disabled={busy} onClick={() => draft.setValue(startingValue)}>Start from the latest saved answer</Button></div>
+    </Notice>}
+    <fieldset className="draft-fields" disabled={!draft.ready || busy}><div className="form-grid">
+      <Field label="What does this describe?"><input name="label" value={value.label ?? ''} onChange={event => set('label', event.target.value)} required placeholder="For example, total farm area"/></Field>
+      <details><summary>Reference used on a form (optional)</summary><Field label="Answer reference"><input name="key" value={value.key ?? ''} onChange={event => set('key', event.target.value)} placeholder="Leave blank if you do not have a form reference"/></Field></details>
+      <Field label="Kind of value"><select name="value_type" value={type} onChange={event => set('value_type', event.target.value)}><option value="text">Text</option><option value="number">Number</option><option value="boolean">Yes or no</option><option value="list">A list of values</option><option value="null">Unknown / not supplied</option><option value="json">Structured data (advanced)</option></select></Field>
+      <Field label="Value">{type === 'boolean' ? <select name="value" value={value.value === 'true' ? 'yes' : value.value === 'false' ? 'no' : value.value ?? ''} onChange={event => set('value', event.target.value)} required><option value="">Choose Yes or No</option><option value="yes">Yes</option><option value="no">No</option></select>
+        : ['list', 'json'].includes(type) ? <textarea name="value" value={value.value ?? ''} onChange={event => set('value', event.target.value)} required rows={4}/>
+        : <input name="value" value={type === 'null' ? '' : value.value ?? ''} onChange={event => set('value', event.target.value)} disabled={type === 'null'}/>}</Field>
+      {type === 'list' && <p>Write one value on each line. Keep names or codes exactly as recorded.</p>}
+      {type === 'json' && <p>Keep the original JSON structure. For farm activity questions, use <Link to={`/app/checks?farm_id=${farmId}`}>the guided farm checks</Link> instead.</p>}
+      <Field label="Unit (if relevant)"><input name="unit" value={value.unit ?? ''} onChange={event => set('unit', event.target.value)} placeholder="For example, ha or kg"/></Field>
+      <Field label="Does this belong to a year or a date?"><select name="temporal_basis" value={value.temporal_basis || 'static'} onChange={event => set('temporal_basis', event.target.value)}><option value="static">A standing detail, not a yearly observation</option><option value="campaign_year">Campaign year</option><option value="calendar_date">Exact date</option></select></Field>
+      <Field label="Year or date (if relevant)"><input name="period" value={value.period ?? ''} onChange={event => set('period', event.target.value)} placeholder="2026 or 2026-10-16"/></Field>
+      <Field label="Where did you check this?"><input name="note" value={value.note ?? ''} onChange={event => set('note', event.target.value)} required placeholder="Source or reason for the correction"/></Field>
+    </div><Button type="submit" disabled={stale} loading={busy}>{previous?.data.review_status === 'confirmed' ? 'Propose correction' : previous ? 'Save proposed answer' : 'Save for review'}</Button></fieldset>
+    {!draft.ready && <Notice>Opening your private draft…</Notice>}{draft.saving && <p role="status" className="muted">Saving draft on this device…</p>}
+  </form>;
 }
 
 function FactReview({ fact, reload }: { fact: RecordItem; reload: () => Promise<void> }) {

@@ -48,15 +48,16 @@ struct DocumentIntakeView: View {
                     }
                 }
             }
-            .fileImporter(isPresented: $picker, allowedContentTypes: [.pdf, .image, .plainText, .commaSeparatedText, .spreadsheet], allowsMultipleSelection: false) { result in
+            .fileImporter(isPresented: $picker, allowedContentTypes: IntakeInbox.documentTypes, allowsMultipleSelection: false) { result in
                 do {
                     guard let url = try result.get().first else { return }
                     let granted = url.startAccessingSecurityScopedResource(); defer { if granted { url.stopAccessingSecurityScopedResource() } }
                     let attributes = try url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-                    guard (attributes.fileSize ?? 0) <= IntakeInbox.maximumFileBytes else { throw ServiceError(status: 0, message: "Choose a file no larger than 20 MB.") }
+                    guard (attributes.fileSize ?? 0) <= IntakeInbox.maximumDocumentBytes else { throw ServiceError(status: 0, message: "Choose a document no larger than 12 MiB.") }
+                    guard let originalType = attributes.contentType ?? UTType(filenameExtension: url.pathExtension), let supported = IntakeInbox.documentType(originalType), let selectedMime = supported.preferredMIMEType else { throw ServiceError(status: 0, message: "Choose PDF, PNG, JPEG or UTF-8 plain text. Use Import records for CSV files.") }
                     let data = try Data(contentsOf: url)
-                    guard data.count <= IntakeInbox.maximumFileBytes else { throw ServiceError(status: 0, message: "Choose a file no larger than 20 MB.") }
-                    bytes = data; filename = url.lastPathComponent; mime = attributes.contentType?.preferredMIMEType ?? "application/octet-stream"
+                    try IntakeInbox.validateDocument(bytes: data, mime: selectedMime)
+                    bytes = data; filename = url.lastPathComponent; mime = selectedMime
                 } catch { problem = error.localizedDescription }
             }
     }
@@ -86,7 +87,7 @@ struct DocumentScanner: UIViewControllerRepresentable {
                     image.draw(in: CGRect(x: (595 - size.width) / 2, y: (842 - size.height) / 2, width: size.width, height: size.height))
                 }
             }
-            guard data.count <= IntakeInbox.maximumFileBytes else { completion(.failure(ServiceError(status: 0, message: "The scan exceeds 20 MB. Scan fewer pages or use a smaller PDF."))); return }
+            guard data.count <= IntakeInbox.maximumDocumentBytes else { completion(.failure(ServiceError(status: 0, message: "The scan exceeds 12 MiB. Scan fewer pages or use a smaller PDF."))); return }
             completion(.success(data))
         }
     }

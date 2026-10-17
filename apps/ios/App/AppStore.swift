@@ -151,6 +151,13 @@ import UniformTypeIdentifiers
         }
         guard ["/workflow/capture", "/workflow/answer"].contains(path) else { throw ServiceError(status: 0, message: "This draft type is not supported.") }
         var edit = PendingEdit(scope: account.scope, path: path, label: label ?? body["data"]?.object["title"]?.text ?? "Work record", payload: payload, reviewContext: reviewContext)
+        if let review {
+            var approved = body
+            approved["check_token"] = .string(review.check_token)
+            approved["acknowledged_codes"] = .array(acknowledged.sorted().map(JSONValue.string))
+            if path == "/workflow/answer" { approved["preview"] = .bool(false) }
+            edit.approvedRequest = approved
+        }
         edit.state = review == nil ? .review : .pending
         let before = disk.queue
         if let replacing { disk.queue.removeAll { $0.id == replacing } }
@@ -213,6 +220,7 @@ import UniformTypeIdentifiers
     func clearForm(_ key: String) throws { try storage?.removeForm(key) }
     func saveDocument(bytes: Data, filename: String, mime: String, farmID: String?) throws {
         guard let account, let storage else { throw ServiceError(status: 0, message: "Sign in before assigning a document.") }
+        try IntakeInbox.validateDocument(bytes: bytes, mime: mime)
         guard disk.queue.count < 50 else { throw ServiceError(status: 0, message: "The device outbox has reached 50 drafts.") }
         let suffix = URL(fileURLWithPath: filename).pathExtension
         let name = try storage.stage(bytes, extension: suffix.isEmpty ? UTType(mimeType: mime)?.preferredFilenameExtension ?? "bin" : suffix)
@@ -232,30 +240,41 @@ import UniformTypeIdentifiers
             let edit = disk.queue[index]
             do {
                 if edit.path == "/workflow/capture" || edit.path == "/workflow/answer" {
-                    var raw = edit.payload
-                    let reviewed = raw.removeValue(forKey: "_reviewed")
-                    let acknowledged = raw.removeValue(forKey: "acknowledged_codes") ?? .array([])
-                    let check: CaptureCheck
-                    if edit.path == "/workflow/answer" {
-                        var previewBody = raw; previewBody["preview"] = .bool(true)
-                        let preview = try JSONDecoder().decode(JSONValue.self, from: await api.send("/workflow/answer", method: "POST", body: previewBody))
-                        guard let value = preview.object["check"] else { throw ServiceError(status: 0, message: "The service returned no current answer check.") }
-                        check = try JSONDecoder().decode(CaptureCheck.self, from: JSONEncoder().encode(value))
-                    } else { check = try JSONDecoder().decode(CaptureCheck.self, from: await api.send("/workflow/check", method: "POST", body: raw)) }
-                    guard generation == current else { return }
-                    guard check.can_save, reviewed == check.reviewValue,
-                          Set(check.requires_acknowledgement).isSubset(of: Set(acknowledged.array.map(\.text))) else {
-                        throw ServiceError(status: 409, message: "The current checks differ from your review. Open this draft to review its current values and warnings.")
+                    if let approved = edit.approvedRequest {
+                        // Replaying this unchanged body/key reaches the server's committed-response cache
+                        // before duplicate/revision checks. A changed form must get a fresh preview and key.
+                        _ = try await api.send(edit.path, method: edit.method, body: approved, idempotency: edit.id.uuidString)
+                    } else {
+                        var raw = edit.payload
+                        let reviewed = raw.removeValue(forKey: "_reviewed")
+                        let acknowledged = raw.removeValue(forKey: "acknowledged_codes") ?? .array([])
+                        let check: CaptureCheck
+                        if edit.path == "/workflow/answer" {
+                            var previewBody = raw; previewBody["preview"] = .bool(true)
+                            let preview = try JSONDecoder().decode(JSONValue.self, from: await api.send("/workflow/answer", method: "POST", body: previewBody))
+                            guard let value = preview.object["check"] else { throw ServiceError(status: 0, message: "The service returned no current answer check.") }
+                            check = try JSONDecoder().decode(CaptureCheck.self, from: JSONEncoder().encode(value))
+                        } else { check = try JSONDecoder().decode(CaptureCheck.self, from: await api.send("/workflow/check", method: "POST", body: raw)) }
+                        guard generation == current else { return }
+                        guard check.can_save, reviewed == check.reviewValue,
+                              Set(check.requires_acknowledgement).isSubset(of: Set(acknowledged.array.map(\.text))) else {
+                            throw ServiceError(status: 409, message: "The current checks differ from your review. Open this draft to review its current values and warnings.")
+                        }
+                        raw["check_token"] = .string(check.check_token); raw["acknowledged_codes"] = acknowledged
+                        if edit.path == "/workflow/answer" { raw["preview"] = .bool(false) }
+                        guard let pendingIndex = disk.queue.firstIndex(where: { $0.id == id }) else { return }
+                        disk.queue[pendingIndex].approvedRequest = raw
+                        try persist() // Older, never-frozen drafts acquire an exact request before any POST.
+                        _ = try await api.send(edit.path, method: edit.method, body: raw, idempotency: edit.id.uuidString)
                     }
-                    raw["check_token"] = .string(check.check_token); raw["acknowledged_codes"] = acknowledged
-                    if edit.path == "/workflow/answer" { raw["preview"] = .bool(false) }
-                    _ = try await api.send(edit.path, method: edit.method, body: raw, idempotency: edit.id.uuidString)
                 }
                 else if let attachment = edit.attachment { _ = try await api.upload(edit, bytes: storage.attachment(attachment)) }
                 else { _ = try await api.send(edit.path, method: edit.method, body: edit.payload, idempotency: edit.id.uuidString) }
                 guard generation == current else { return }
                 // Persist acknowledgement before removing the attachment. A lost acknowledgement retries the same key.
-                disk.queue.removeAll { $0.id == id }; try persist()
+                let beforeAcknowledgement = disk.queue
+                disk.queue.removeAll { $0.id == id }
+                do { try persist() } catch { disk.queue = beforeAcknowledgement; throw error }
                 if let attachment = edit.attachment { try? storage.removeAttachment(attachment) }
             } catch {
                 guard generation == current, let index = disk.queue.firstIndex(where: { $0.id == id }) else { return }
@@ -315,7 +334,9 @@ import UniformTypeIdentifiers
         }
         guard disk.queue.count < 50 else { throw ServiceError(status: 0, message: "The device outbox has reached 50 drafts.") }
         let suffix = URL(fileURLWithPath: item.filename).pathExtension
-        let name = try storage.stage(IntakeInbox.bytes(item), extension: suffix.isEmpty ? UTType(mimeType: item.mimeType)?.preferredFilenameExtension ?? "bin" : suffix)
+        let bytes = try IntakeInbox.bytes(item)
+        try IntakeInbox.validateDocument(bytes: bytes, mime: item.mimeType)
+        let name = try storage.stage(bytes, extension: suffix.isEmpty ? UTType(mimeType: item.mimeType)?.preferredFilenameExtension ?? "bin" : suffix)
         let edit = PendingEdit(scope: account.scope, path: "/documents", label: item.filename, payload: [:], attachment: name, filename: item.filename, mimeType: item.mimeType, farmID: farmID)
         disk.queue.append(edit); disk.boundIntakeIDs.insert(item.id)
         do { try persist() }

@@ -28,15 +28,15 @@ final class ShareViewController: UIViewController {
                 for provider in providers {
                     guard let identifier = provider.registeredTypeIdentifiers.first(where: { identifier in
                         guard let type = UTType(identifier) else { return false }
-                        return type.conforms(to: .pdf) || type.conforms(to: .image) || type.conforms(to: .plainText) || type.conforms(to: .spreadsheet)
-                    }), let type = UTType(identifier) else { throw NSError(domain: "Intake", code: 5, userInfo: [NSLocalizedDescriptionKey: "Share a PDF, image, text document, or spreadsheet."]) }
+                        return IntakeInbox.documentType(type) != nil
+                    }), let type = UTType(identifier) else { throw NSError(domain: "Intake", code: 5, userInfo: [NSLocalizedDescriptionKey: "Share PDF, PNG, JPEG or UTF-8 plain text. Bring CSV files through Import records in the app."]) }
                     let bytes: Data = try await withCheckedThrowingContinuation { continuation in
                         provider.loadFileRepresentation(forTypeIdentifier: identifier) { url, error in
                             if let error { continuation.resume(throwing: error); return }
                             do {
                                 guard let url else { throw CocoaError(.fileReadUnknown) }
                                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                                guard size <= IntakeInbox.maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
+                                guard size <= IntakeInbox.maximumDocumentBytes else { throw NSError(domain: "Intake", code: 2, userInfo: [NSLocalizedDescriptionKey: "Choose a document no larger than 12 MiB."]) }
                                 continuation.resume(returning: try Data(contentsOf: url))
                             } catch { continuation.resume(throwing: error) }
                         }

@@ -12,7 +12,8 @@ type Source = { title?: string; url?: string; edition?: string; checked_at?: str
 type Step = { id: string; title: string; message?: string; status?: string; href?: string; kind?: string };
 type Obligation = { id: string; title: string; workflow_id: string; applicability: 'applies' | 'does_not_apply' | 'unknown' | 'conflict'; status: string; requirements: Array<{ id: string; label: string; status: string; issues?: Array<string | { message: string }>; steps?: Step[] }>; deadline: { status: string; date: string | null; message: string }; citations: Source[]; progress: { required: number; with_evidence: number; needs_review: number }; steps: Step[]; limits: string[] };
 type ProfileQuestion = { key: string; fact_key: string; label: string; prompt: string; value_type: string; choices: Array<{ value: string; label: string }>; sources: Source[]; conflicting_fact_ids: string[]; proposal_ids: string[] };
-type Checks = { farm_id: string; farm_revision: number; year: number; rules_version: string; rules_updated_at: string; profile_questions: ProfileQuestion[]; obligations: Obligation[]; issues: Array<{ code: string; severity: string; message: string; href?: string }>; overall: string; limits: string[] };
+type ProfileReview = ProfileQuestion & { state: string; current_value: unknown; confirmed: Array<{ id: string; revision: number; value: unknown; temporal_basis: string; period: string | null }>; proposed: Array<{ id: string; revision: number; value: unknown }> };
+type Checks = { farm_id: string; farm_revision: number; year: number; rules_version: string; rules_updated_at: string; profile_questions: ProfileQuestion[]; profile_review?: ProfileReview[]; obligations: Obligation[]; issues: Array<{ code: string; severity: string; message: string; href?: string }>; overall: string; limits: string[] };
 type Update = { id: string; title: string; url: string; country: string; region?: string; detected_at: string; effective_date: string | null; is_read: boolean; notice: string; source_edition?: string | null; required_action?: string; relevance?: string; rule_ids?: string[] };
 type SourceCheck = { source_id: string; title: string; url: string; status: string; http_status?: number | null; baseline_exists: boolean; last_checked_at: string | null; next_check_at?: string | null };
 type Updates = { items: Update[]; total: number; unread_count: number; preferences: { revision: number; enabled: boolean; families: string[]; read_event_ids: string[] }; monitor: { enabled: boolean; source_count: number; checked_count: number; baseline_count?: number; pending_count: number; error_count: number; last_checked_at: string | null; meaning?: string }; source_checks?: SourceCheck[]; notice: string };
@@ -60,7 +61,16 @@ function useFarmChoice() {
   return { farms, farmId, year, choose };
 }
 
-type ProfileDraft = { answers: Record<string, string | string[]>; proposals: RecordItem[]; notes: Record<string, string> };
+type ProfileDraft = { answers: Record<string, string | string[]>; proposals: RecordItem[]; notes: Record<string, string>; corrections?: Record<string, { supersedes_id: string; expected_source_revision: number }> };
+
+function ProfileInput({ question, value, disabled, change }: { question: ProfileQuestion; value: string | string[] | undefined; disabled: boolean; change: (value: string | string[]) => void }) {
+  const key = question.fact_key || question.key;
+  const multiple = ['ppp_use_type', 'registry_species'].includes(key) && question.choices.length > 0;
+  return multiple ? <fieldset disabled={disabled}><legend>{question.label}</legend><p className="admin-footnote">Choose every type that applies. Leave these blank if not known yet.</p>{question.choices.map(choice => <label className="check-row" key={choice.value}><input type="checkbox" checked={Array.isArray(value) && value.includes(choice.value)} onChange={event => change(event.target.checked ? [...(Array.isArray(value) ? value : []), choice.value] : (Array.isArray(value) ? value : []).filter(item => item !== choice.value))}/>{choice.label}</label>)}</fieldset>
+    : <Field label={question.label}>{question.value_type === 'boolean' ? <select disabled={disabled} value={typeof value === 'string' ? value : ''} onChange={event => change(event.target.value)}><option value="">Not known yet</option><option value="yes">Yes</option><option value="no">No</option></select>
+      : question.choices.length ? <select disabled={disabled} value={typeof value === 'string' ? value : ''} onChange={event => change(event.target.value)}><option value="">Not known yet</option>{question.choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select>
+      : <input disabled={disabled} value={typeof value === 'string' ? value : ''} onChange={event => change(event.target.value)} placeholder="Leave blank if not known yet"/>}</Field>;
+}
 
 function ProfileAnswers({ data, canReview, onSaved }: { data: Checks; canReview: boolean; onSaved: () => void }) {
   const draft = usePrivateDraft<ProfileDraft>(`checks/profile/${data.farm_id}/${data.year}`, { answers: {}, proposals: [], notes: {} });
@@ -71,6 +81,9 @@ function ProfileAnswers({ data, canReview, onSaved }: { data: Checks; canReview:
   const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const attempt = useRef<{ signature: string; key: string } | null>(null);
+  const savedQuestions = (data.profile_review ?? []).filter(question => question.confirmed.length > 0);
+  const unanswered = data.profile_questions.filter(question => !draft.value.corrections?.[question.fact_key || question.key]);
+  const corrections = savedQuestions.filter(question => draft.value.corrections?.[question.fact_key || question.key]);
   function answer(key: string, value: string | string[]) {
     draft.setValue(previous => ({ ...previous, answers: { ...previous.answers, [key]: value } }));
   }
@@ -82,22 +95,27 @@ function ProfileAnswers({ data, canReview, onSaved }: { data: Checks; canReview:
   async function saveAnswers(event: FormEvent) {
     event.preventDefault(); setError(''); setNotices([]); setSaving(true);
     try {
-      const answers = data.profile_questions.flatMap<{ key: string; value: boolean | string | string[] }>(question => {
+      const answers = [...unanswered, ...corrections].flatMap<{ key: string; value: boolean | string | string[]; supersedes_id?: string; expected_source_revision?: number }>(question => {
         const key = question.fact_key || question.key;
         const value = draft.value.answers[key];
-        if (value === undefined || value === '' || Array.isArray(value) && !value.length) return [];
+        const correction = draft.value.corrections?.[key];
+        if (value === undefined || value === '' || Array.isArray(value) && !value.length) {
+          if (correction) throw new Error('Choose a new answer, or choose Keep the saved answer. Leaving a correction blank does not remove a saved answer.');
+          return [];
+        }
+        if (correction && !savedQuestions.find(candidate => (candidate.fact_key || candidate.key) === key)?.confirmed.some(fact => fact.id === correction.supersedes_id && fact.revision === correction.expected_source_revision)) throw new Error('The saved answer changed. Compare its latest version and choose the answer to change again. Your draft is kept.');
         if (question.value_type === 'boolean') {
           if (value !== 'yes' && value !== 'no') throw new Error('Choose Yes, No or Not known yet for each farm question.');
-          return [{ key, value: value === 'yes' }];
+          return [{ key, value: value === 'yes', ...correction }];
         }
-        return [{ key, value }];
+        return [{ key, value, ...correction }];
       });
       if (!answers.length) throw new Error('Answer at least one question you know. Leave the others as Not known yet.');
       const body = { year: data.year, expected_farm_revision: data.farm_revision, answers };
       const signature = JSON.stringify(body);
       if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
       const result = await api.post<{ facts: RecordItem[]; notices: string[] }>(`/compliance/farms/${data.farm_id}/profile`, body, { idempotencyKey: attempt.current.key });
-      draft.setValue(previous => ({ ...previous, answers: {}, proposals: [...new Map<string, RecordItem>([...previous.proposals, ...result.facts].map(fact => [fact.id, fact] as const)).values()] }));
+      draft.setValue(previous => ({ ...previous, answers: {}, corrections: {}, proposals: [...new Map<string, RecordItem>([...previous.proposals, ...result.facts].map(fact => [fact.id, fact] as const)).values()] }));
       setNotices([result.facts.length ? 'Step 1 is saved. These answers are proposed, not confirmed. Read each saved answer below before confirming it.' : 'No new proposed answers were created.', ...result.notices]);
       attempt.current = null; onSaved();
     } catch (failure) { setError(errorMessage(failure)); } finally { setSaving(false); }
@@ -107,7 +125,7 @@ function ProfileAnswers({ data, canReview, onSaved }: { data: Checks; canReview:
     setReviewing(fact.id); setReviewErrors(previous => ({ ...previous, [fact.id]: '' }));
     try {
       const saved = await api.post<RecordItem>(`/facts/${fact.id}/review`, { expected_revision: fact.revision, decision: 'confirmed', note: draft.value.notes[fact.id] || '' });
-      draft.setValue(previous => ({ ...previous, proposals: previous.proposals.map(item => item.id === saved.id ? saved : item) }));
+      draft.setValue(previous => ({ ...previous, proposals: previous.proposals.filter(item => item.id !== saved.data.supersedes_id).map(item => item.id === saved.id ? saved : item) }));
       setChecked(previous => ({ ...previous, [fact.id]: false })); onSaved();
     } catch (failure) { setReviewErrors(previous => ({ ...previous, [fact.id]: errorMessage(failure) })); } finally { setReviewing(null); }
   }
@@ -115,15 +133,20 @@ function ProfileAnswers({ data, canReview, onSaved }: { data: Checks; canReview:
     {error && <Notice kind="error">{error}</Notice>}{draft.error && <Notice kind="warning">{draft.error}</Notice>}{draft.saving && <p role="status" className="muted">Keeping your unsaved answers in a private draft…</p>}{notices.map((notice, index) => <Notice key={index}>{notice}</Notice>)}
     {!draft.ready ? <Loading>Opening your farm answers…</Loading> : <>
       {!data.profile_questions.length && !draft.value.proposals.length && <p className="muted">No unanswered farm-profile questions were identified by the current rules. Other checks below may still need evidence.</p>}
-      {data.profile_questions.length > 0 && <form className="stack" onSubmit={saveAnswers}><h3>1. Answer the farm questions</h3>{data.profile_questions.map(question => {
+      {(unanswered.length > 0 || savedQuestions.length > 0) && <form className="stack" onSubmit={saveAnswers}><h3>1. Answer the farm questions</h3>{unanswered.map(question => {
         const key = question.fact_key || question.key;
         const value = draft.value.answers[key];
-        const multiple = ['ppp_use_type', 'registry_species'].includes(key) && question.choices.length > 0;
         return <div className="admin-check" key={key}>{question.conflicting_fact_ids.length > 0 && <Notice kind="warning">Different confirmed answers are already recorded for this question. Compare them with your sources before adding another answer.</Notice>}
-          {canReview ? multiple ? <fieldset disabled={saving}><legend>{question.label}</legend><p className="admin-footnote">Choose every type that applies. Leave these blank if not known yet.</p>{question.choices.map(choice => <label className="check-row" key={choice.value}><input type="checkbox" checked={Array.isArray(value) && value.includes(choice.value)} onChange={event => answer(key, event.target.checked ? [...(Array.isArray(value) ? value : []), choice.value] : (Array.isArray(value) ? value : []).filter(item => item !== choice.value))}/>{choice.label}</label>)}</fieldset> : <Field label={question.label}>{question.value_type === 'boolean' ? <select disabled={saving} value={typeof value === 'string' ? value : ''} onChange={event => answer(key, event.target.value)}><option value="">Not known yet</option><option value="yes">Yes</option><option value="no">No</option></select> : question.choices.length ? <select disabled={saving} value={typeof value === 'string' ? value : ''} onChange={event => answer(key, event.target.value)}><option value="">Not known yet</option>{question.choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select> : <input disabled={saving} value={typeof value === 'string' ? value : ''} onChange={event => answer(key, event.target.value)} placeholder="Leave blank if not known yet"/>}</Field> : <h4>{question.label}</h4>}
+          {canReview ? <ProfileInput question={question} value={value} disabled={saving} change={next => answer(key, next)}/> : <h4>{question.label}</h4>}
           <details><summary>Why is this being asked?</summary><p>{question.prompt}</p><Sources items={question.sources}/></details>
         </div>;
-      })}{canReview ? <div><Button type="submit" loading={saving}>Save answers for review</Button></div> : <Notice>Ask the farm owner or an adviser with review permission to answer these questions.</Notice>}</form>}
+      })}{savedQuestions.length > 0 && <details><summary>Change a saved farm answer</summary><p>Choose the saved answer you want to change. It stays in place until you separately confirm its correction.</p>{savedQuestions.map(question => {
+        const key = question.fact_key || question.key;
+        const correction = draft.value.corrections?.[key];
+        return <article className="admin-check" key={key}><h4>{question.label}</h4>{question.confirmed.map(fact => <div className="panel" key={fact.id}><p>Saved answer: <strong>{displayValue(fact.value)}</strong> · {fact.period || 'Standing detail'}</p>{canReview && <Button variant="secondary" disabled={saving || reviewing !== null} onClick={() => draft.setValue(previous => ({ ...previous, answers: { ...previous.answers, [key]: typeof fact.value === 'boolean' ? fact.value ? 'yes' : 'no' : Array.isArray(fact.value) ? fact.value.map(String) : String(fact.value ?? '') }, corrections: { ...previous.corrections, [key]: { supersedes_id: fact.id, expected_source_revision: fact.revision } } }))}>Change this answer</Button>}</div>)}
+          {correction && <><ProfileInput question={question} value={draft.value.answers[key]} disabled={saving} change={next => answer(key, next)}/><Button variant="ghost" disabled={saving} onClick={() => draft.setValue(previous => { const answers = { ...previous.answers }; const next = { ...previous.corrections }; delete answers[key]; delete next[key]; return { ...previous, answers, corrections: next }; })}>Keep the saved answer</Button></>}
+        </article>;
+      })}</details>}{canReview ? <div><Button type="submit" loading={saving}>Save answers for review</Button></div> : <Notice>Ask the farm owner or an adviser with review permission to answer these questions.</Notice>}</form>}
       {draft.value.proposals.length > 0 && <div className="admin-subsection"><h3>2. Read and confirm each saved answer</h3><p>Confirm only answers you have checked. Other answers stay proposed, including when one review fails.</p>{draft.value.proposals.map(fact => <article className="admin-check" key={fact.id}><h4>{String(fact.data.label || 'Farm answer')}</h4><p><strong>{displayValue(fact.data.value)}</strong> · reporting year {String(fact.data.period ?? data.year)}</p><p className="admin-footnote">Saved revision {fact.revision} · {String(fact.data.review_status).replaceAll('_', ' ')}</p>{reviewErrors[fact.id] && <Notice kind="error">{reviewErrors[fact.id]}<div><Button variant="ghost" onClick={async () => { try { const latest = await api.get<RecordItem>(`/facts/${fact.id}`); draft.setValue(previous => ({ ...previous, proposals: previous.proposals.map(item => item.id === latest.id ? latest : item) })); setChecked(previous => ({ ...previous, [fact.id]: false })); setReviewErrors(previous => ({ ...previous, [fact.id]: '' })); } catch (failure) { setReviewErrors(previous => ({ ...previous, [fact.id]: errorMessage(failure) })); } }}>Load this answer’s current saved version</Button></div></Notice>}{fact.data.review_status === 'proposed' && canReview && <><Field label="Where did you check this answer?"><input required value={draft.value.notes[fact.id] || ''} onChange={event => draft.setValue(previous => ({ ...previous, notes: { ...previous.notes, [fact.id]: event.target.value } }))} placeholder="For example, this year’s farm records"/></Field><label className="check-row"><input type="checkbox" checked={checked[fact.id] === true} onChange={event => setChecked(previous => ({ ...previous, [fact.id]: event.target.checked }))}/>I read this saved answer and checked that it is correct for this farm and year.</label><Button disabled={!checked[fact.id] || !draft.value.notes[fact.id]?.trim() || reviewing !== null} loading={reviewing === fact.id} onClick={() => void review(fact)}>Confirm this answer</Button></>}{fact.data.review_status === 'confirmed' && <Notice kind="success">This answer is confirmed. The checks below use the server’s latest saved evidence.</Notice>}</article>)}</div>}
     </>}
   </section>;
@@ -138,9 +161,11 @@ export function CompliancePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [savedChecklist, setSavedChecklist] = useState('');
   const attempt = useRef<string | null>(null);
   const [version, setVersion] = useState(0);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  useEffect(() => { setSavedChecklist(''); setMessage(''); }, [farmId, year]);
   const [refreshing, setRefreshing] = useState(false);
   const loadedFarm = useRef('');
   const lastRequested = useRef(0);
@@ -175,6 +200,7 @@ export function CompliancePage() {
     try {
       const result = await api.post<{ checklists: RecordItem[]; tasks: RecordItem[]; skipped: unknown[] }>(`/compliance/farms/${data.farm_id}/checklist`, { rule_ids: selected, expected_farm_revision: data.farm_revision, year: data.year }, { idempotencyKey: attempt.current });
       setMessage(`${result.checklists.length} checklists and ${result.tasks.length} follow-up tasks saved.${result.skipped.length ? ` ${result.skipped.length} items were already present or skipped by the server.` : ''}`);
+      setSavedChecklist(result.checklists[0]?.id ?? '');
       setSelected([]); attempt.current = null;
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
@@ -182,7 +208,7 @@ export function CompliancePage() {
   return <>
     <PageHeader title="What still needs checking?" description="Start with your farm details, then work through the information and evidence each check needs." action={<Link className="button button-secondary" to="/app/updates">Official source updates</Link>}/>
     <section className="panel admin-section"><div className="form-grid"><Field label="Which farm?"><select value={farmId} onChange={event => choose(event.target.value)}><option value="">Choose a farm</option>{farms.items.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field><Field label="Reporting year"><input type="number" min="2000" max="2100" value={year} onChange={event => choose(farmId, event.target.value)}/></Field></div>{farms.error && <Notice kind="error">{farms.error}</Notice>}{farms.loading && <Loading>Opening farms…</Loading>}{!farms.loading && !farms.items.length && <p><Link to="/app/fields">Add your farm</Link> to see which information may be relevant.</p>}{!farmId && farms.items.length > 0 && <p className="admin-footnote">Choose the farm you want to work on. Each farm keeps its own checks and evidence.</p>}</section>
-    {error && <Notice kind="error">{error}<div><Button variant="ghost" onClick={() => setVersion(value => value + 1)}>Check again</Button></div></Notice>}{message && <Notice kind="success">{message} <Link to="/app/guidance">Open saved checklists</Link></Notice>}{loading && <Loading>Comparing your recorded details with the available checks…</Loading>}
+    {error && <Notice kind="error">{error}<div><Button variant="ghost" onClick={() => setVersion(value => value + 1)}>Check again</Button></div></Notice>}{message && <Notice kind="success">{message} <Link to={savedChecklist ? `/app/guidance?checklist_id=${savedChecklist}` : '/app/guidance'}>Open saved checklists</Link></Notice>}{loading && <Loading>Comparing your recorded details with the available checks…</Loading>}
     {data && <>
       <p className="admin-footnote" role="status">{refreshing ? 'Refreshing farm checks…' : checkedAt ? `Checked ${new Date(checkedAt).toLocaleString()}. Checks refresh when you return to this tab.` : 'No completed check is recorded.'}</p>
       <Notice kind={data.overall === 'ready_for_review' ? 'info' : 'warning'}>{data.overall === 'ready_for_review' ? 'The available checks are ready for your review.' : data.overall === 'needs_adviser' ? 'Some questions need an adviser or further source checks.' : 'Some farm details or supporting records are still needed.'} This is a preparation aid, not an authority decision or a confirmation of legal compliance.</Notice>

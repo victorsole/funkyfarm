@@ -29,7 +29,7 @@ export interface Pack {
   id: string;
   name?: string;
   title?: string;
-  country: string;
+  country: string | null;
   year?: number;
   reporting_year?: number;
   description?: string;

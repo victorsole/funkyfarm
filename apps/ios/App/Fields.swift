@@ -175,13 +175,54 @@ struct FieldProposalReview: View {
     @State private var problem: String?
     @State private var approve = false
     @State private var saved = false
+    @State private var reviewedFields: Set<String> = []
+    private var operation: String { proposal.data["operation"]?.text ?? "edit" }
+    private var retiresParents: Bool { ["split", "merge"].contains(operation) }
+    private var proposedFields: [[String: JSONValue]] {
+        if let values = proposal.data["parcels"] { return values.array.map(\.object) }
+        return proposal.data["parcel"].map { [$0.object] } ?? []
+    }
+    private var priorFields: [[String: JSONValue]] {
+        if let values = proposal.data["previous_parcels"] { return values.array.map(\.object) }
+        return proposal.data["previous_parcel"].flatMap { $0 == .null ? nil : [$0.object] } ?? []
+    }
+    private var requiredReviews: Set<String> { Set(proposedFields.indices.map { "new:\($0)" } + priorFields.indices.map { "prior:\($0)" }) }
+    private var allReviewed: Bool { !proposedFields.isEmpty && (!retiresParents || !priorFields.isEmpty) && requiredReviews.isSubset(of: reviewedFields) }
+    private var currentBaseline: Bool {
+        guard let currentFarm, case .number(let revision)? = proposal.data["base_farm_revision"] else { return false }
+        return Double(currentFarm.revision) == revision
+    }
+    private var needsOverlapReview: Bool { !(proposal.data["overlapping_fields"]?.array ?? []).isEmpty || (proposal.data["warnings"]?.text.localizedCaseInsensitiveContains("overlap") ?? false) }
+    private func review(_ key: String) -> Binding<Bool> { Binding(get: { reviewedFields.contains(key) }, set: { if $0 { reviewedFields.insert(key) } else { reviewedFields.remove(key) } }) }
     var body: some View {
         List {
-            Section("Proposed field information") {
-                let parcel = proposal.data["parcel"]?.object ?? [:]
-                FieldMap(field: parcel).frame(height: 230)
-                JSONFields(data: parcel)
+            Section("Review the whole \(operation) proposal") {
+                Text("\(proposedFields.count) proposed fields · \(priorFields.count) prior fields")
+                if retiresParents { Notice("Every prior field shown below will be retired, not deleted, and linked to the proposed replacements.") }
+                else { Notice("Review the previous revision and all proposed information. History remains retained.") }
+                if let note = proposal.data["note"] { Text(note.text) }
                 if let warnings = proposal.data["warnings"] { Notice(warnings.text, warning: true) }
+                if let overlaps = proposal.data["overlapping_fields"], !overlaps.array.isEmpty { DisclosureGroup("All reported overlaps") { Text(overlaps.text).textSelection(.enabled) } }
+            }
+            ForEach(Array(priorFields.enumerated()), id: \.offset) { index, field in
+                Section(retiresParents ? "Prior field \(index + 1) · will be retired" : "Prior field \(index + 1)") {
+                    FieldProposalParcel(field: field)
+                    Toggle(retiresParents ? "I checked this prior field and its retirement" : "I checked this previous field record", isOn: review("prior:\(index)"))
+                }
+            }
+            ForEach(Array(proposedFields.enumerated()), id: \.offset) { index, field in
+                Section("Proposed field \(index + 1)") {
+                    FieldProposalParcel(field: field)
+                    Toggle("I checked this proposed field, boundary and details", isOn: review("new:\(index)"))
+                }
+            }
+            if let reference = proposal.data["reference"], reference != .null {
+                Section("Supplied comparison reference · not an official update") { FieldProposalParcel(field: reference.object) }
+            }
+            Section("Comparison and retained lineage") {
+                if let comparison = proposal.data["comparison"] { DisclosureGroup("Boundary comparison") { Text(comparison.text).textSelection(.enabled) } }
+                if let lineage = proposal.data["lineage"] { JSONFields(data: lineage.object) }
+                if let splitLine = proposal.data["split_line"], splitLine != .null { DisclosureGroup("Supplied split line") { Text(splitLine.text).textSelection(.enabled) } }
             }
             Section("Compare with the current farm") {
                 Button("Load current farm revision") {
@@ -191,18 +232,22 @@ struct FieldProposalReview: View {
                 if let currentFarm {
                     LabeledContent("Current farm revision", value: "\(currentFarm.revision)")
                     DisclosureGroup("Current approved field records") { Text(currentFarm.data["parcels"]?.text ?? "No field geometry is recorded.").font(.callout).textSelection(.enabled) }
-                    Toggle("I reviewed and accept any reported boundary overlap", isOn: $overlap)
+                    if !currentBaseline { Notice("The farm changed after this proposal. Prepare a new proposal against the current farm before approving.", warning: true) }
+                    if retiresParents && priorFields.isEmpty { Notice("The prior fields are missing. Reload the complete proposal before reviewing replacements.", warning: true) }
+                    if needsOverlapReview { Toggle("I reviewed and accept every reported boundary overlap", isOn: $overlap) }
                     TextField("Approval note", text: $note, axis: .vertical)
-                    Button("Approve reviewed field proposal") { approve = true }.buttonStyle(.borderedProminent).disabled(working || note.isEmpty || saved)
+                    Button("Approve all reviewed field changes") { approve = true }.buttonStyle(.borderedProminent).disabled(working || note.isEmpty || saved || !allReviewed || !currentBaseline || (needsOverlapReview && !overlap) || proposal.state != "proposed")
                 }
                 if saved { Notice("The service recorded this approval. Reload My fields to view the updated farm.") }
                 if working { ProgressView("Waiting for service…") }
                 if let problem { Notice(problem, warning: true) }
             }
         }.navigationTitle("Review field proposal")
-            .confirmationDialog("Apply this proposal to the compared farm revision?", isPresented: $approve, titleVisibility: .visible) {
+            .onChange(of: currentFarm?.revision) { _ in reviewedFields = []; overlap = false }
+            .onChange(of: proposal.revision) { _ in reviewedFields = []; overlap = false }
+            .confirmationDialog("Apply all \(proposedFields.count) proposed fields\(retiresParents ? " and retire all \(priorFields.count) prior fields" : "") to the compared farm revision?", isPresented: $approve, titleVisibility: .visible) {
                 Button("Approve field proposal") {
-                    guard let currentFarm else { return }; working = true
+                    guard let currentFarm, allReviewed, currentBaseline, !needsOverlapReview || overlap else { return }; working = true
                     Task {
                         do { _ = try await store.scopedValue("/field-proposals/\(proposal.id)/approve", method: "POST", body: ["expected_revision": .number(Double(proposal.revision)), "expected_farm_revision": .number(Double(currentFarm.revision)), "note": .string(note), "accept_overlap": .bool(overlap)], idempotency: proposal.id + "-approve-\(proposal.revision)-\(currentFarm.revision)"); _ = try await store.loadFieldLibrary(farmID); await store.refresh(); saved = true }
                         catch { problem = error.localizedDescription }
@@ -210,6 +255,16 @@ struct FieldProposalReview: View {
                     }
                 }
             }
+    }
+}
+
+private struct FieldProposalParcel: View {
+    let field: [String: JSONValue]
+    var body: some View {
+        Text(field["name"]?.text ?? "Supplied reference").font(.headline)
+        FieldMap(field: field).frame(height: 230)
+        JSONFields(data: field.filter { $0.key != "geometry" })
+        if let geometry = field["geometry"], geometry != .null { DisclosureGroup("Exact source coordinates") { Text(geometry.text).font(.callout).textSelection(.enabled) } }
     }
 }
 

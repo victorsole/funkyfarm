@@ -42,6 +42,21 @@ PROFILE = {
 }
 EU_COUNTRIES = {"AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"}
 PPP_RULE_TYPES = {"eu-ppp-surface-use": "surface", "eu-ppp-closed-space-use": "closed_space", "eu-ppp-seed-treatment-use": "seed"}
+REVIEW_ONLY_CODES = {"conditional_field_review", "location_format_review", "unit_needs_review", "possible_duplicate", "credit_quantity_review", "unsupported_requirement", "national_deadline_unknown", "domain_review_required"}
+
+
+def validate_profile_value(key, value, *, allow_unknown=True):
+    """Shared narrow type boundary for guided answers and ordinary fact CRUD."""
+    if key not in PROFILE or value is None and allow_unknown:
+        return value
+    _, kind, options = PROFILE[key]
+    if kind == "boolean" and isinstance(value, bool):
+        return value
+    if kind == "choice":
+        supplied = value if isinstance(value, list) else [value]
+        if supplied and len(supplied) <= len(options) and all(isinstance(v, str) and v in options for v in supplied) and len(set(supplied)) == len(supplied):
+            return value
+    raise ApiError(422, "invalid_profile_answer", "Use an explicit yes/no or the displayed choices. Text that looks like a boolean or a JSON list is not a typed answer.", {"key": key})
 
 
 def _hash(value):
@@ -250,7 +265,18 @@ def _parcels(farm):
     return {str(p["id"]): p for p in items if isinstance(p, dict) and p.get("id")}
 
 
-def _source_issues(record, rule_id, farm_id, by_id, required=False):
+def _source_issues(record, rule_id, farm_id, by_id, required=False, *, _path=(), _visited=None):
+    """Validate this evidence's cited-source closure, not unrelated farm rows."""
+    if record["id"] in _path:
+        return [_issue("source_cycle", "The cited sources form a cycle. Review the original evidence before relying on it.", rule_id, farm_id, [record], "error", record["kind"])]
+    if len(_path) >= 32:
+        return [_issue("source_chain_too_deep", "This citation chain is too deep to review safely. Identify the original evidence explicitly.", rule_id, farm_id, [record], "error", record["kind"])]
+    visited = _visited if _visited is not None else set()
+    if record["id"] in visited:
+        return []
+    visited.add(record["id"])
+    if len(visited) > 1000:
+        return [_issue("source_chain_too_large", "This evidence cites too many records for one review. Narrow its original sources.", rule_id, farm_id, [record], "error", record["kind"])]
     data, issues = record["data"], []
     sources = [s for s in data.get("sources", []) if isinstance(s, dict)]
     refs = []
@@ -271,6 +297,8 @@ def _source_issues(record, rule_id, farm_id, by_id, required=False):
             issues.append(_issue("source_changed", "A cited source has changed since this evidence was reviewed.", rule_id, farm_id, [record, target], "error", record["kind"]))
         elif kind in ("facts", "operations", "purchases", "sales") and target["data"].get("review_status") != "confirmed":
             issues.append(_issue("unreviewed_source", "A cited record still needs explicit human confirmation.", rule_id, farm_id, [record, target], kind=kind))
+        else:
+            issues.extend(_source_issues(target, rule_id, farm_id, by_id, _path=(*_path, record["id"]), _visited=visited))
     return issues
 
 
@@ -293,7 +321,50 @@ def _event_issues(record, rule_id, farm_id):
     return issues
 
 
-def _field_evidence(field, event, facts, year):
+def event_field_types(rules):
+    """Operation families that can consume a supporting field, across rules."""
+    result = {}
+    for rule in rules:
+        for requirement in rule.get("requirements", []):
+            if requirement.get("kind") != "operation":
+                continue
+            for field in requirement.get("fields", []):
+                result.setdefault(field["key"], set()).update(requirement.get("operation_types", []))
+    # Dose is also explicitly recorded on other application capture types.
+    result.setdefault("dose", set()).update({"pesticide_application", "fertiliser_application", "input_application"})
+    return result
+
+
+def supporting_fact_matches_event(fact, event, events, year, *, basis="calendar_date", period=None, field_types=None):
+    """Bind a supporting fact to one actual event, never just a shared day/field."""
+    value, data = fact["data"], event["data"]
+    if (value.get("farm_id") != data.get("farm_id")
+            or physical_identity(value) != physical_identity(data)
+            or not matches_reporting_period(value, year, basis=basis, period=period)):
+        return False
+    sources = [s for s in value.get("sources", []) if isinstance(s, dict)]
+    if event["kind"] == "documents":
+        return any(s.get("document_id") == event["id"] for s in sources)
+    if event["kind"] not in ("operations", "purchases", "sales"):
+        return True
+    # A citation to a different event (or several events) is not this event's
+    # supporting value, even if all their dates and physical fields coincide.
+    linked = {s["record_id"] for s in sources if s.get("record_id") and s.get("record_kind") == event["kind"]}
+    if linked:
+        return linked == {event["id"]}
+    if not _day(data.get("date")):
+        return False
+    types = set((field_types or {}).get(value.get("key"), ())) | {data.get("type")}
+    peers = {r["id"] for r in events if r["kind"] == event["kind"]
+             and r["data"].get("review_status") != "rejected"
+             and r["data"].get("farm_id") == data.get("farm_id")
+             and r["data"].get("date") == data["date"]
+             and physical_identity(r["data"]) == physical_identity(data)
+             and (event["kind"] != "operations" or r["data"].get("type") in types)}
+    return peers == {event["id"]}
+
+
+def _field_evidence(field, event, facts, year, events, field_types, by_id, source_required):
     key, data = field.get("key"), event["data"]
     unit = data.get("unit")
     direct_key = key
@@ -320,16 +391,14 @@ def _field_evidence(field, event, facts, year):
     basis = field.get("temporal_basis", "calendar_date")
     period = data.get("date") if basis == "calendar_date" else str(year) if basis == "campaign_year" else None
     candidates = [r for r in facts if r["data"].get("key") == key and r["data"].get("review_status") != "rejected"
-                  and physical_identity(r["data"]) == physical_identity(data)
-                  and matches_reporting_period(r["data"], year, basis=basis, period=period)
-                  and (event["kind"] != "documents" or any(isinstance(s, dict) and s.get("document_id") == event["id"]
-                       for s in r["data"].get("sources", [])))]
-    confirmed = [r for r in candidates if r["data"].get("review_status") == "confirmed" and _present(r["data"].get("value"))]
+                  and supporting_fact_matches_event(r, event, events, year, basis=basis, period=period, field_types=field_types)]
+    confirmed = [r for r in candidates if r["data"].get("review_status") == "confirmed" and _present(r["data"].get("value"))
+                 and not _source_issues(r, None, data["farm_id"], by_id, source_required)]
     measured = key in ("dose", "quantity", "treated_size", "treated_area", "treated_extent", "treated_quantity", "quantity_administered", "withdrawal_period", "treatment_duration")
     return direct, data.get(direct_key), unit if measured else None, candidates, confirmed
 
 
-def _requirement(requirement, rule, farm, rows, year, by_id):
+def _requirement(requirement, rule, farm, rows, year, by_id, field_types):
     rid, farm_id = rule["id"], farm["id"]
     identifier = requirement.get("id", "evidence")
     label = requirement.get("label", identifier)
@@ -390,8 +459,12 @@ def _requirement(requirement, rule, farm, rows, year, by_id):
         if kind == "facts" and data.get("temporal_basis") == "calendar_date" and (_day(data.get("period")) is None or _day(data["period"]) > date.today()):
             issues.append(_issue("invalid_actual_period", "Review the actual evidence date. A future or invalid day cannot establish an event that already happened.", rid, farm_id, [record], "error"))
         for field in requirement.get("fields", []):
-            direct, value, unit, supporting, confirmed = _field_evidence(field, record, rows["facts"], year)
+            direct, value, unit, supporting, confirmed = _field_evidence(field, record, rows["facts"], year,
+                rows.get(kind, []), field_types, by_id, requirement.get("source_required", False))
             evidence.update((r["id"], _evidence(r)) for r in supporting)
+            for source in supporting:
+                if source["data"].get("review_status") == "confirmed":
+                    issues.extend(_source_issues(source, rid, farm_id, by_id, requirement.get("source_required", False)))
             conditional_flag = {"start_time": "label_time_required", "growth_stage": "label_growth_stage_required"}.get(field.get("key"))
             condition = data.get(conditional_flag) if conditional_flag else None
             if field.get("required") == "conditional" and condition is False:
@@ -454,9 +527,15 @@ def _requirement(requirement, rule, farm, rows, year, by_id):
                    issue["message"][:160], issue["message"], issue["href"],
                    "needs_adviser" if issue["severity"] in ("adviser", "error") else "needs_information",
                    "adviser" if issue["severity"] == "adviser" else "evidence") for issue in issues]
+    for step, issue in zip(steps, issues):
+        step["check"] = {"mode": "human_review" if issue["code"] in REVIEW_ONLY_CODES else "evidence",
+                         "rule_id": rid, "rule_hash": _hash(rule), "requirement_id": identifier,
+                         "issue_code": issue["code"], "issue_message": issue["message"], "record_ids": issue["record_ids"]}
     if not steps:
         steps = [_step(identifier, label, "Review the supplied evidence against the original source.",
                        _href(kind or "facts", farm_id), status)]
+        steps[0]["check"] = {"mode": "evidence", "rule_id": rid, "rule_hash": _hash(rule),
+                             "requirement_id": identifier, "issue_code": None, "issue_message": None, "record_ids": []}
     return {"id": identifier, "label": label, "status": status, "issues": issues, "evidence": list(evidence.values()), "steps": steps}
 
 
@@ -476,6 +555,7 @@ def check_farm(conn, session, farm_id, year=None):
     if isinstance(year, bool) or not isinstance(year, int) or not 2000 <= year <= 2100:
         raise ApiError(422, "invalid_year", "Choose the actual reporting year between 2000 and 2100.")
     catalogue = load_rules()
+    field_types = event_field_types(catalogue["rules"])
     found = json_safe(conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records "
         "WHERE kind=ANY(%s) AND deleted_at IS NULL AND data->>'farm_id'=%s ORDER BY id LIMIT 10001",
         (list(KINDS), farm["id"])).fetchall())
@@ -487,7 +567,8 @@ def check_farm(conn, session, farm_id, year=None):
     by_id = {r["id"]: r for r in found}
     attempted_sources = set()
     # Include only explicitly cited sources, never arbitrary unassigned uploads.
-    for record in found:
+    pending_sources = list(found)
+    for record in pending_sources:
         data = record["data"]
         references = [(data.get("document_id"), "documents")]
         for source in data.get("sources", []):
@@ -507,6 +588,7 @@ def check_farm(conn, session, farm_id, year=None):
                 raise
             if source_record["data"].get("farm_id") in (None, farm["id"]):
                 by_id[identifier] = source_record
+                pending_sources.append(source_record)
                 if kind == "documents":
                     rows["documents"].append(source_record)
     obligations, questions, issues = [], {}, []
@@ -521,7 +603,7 @@ def check_farm(conn, session, farm_id, year=None):
         requirements, own_issues, steps = [], [], []
         state = applicability["status"]
         if state == "applies":
-            requirements = [_requirement(req, rule, farm, rows, year, by_id) for req in rule["requirements"]]
+            requirements = [_requirement(req, rule, farm, rows, year, by_id, field_types) for req in rule["requirements"]]
             own_issues.extend(issue for req in requirements for issue in req["issues"])
             steps.extend(step for req in requirements for step in req["steps"])
         elif state != "does_not_apply":
@@ -535,6 +617,13 @@ def check_farm(conn, session, farm_id, year=None):
             steps.append(_step("national-deadline", "Confirm the applicable deadline", deadline["message"], "/app/adviser", "needs_adviser", "adviser"))
         if state == "applies" and rule.get("review_status") != "sourced_baseline":
             own_issues.append(_issue("domain_review_required", "This rule's mapping needs domain review before relying on the evidence checks.", rule["id"], farm["id"], severity="adviser"))
+            steps.append(_step("domain-review", "Record the source mapping review", own_issues[-1]["message"], "/app/adviser", "needs_adviser", "adviser"))
+        for step in steps:
+            if "check" not in step:
+                code = "national_deadline_unknown" if step["id"] == "national-deadline" else "domain_review_required" if step["id"] == "domain-review" else "applicability_conflict" if state == "conflict" else "applicability_unknown"
+                step["check"] = {"mode": "human_review" if code in REVIEW_ONLY_CODES else "evidence", "rule_id": rule["id"],
+                                 "rule_hash": _hash(rule), "requirement_id": None, "issue_code": code,
+                                 "issue_message": None, "record_ids": []}
         status = "needs_adviser" if any(i["severity"] in ("adviser", "error") for i in own_issues) else "needs_information" if own_issues else "ready_for_review"
         progress = {"required": len(requirements), "with_evidence": sum(bool(r["evidence"]) for r in requirements),
                     "needs_review": sum(r["status"] != "ready_for_review" for r in requirements)}
@@ -557,12 +646,31 @@ def check_farm(conn, session, farm_id, year=None):
                               "href": _href("requests", farm["id"], request["id"]), "overdue": _day(data["deadline"]) < date.today()})
     included = [o for o in obligations if o["applicability"] != "does_not_apply"]
     overall = "needs_adviser" if any(o["status"] == "needs_adviser" for o in included) else "needs_information" if any(o["status"] == "needs_information" for o in included) else "ready_for_review"
+    profile_review = []
+    for key in PROFILE:
+        candidates = [r for r in rows["facts"] if r["data"].get("key") == key and physical_identity(r["data"]) is None
+                      and matches_reporting_period(r["data"], year) and r["data"].get("review_status") in ("confirmed", "proposed")]
+        confirmed = [r for r in candidates if r["data"].get("review_status") == "confirmed"]
+        proposed = [r for r in candidates if r["data"].get("review_status") == "proposed"]
+        sources = []
+        def mentions(spec):
+            return isinstance(spec, dict) and (spec.get("field") == f"fact.{key}" or any(mentions(child) for group in ("all", "any") for child in spec.get(group, [])))
+        for rule in catalogue["rules"]:
+            if mentions(rule.get("applicability")):
+                sources.extend(rule.get("citations", []))
+        question = _question(key, {"citations": list({_hash(s): s for s in sources}.values())}, candidates, year)
+        values = {_hash(r["data"].get("value")) for r in confirmed}
+        def summary(record):
+            return {"id": record["id"], "revision": record["revision"], **{k: record["data"].get(k) for k in ("value", "temporal_basis", "period")}}
+        profile_review.append({**question, "state": "conflict" if len(values) > 1 else "confirmed" if confirmed else "proposed" if proposed else "missing",
+                               "current_value": confirmed[0]["data"].get("value") if len(values) == 1 else None,
+                               "confirmed": [summary(r) for r in confirmed], "proposed": [summary(r) for r in proposed]})
     return {"farm_id": farm["id"], "farm_revision": farm["revision"], "year": year,
             "rules_version": catalogue["version"], "rules_updated_at": catalogue.get("updated_at"), "rules_hash": _hash(catalogue),
             "input_fingerprint": _hash({"farm": farm, "records": sorted(by_id.values(), key=lambda r: r["id"]), "excluded": sorted(excluded), "year": year, "rules": _hash(catalogue)}),
             "input_records": [{"id": r["id"], "kind": r["kind"], "revision": r["revision"], "checksum": _hash(r["data"])}
                               for r in sorted(by_id.values(), key=lambda r: r["id"])],
-            "profile_questions": list(questions.values()), "obligations": obligations, "issues": issues,
+            "profile_questions": list(questions.values()), "profile_review": profile_review, "obligations": obligations, "issues": issues,
             "overall": overall, "deadlines": deadlines,
             "progress": {"required": len(included), "with_evidence": sum(o["progress"]["with_evidence"] > 0 for o in included),
                          "needs_review": sum(o["status"] != "ready_for_review" for o in included)},
@@ -582,6 +690,21 @@ def _locked_farm(conn, session, farm_id, expected_farm_revision):
     if farm["revision"] != expected_farm_revision:
         raise ApiError(409, "revision_conflict", "The farm profile changed. Review the current checks before creating drafts.", {"current_revision": farm["revision"]})
     return farm
+
+
+def checklist_items(checked, rule):
+    """Canonical, source-bound actions; used by creation and explicit refresh."""
+    steps = rule["steps"] or [_step("source-review", "Review against the original sources", "Review the evidence and remaining limits; this is not legal acceptance.", f"/app/checks?farm_id={checked['farm_id']}", "ready_for_review")]
+    definition = next(r for r in load_rules()["rules"] if r["id"] == rule["id"])
+    revisions = {r["id"]: r["revision"] for r in checked["input_records"]}
+    items = []
+    for step in steps:
+        check = dict(step.get("check") or {"mode": "human_review", "rule_id": rule["id"], "rule_hash": _hash(definition),
+                                            "requirement_id": None, "issue_code": None, "issue_message": None, "record_ids": []})
+        check["record_revisions"] = {identifier: revisions[identifier] for identifier in check["record_ids"] if identifier in revisions}
+        items.append({"key": step["id"], "label": step["title"], "done": False, "evidence_ids": [],
+                      "note": step["message"] + " Open: " + step["href"], "deadline": rule["deadline"]["date"], "check": check})
+    return items
 
 
 def create_checklists(conn, session, farm_id, rule_ids, expected_farm_revision, year=None, *, expected_input_fingerprint=None):
@@ -609,18 +732,16 @@ def create_checklists(conn, session, farm_id, rule_ids, expected_farm_revision, 
             continue
         provenance = {"compliance_rule_id": identifier, "compliance_version": checked["rules_version"],
                       "compliance_hash": rule["fingerprint"], "source_citations": rule["citations"]}
-        steps = rule["steps"] or [_step("source-review", "Review against the original sources", "Review this evidence with the recipient or adviser; no legal acceptance is implied.", f"/app/checks?farm_id={farm['id']}", "ready_for_review")]
-        items = [{"key": step["id"], "label": step["title"], "done": False, "evidence_ids": [],
-                  "note": step["message"] + " Open: " + step["href"], "deadline": rule["deadline"]["date"]} for step in steps]
+        items = checklist_items(checked, rule)
         checklist = insert_record(conn, "checklists", {"farm_id": farm["id"], "title": rule["title"] + " — evidence review",
-            "scheme": f"{identifier}:{checked['year']}", "version": str(checked["rules_version"]), "items": items,
+            "scheme": f"{identifier}:{checked['year']}", "version": str(checked["rules_version"]), "reporting_year": checked["year"], "items": items,
             "notes": "Draft checklist only; not a complete inventory of obligations and not a finding of legal compliance.",
             "deadline": rule["deadline"]["date"], **provenance})
         checklists.append(checklist)
-        for step in steps:
-            tasks.append(insert_record(conn, "tasks", {"farm_id": farm["id"], "title": step["title"], "description": step["message"],
-                "due_date": rule["deadline"]["date"], "status": "open", "checklist_id": checklist["id"],
-                "notes": "Open: " + step["href"] + ". Explicit human review required; do not infer completion.", **provenance}))
+        for item in items:
+            tasks.append(insert_record(conn, "tasks", {"farm_id": farm["id"], "title": item["label"], "description": item["note"],
+                "due_date": rule["deadline"]["date"], "status": "open", "checklist_id": checklist["id"], "checklist_item_key": item["key"],
+                "notes": "Explicit human review required; do not infer completion or legal readiness.", **provenance}))
     return {"checklists": checklists, "tasks": tasks, "skipped": skipped, "rules_version": checked["rules_version"]}
 
 
@@ -634,28 +755,31 @@ def propose_profile(conn, session, farm_id, year, expected_farm_revision, answer
         raise ApiError(422, "profile_answers_required", "Provide at least one of the displayed farm activity answers.")
     normalized, seen = [], set()
     for answer in answers:
-        if not isinstance(answer, dict) or set(answer) != {"key", "value"} or not isinstance(answer.get("key"), str):
+        if not isinstance(answer, dict) or set(answer) - {"key", "value", "supersedes_id", "expected_source_revision"} or not {"key", "value"} <= set(answer) or not isinstance(answer.get("key"), str):
             raise ApiError(422, "invalid_profile_answer", "Use the displayed activity questions and their explicit answers.")
         key, value = answer["key"], answer["value"]
         if key not in PROFILE or key in seen:
             raise ApiError(422, "invalid_profile_question", "Select each displayed activity question at most once.")
         seen.add(key)
-        label, kind, options = PROFILE[key]
-        if kind == "boolean":
-            if not isinstance(value, bool):
-                raise ApiError(422, "invalid_profile_answer", "Answer this activity question with an explicit yes or no. Leave unknown answers unanswered.", {"key": key})
-        elif kind == "choice":
-            supplied = value if isinstance(value, list) else [value]
-            if not supplied or len(supplied) > len(options) or any(not isinstance(v, str) or v not in options for v in supplied) or len(set(supplied)) != len(supplied):
-                raise ApiError(422, "invalid_profile_answer", "Choose one or more of the displayed activity types.", {"key": key, "choices": options})
-            if isinstance(value, list):
-                value = sorted(value)
+        label = PROFILE[key][0]
+        value = validate_profile_value(key, value, allow_unknown=False)
+        correction = {}
+        if answer.get("supersedes_id") is not None or answer.get("expected_source_revision") is not None:
+            if not answer.get("supersedes_id") or answer.get("expected_source_revision") is None:
+                raise ApiError(422, "profile_source_required", "Select the current answer and its saved revision for this correction.")
+            source = fetch_record(conn, "facts", answer["supersedes_id"])
+            data = source["data"]
+            if source["revision"] != answer["expected_source_revision"]:
+                raise ApiError(409, "revision_conflict", "This farm answer changed. Review its latest saved version before correcting it.")
+            if data.get("farm_id") != farm["id"] or data.get("key") != key or physical_identity(data) is not None or data.get("review_status") != "confirmed" or not matches_reporting_period(data, year):
+                raise ApiError(422, "invalid_profile_source", "Correct a confirmed answer for this same farm, question and reporting period.")
+            correction = {"supersedes_id": source["id"], "temporal_basis": data["temporal_basis"], "period": data.get("period")}
         normalized.append({"farm_id": farm["id"], "key": key, "label": label, "value": value,
                            "temporal_basis": "campaign_year", "period": str(year), "review_status": "proposed",
-                           "sources": [{"kind": "manual", "note": f"Explicit farm activity answer supplied by a workspace member for reporting year {year}."}]})
+                           "sources": [{"kind": "manual", "note": f"Explicit farm activity answer supplied by a workspace member for reporting year {year}."}], **correction})
     existing = json_safe(conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records "
-        "WHERE kind='facts' AND deleted_at IS NULL AND data->>'farm_id'=%s AND data->>'temporal_basis'='campaign_year' "
-        "AND data->>'period'=%s AND data->>'key'=ANY(%s) ORDER BY created_at DESC,id DESC LIMIT 10001",
+        "WHERE kind='facts' AND deleted_at IS NULL AND data->>'farm_id'=%s AND (data->>'temporal_basis'='static' OR "
+        "(data->>'temporal_basis'='campaign_year' AND data->>'period'=%s)) AND data->>'key'=ANY(%s) ORDER BY created_at DESC,id DESC LIMIT 10001",
         (farm["id"], str(year), list(seen))).fetchall())
     if len(existing) > 10000:
         raise ApiError(422, "profile_review_too_large", "Review the existing activity answers before creating more than 10,000 profile records for this year.")
@@ -663,6 +787,7 @@ def propose_profile(conn, session, farm_id, year, expected_farm_revision, answer
     for data in normalized:
         identical = next((row for row in existing if row["data"].get("key") == data["key"]
                           and physical_identity(row["data"]) is None and _same(row["data"].get("value"), data["value"])
+                          and (not data.get("supersedes_id") or row["data"].get("supersedes_id") == data["supersedes_id"])
                           and row["data"].get("review_status") in ("proposed", "confirmed")), None)
         if identical:
             if identical["data"]["review_status"] == "proposed":
@@ -671,6 +796,8 @@ def propose_profile(conn, session, farm_id, year, expected_farm_revision, answer
             else:
                 notices.append(f"This exact answer for {data['label']} is already confirmed for {year}; no duplicate was created.")
             continue
+        if not data.get("supersedes_id") and any(row["data"].get("key") == data["key"] and row["data"].get("review_status") == "confirmed" and physical_identity(row["data"]) is None for row in existing):
+            raise ApiError(409, "profile_correction_required", "Select the confirmed answer and its revision before proposing a different value.", {"key": data["key"]})
         facts.append(insert_record(conn, "facts", validate_data(conn, "facts", data)))
     notices.append("Saved answers are proposals, not confirmed facts. Read each answer and use the separate confirmation action; conflicting answers are not silently replaced.")
     return {"facts": facts, "notices": notices}
@@ -686,6 +813,8 @@ class ChecklistSelection(StrictModel):
 class ProfileAnswer(StrictModel):
     key: str = Field(min_length=1, max_length=100)
     value: Any
+    supersedes_id: str | None = None
+    expected_source_revision: int | None = Field(default=None, ge=1, strict=True)
 
 
 class ProfileAnswers(StrictModel):

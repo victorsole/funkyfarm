@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -30,7 +31,7 @@ import org.json.JSONObject
 
 @Composable private fun FarmFields(model: FarmModel, farm: JSONObject) {
     val id = farm.getString("id"); val key = "fields:$id"; val proposalsKey = "field-proposals:$id"
-    LaunchedEffect(id, farm.optInt("revision")) { model.loadExtra(key, "/farms/$id/fields"); model.loadExtra(proposalsKey, "/farms/$id/field-proposals") }
+    LaunchedEffect(id, farm.optInt("revision"), model.serverVersion) { model.loadExtra(key, "/farms/$id/fields"); model.loadExtra(proposalsKey, "/farms/$id/field-proposals") }
     val response = model.extras[key]
     val unavailable = key in model.privateUnavailable
     val fields = if (unavailable) emptyList() else response?.optJSONArray("items")?.objects() ?: farm.data().optJSONArray("parcels")?.objects().orEmpty()
@@ -88,21 +89,56 @@ import org.json.JSONObject
 }
 
 @Composable private fun FieldProposalReview(model: FarmModel, farm: JSONObject, proposal: JSONObject) {
-    val data = proposal.data(); val parcel = data.optJSONObject("parcel") ?: return
-    if (data.optString("status") in listOf("approved", "rejected")) return
-    var checked by remember(proposal.optString("id"), proposal.optInt("revision")) { mutableStateOf(false) }
-    var overlap by remember { mutableStateOf(false) }
+    val data = proposal.data()
+    if (data.optString("status") != "proposed") return
+    val proposed = data.optJSONArray("parcels")?.objects() ?: listOfNotNull(data.optJSONObject("parcel"))
+    val previous = data.optJSONArray("previous_parcels")?.objects() ?: listOfNotNull(data.optJSONObject("previous_parcel"))
+    val operation = data.optString("operation", "edit")
+    val retiring = operation in listOf("split", "merge")
+    var reviewed by remember(proposal.optString("id"), proposal.optInt("revision"), farm.optInt("revision")) { mutableStateOf<Set<String>>(emptySet()) }
+    var overlap by remember(proposal.optString("id"), proposal.optInt("revision"), farm.optInt("revision")) { mutableStateOf(false) }
+    val required = proposed.indices.map { "new:$it" } + previous.indices.map { "previous:$it" }
+    val baselineMatches = data.optInt("base_farm_revision") == farm.getInt("revision")
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(parcel.optString("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("Proposed change · ${data.optString("note")}")
-        FieldOutline(parcel)
-        if (parcel.optString("crop").isNotBlank()) Text("Crop: ${parcel.optString("crop")}")
+        Text("Review the whole ${operation.replace('_', ' ')} proposal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(data.optString("note"))
+        Text("${proposed.size} proposed field(s) · ${previous.size} prior field(s). " + if (retiring) "All prior fields shown below will be retired, not deleted, and linked to the proposed replacements." else "The proposed information replaces the reviewed field revision; retained history remains available.")
+        previous.forEachIndexed { index, parcel ->
+            FieldReviewParcel(parcel, if (retiring) "Prior field ${index + 1} · will be retired" else "Prior field ${index + 1}")
+            val reviewKey = "previous:$index"
+            Row { Checkbox(reviewKey in reviewed, { checked -> reviewed = if (checked) reviewed + reviewKey else reviewed - reviewKey }); Text(if (retiring) "I checked this prior field and its retirement." else "I checked this previous field record.", Modifier.weight(1f).padding(top = 12.dp)) }
+        }
+        proposed.forEachIndexed { index, parcel ->
+            FieldReviewParcel(parcel, "Proposed field ${index + 1}")
+            val reviewKey = "new:$index"
+            Row { Checkbox(reviewKey in reviewed, { checked -> reviewed = if (checked) reviewed + reviewKey else reviewed - reviewKey }); Text("I checked this proposed field, its boundary and details.", Modifier.weight(1f).padding(top = 12.dp)) }
+        }
+        data.optJSONObject("reference")?.let { reference -> FieldReviewParcel(reference, "Supplied comparison reference · not an official update") }
+        var comparison by remember(proposal.optString("id"), proposal.optInt("revision")) { mutableStateOf(false) }
+        TextButton(onClick = { comparison = !comparison }) { Text(if (comparison) "Hide comparison and lineage" else "Show comparison and retained lineage") }
+        if (comparison) SelectionContainer { Text(obj("comparison" to data.opt("comparison"), "lineage" to data.opt("lineage"), "split_line" to data.opt("split_line")).toString(2), style = MaterialTheme.typography.bodySmall) }
         val warnings = data.optJSONArray("warnings") ?: data.optJSONObject("geometry_summary")?.optJSONArray("warnings") ?: JSONArray()
         repeat(warnings.length()) { Text(warnings.get(it).toString(), color = MaterialTheme.colorScheme.error) }
-        Row { Checkbox(checked, { checked = it }); Text("I checked this field and its proposed boundary or location.", Modifier.weight(1f).padding(top = 12.dp)) }
+        data.optJSONArray("overlapping_fields")?.objects()?.forEach { other -> Text("Reported overlap: ${other.optString("name")} · ${other.optString("id")}", style = MaterialTheme.typography.bodySmall) }
         if (warnings.toString().contains("overlap", true)) Row { Checkbox(overlap, { overlap = it }); Text("I checked and accept the reported overlap.", Modifier.weight(1f).padding(top = 12.dp)) }
-        Button(onClick = { model.enqueue("/field-proposals/${proposal.getString("id")}/approve", obj("expected_revision" to proposal.getInt("revision"), "expected_farm_revision" to farm.getInt("revision"), "note" to "Field details explicitly checked in Android", "accept_overlap" to overlap)) }, enabled = checked && !model.busy && (!warnings.toString().contains("overlap", true) || overlap)) { Text("Approve this field change") }
+        if (!baselineMatches) Text("The farm changed after this proposal. Refresh and prepare a new proposal against the current farm before approving.", color = MaterialTheme.colorScheme.error)
+        if (retiring && previous.isEmpty()) Text("The prior fields are missing from this proposal. Reload it before reviewing the replacements.", color = MaterialTheme.colorScheme.error)
+        Button(onClick = { model.enqueue("/field-proposals/${proposal.getString("id")}/approve", obj("expected_revision" to proposal.getInt("revision"), "expected_farm_revision" to farm.getInt("revision"), "note" to "Every proposed and prior field, including any retirement, explicitly checked in Android", "accept_overlap" to overlap)) }, enabled = baselineMatches && proposed.isNotEmpty() && (!retiring || previous.isNotEmpty()) && required.all { it in reviewed } && !model.busy && (!warnings.toString().contains("overlap", true) || overlap)) { Text("Approve all reviewed field changes") }
     } }
+}
+
+@Composable private fun FieldReviewParcel(parcel: JSONObject, heading: String) {
+    Text(heading, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Text(parcel.optString("name").ifBlank { "Supplied reference" })
+    FieldOutline(parcel)
+    parcel.keys().asSequence().filter { it !in listOf("name", "geometry") }.forEach { key ->
+        SelectionContainer { Text("${key.replace('_', ' ')}: ${parcel.get(key)}", style = MaterialTheme.typography.bodySmall) }
+    }
+    var geometry by remember(parcel.toString()) { mutableStateOf(false) }
+    if (parcel.optJSONObject("geometry") != null) {
+        TextButton(onClick = { geometry = !geometry }) { Text(if (geometry) "Hide source coordinates" else "Show source coordinates") }
+        if (geometry) SelectionContainer { Text(parcel.getJSONObject("geometry").toString(2), style = MaterialTheme.typography.bodySmall) }
+    }
 }
 
 private fun polygonRings(geometry: JSONObject): List<List<Pair<Double, Double>>> {

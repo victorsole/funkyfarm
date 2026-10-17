@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
     val farm = farms.find { it.optString("id") == farmId }
     val country = farm?.data()?.optString("country").orEmpty()
     val capabilitiesKey = "capabilities:$country"
-    LaunchedEffect(section, country) {
+    LaunchedEffect(section, country, farmId) {
         if (section == "connections" && country.isNotBlank()) {
             model.loadExtra(capabilitiesKey, "/connections/capabilities?country=$country")
             model.loadExtra("connections:$farmId", "/connections?farm_id=$farmId")

@@ -94,7 +94,13 @@ private val workTypes = listOf(
     var draft by remember(key) { mutableStateOf(model.draft(key, initial)) }
     var acknowledged by remember { mutableStateOf<Set<String>>(emptySet()) }
     var error by remember { mutableStateOf("") }
-    fun update(name: String, value: Any) { draft = JSONObject(draft.toString()).put(name, value); model.saveDraft(key, draft); model.clearCheck(key); acknowledged = emptySet() }
+    fun update(name: String, value: Any) {
+        draft = JSONObject(draft.toString()).apply {
+            if (name == "farm_id" && opt("farm_id") != value) { put("parcel_id", JSONObject.NULL); remove("parcel"); remove("field_id"); remove("group_id") }
+            put(name, value)
+        }
+        model.saveDraft(key, draft); model.clearCheck(key); acknowledged = emptySet()
+    }
     fun body(): JSONObject {
         require(draft.optString("farm_id").isNotBlank()) { "Choose your farm." }; LocalDate.parse(draft.optString("date"))
         val data = obj("farm_id" to draft.getString("farm_id"), "title" to draft.optString("title"), "date" to draft.optString("date"), "temporal_basis" to "calendar_date", "period" to draft.optString("date"), "notes" to draft.optString("notes"))
@@ -104,7 +110,7 @@ private val workTypes = listOf(
         numericFields.forEach { name -> if (draft.optString(name).isNotBlank() && draft.opt(name) != JSONObject.NULL) { val raw = draft.getString(name); require(raw.matches(Regex("[+-]?\\d+(?:[.,]\\d+)?"))) { "Enter the number without thousands separators." }; data.put(name, raw) } else if (record?.data()?.has(name) == true) data.put(name, JSONObject.NULL) }
         if (draft.optString("quantity").isNotBlank() && draft.opt("quantity") != JSONObject.NULL) { require(draft.optString("unit").isNotBlank()) { "Choose the unit printed on your source." }; data.put("unit", draft.getString("unit")) } else if (record != null) data.put("unit", draft.optString("unit").takeUnless { it == "null" }?.ifBlank { null } ?: JSONObject.NULL)
         val referenceFields = if (financial) listOf("document_id", "invoice_number", if (kind == "sales") "buyer" else "supplier") else listOf("parcel_id", "document_id", "product", "operator")
-        referenceFields.forEach { name -> if (draft.optString(name).isNotBlank() && draft.opt(name) != JSONObject.NULL) data.put(name, draft.getString(name)) else if (record != null && draft.has(name)) data.put(name, if (name == "document_id" || draft.opt(name) == JSONObject.NULL) JSONObject.NULL else "") }
+        referenceFields.forEach { name -> if (draft.optString(name).isNotBlank() && draft.opt(name) != JSONObject.NULL) data.put(name, draft.getString(name)) else if (record != null && draft.has(name)) data.put(name, if (name in listOf("document_id", "parcel_id") || draft.opt(name) == JSONObject.NULL) JSONObject.NULL else "") }
         if (financial) data.put("credit", draft.optBoolean("credit"))
         if (type == "pesticide_application") appendTreatmentDetails(data, draft)
         return obj("kind" to kind, "data" to data).apply { if (record != null) put("record_id", record.getString("id")).put("expected_revision", draft.getInt("expected_revision")) }
@@ -116,7 +122,7 @@ private val workTypes = listOf(
         OutlinedTextField(draft.optString("title"), { update("title", it) }, label = { Text("A short name for this record") }, modifier = Modifier.fillMaxWidth())
         if (kind == "operations") {
             val farm = model.records["farms"].orEmpty().find { it.optString("id") == draft.optString("farm_id") }
-            val parcels = farm?.data()?.optJSONArray("parcels")?.objects().orEmpty().filter { it.optString("id").isNotBlank() }
+            val parcels = farm?.data()?.optJSONArray("parcels")?.objects().orEmpty().filter { it.optString("id").isNotBlank() && it.opt("active") != false }
             Choice("Which field? · optional", draft.optString("parcel_id"), listOf("" to "Whole farm / no field selected") + parcels.map { it.optString("id") to it.optString("name") }) { update("parcel_id", it) }
         }
         OutlinedTextField(draft.optString("quantity"), { update("quantity", it) }, label = { Text(if (type.startsWith("animal_")) "How many animals?" else if (financial) "Quantity printed on the source · optional" else "How much? · optional") }, modifier = Modifier.fillMaxWidth())

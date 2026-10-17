@@ -88,6 +88,8 @@ struct PendingEdit: Codable, Identifiable {
     let mimeType: String?
     let farmID: String?
     let reviewContext: [String: JSONValue]?
+    // The exact reviewed wire request is persisted before its first send and never regenerated on retry.
+    var approvedRequest: [String: JSONValue]? = nil
     var state: QueueState
     var problem: String?
     let createdAt: Date

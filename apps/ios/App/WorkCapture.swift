@@ -113,6 +113,7 @@ struct WorkCaptureView: View {
     @State private var unit = ""
     @State private var hours = ""
     @State private var parcel = ""
+    @State private var parcelID = ""
     @State private var product = ""
     @State private var crop = ""
     @State private var note = ""
@@ -151,6 +152,8 @@ struct WorkCaptureView: View {
             value["type"] = .string(type); value["quantity"] = quantity.isEmpty ? .null : .string(quantity)
             value["unit"] = unit.isEmpty ? .null : .string(unit)
             value["parcel"] = parcel.isEmpty ? .null : .string(parcel)
+            value["parcel_id"] = parcelID.isEmpty ? .null : .string(parcelID)
+            value.removeValue(forKey: "field_id"); value.removeValue(forKey: "group_id")
             value["product"] = product.isEmpty ? .null : .string(product)
             value["crop"] = crop.isEmpty ? .null : .string(crop)
             if !hours.isEmpty { value["hours"] = .string(hours) } else { value.removeValue(forKey: "hours") }
@@ -181,7 +184,9 @@ struct WorkCaptureView: View {
         Form {
             Section("What did you record?") {
                 Picker("Record type", selection: $kind) { Text("Work or observation").tag("operations"); Text("Purchase or purchase credit").tag("purchases"); Text("Sale or sales credit").tag("sales") }.disabled(existing != nil || deviceDraft != nil)
-                FarmPicker(selected: $farm)
+                FarmPicker(selected: Binding(get: { farm }, set: { selected in
+                    if selected != farm { farm = selected; parcelID = ""; parcel = "" }
+                }))
                 TextField("Short description", text: $title)
                 DatePicker("Actual recorded date", selection: $date, displayedComponents: .date)
                 Toggle("I checked this actual date against the record", isOn: $dateReviewed)
@@ -190,8 +195,17 @@ struct WorkCaptureView: View {
             }
             if kind == "operations" {
                 Section("Place, quantity and time") {
-                    TextField("Field or site name", text: $parcel)
-                    if !fields.isEmpty { Picker("Use a saved field", selection: $parcel) { Text("Choose field").tag(""); ForEach(Array(fields.enumerated()), id: \.offset) { _, field in Text(field["name"]?.text ?? "Unnamed field").tag(field["name"]?.text ?? "") } } }
+                    TextField("Field or site name as recorded", text: Binding(get: { parcel }, set: { parcel = $0; parcelID = "" }))
+                    if !fields.isEmpty {
+                        Picker("Link a saved field", selection: Binding(get: { parcelID }, set: { selected in
+                            parcelID = selected
+                            parcel = fields.first(where: { $0["id"]?.text == selected })?["name"]?.text ?? ""
+                        })) {
+                            Text("No saved field linked").tag("")
+                            ForEach(Array(fields.enumerated()), id: \.offset) { _, field in Text(field["name"]?.text ?? "Unnamed field").tag(field["id"]?.text ?? "") }
+                        }
+                    }
+                    Text(parcelID.isEmpty ? "A typed name is a source label, not a link to a saved boundary." : "This record is linked to the selected saved field. Editing its name here removes that link.").font(.footnote).foregroundStyle(.secondary)
                     TextField("Recorded quantity", text: $quantity).keyboardType(.numbersAndPunctuation)
                     TextField("Recorded unit", text: $unit)
                     if type == "work" { TextField("Hours worked", text: $hours).keyboardType(.decimalPad) }
@@ -254,7 +268,12 @@ struct WorkCaptureView: View {
             .task(id: farm) {
                 fields = []
                 guard !farm.isEmpty, store.sessionVerified else { return }
-                do { fields = try await store.scopedValue("/farms/\(farm)/fields").object["items"]?.array.map(\.object) ?? [] }
+                let selectedFarm = farm
+                do {
+                    let loadedFields = try await store.scopedValue("/farms/\(selectedFarm)/fields").object["items"]?.array.map(\.object) ?? []
+                    guard !Task.isCancelled, farm == selectedFarm else { return }
+                    fields = loadedFields.filter { $0["active"] != .bool(false) && !($0["id"]?.text ?? "").isEmpty }
+                }
                 catch { /* A typed site name remains a valid manual input; field service errors are not treated as a saved boundary. */ }
             }
     }
@@ -274,6 +293,7 @@ struct WorkCaptureView: View {
         if let day = value["date"]?.text, let parsed = formatter.date(from: day) { date = parsed }
         func editable(_ key: String) -> String { guard let raw = value[key], raw != .null else { return "" }; if case .number(let number) = raw { return String(number) }; return raw.text }
         quantity = editable("quantity"); unit = editable("unit"); hours = editable("hours"); parcel = editable("parcel"); product = editable("product"); crop = editable("crop"); note = editable("note")
+        parcelID = editable("parcel_id"); if parcelID.isEmpty { parcelID = editable("field_id") }; if parcelID.isEmpty { parcelID = editable("group_id") }
         amount = editable("amount"); category = editable("category"); supplier = editable("supplier"); buyer = editable("buyer"); currency = editable("currency"); taxAmount = editable("tax_amount"); taxRate = editable("tax_rate"); invoiceNumber = editable("invoice_number"); documentID = editable("document_id").isEmpty ? initialDocumentID ?? "" : editable("document_id"); credit = value["credit"] == .bool(true)
         pesticideDetails = value.filter { PesticideRecordFields.keys.contains($0.key) && $0.value != .null }
     }

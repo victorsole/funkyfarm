@@ -194,6 +194,10 @@ def test_source_backed_ppp_checks_ask_for_actual_use_and_leave_national_timing_u
         assert Decimal(str(captured["data"]["dose"])) == Decimal(dose) and Decimal(str(captured["data"]["treated_size"])) == Decimal(size)
         reviewed = owner.post(f"/operations/{captured['id']}/review", json={"expected_revision": captured["revision"], "decision": "confirmed", "note": "Read the actual dose and corresponding treated field/facility/seed amount; no total quantity or national acceptance was inferred."}).json()
         assert reviewed["data"]["quantity"] is None and reviewed["data"]["treated_unit"] == size_unit
+    same_day_peer = owner.create("operations", {**work_data, "title": "A second distinct 14 June treatment", "date": "2026-06-14", "period": "2026-06-14",
+        "quantity": 0.75, "product_authorisation": "1234567", "dose": 0.75, "dose_unit": "L/ha", "treated_size": 1, "treated_unit": "ha"})
+    same_day_peer = owner.post(f"/operations/{same_day_peer['id']}/review", json={"expected_revision": same_day_peer["revision"], "decision": "confirmed",
+        "note": "A separate actual treatment on the same field and day; its dose is not evidence for the first visit."}).json()
     request = owner.create("requests", {"farm_id": farm["id"], "title": "Fictional request with a recorded deadline", "recipient": "Fictional office", "country": "SK", "reporting_year": 2026, "deadline": "2026-11-17", "pack_id": "farm-evidence", "requirements": [], "status": "draft"})
     deadlines = owner.get(f"/compliance/farms/{farm['id']}").json()["deadlines"]
     assert any(item.get("request_id") == request["id"] and item["date"] == "2026-11-17" and item["status"] == "recorded" for item in deadlines)
@@ -206,6 +210,142 @@ def test_source_backed_ppp_checks_ask_for_actual_use_and_leave_national_timing_u
     assert all(task["data"]["status"] == "open" and task["data"]["due_date"] is None for task in drafts["tasks"])
     repeated = owner.post(f"/compliance/farms/{farm['id']}/checklist", json=checklist_body).json()
     assert not repeated["checklists"] and not repeated["tasks"] and repeated["skipped"]
+
+    # Generated action keys describe issues, not fictitious fact keys. Review
+    # the real dated records, and bind completion to this action's live evidence.
+    checklist = drafts["checklists"][0]
+    review_path = f"/checklists/{checklist['id']}/review"
+    review = owner.get(review_path).json()
+    outsider.get(review_path, expected=404)
+    unresolved = next(item for item in review["items"] if item["mode"] == "evidence" and not item["can_complete"]
+        and any(issue["code"] == "missing_field" and "dose" in issue["message"].lower() for issue in item["issues"]))
+    unresolved_body = {"expected_revision": checklist["revision"], "expected_input_fingerprint": review["expected_input_fingerprint"],
+        "note": "Reading a different visit cannot resolve the missing details on 14 June."}
+    denied = owner.post(f"/checklists/{checklist['id']}/items/{unresolved['key']}/complete", expected=422, json=unresolved_body).json()
+    assert denied["error"]["code"] == "checklist_issue_unresolved"
+    linked_task = next(task for task in drafts["tasks"] if task["data"]["checklist_item_key"] == unresolved["key"])
+    assert owner.post(f"/tasks/{linked_task['id']}/complete", expected=422, json={"expected_revision": linked_task["revision"], "note": "This action is not yet reviewed."}).json()["error"]["code"] == "checklist_item_incomplete"
+
+    # Resolve the particular 14 June visit using independently reviewed details
+    # for that same day and field, not the already complete 11 June event.
+    incomplete_work = owner.get(f"/operations/{incomplete_work['id']}").json()
+    event_source = {"record_id": incomplete_work["id"], "record_kind": "operations", "revision": incomplete_work["revision"]}
+    for key, value, unit in (("product_authorisation", "1234567", None), ("treated_area", "1.00", "ha")):
+        confirm(owner, owner.create("facts", {**fact_data(farm["id"], key=key, value=value, unit=unit, basis="calendar_date", period="2026-06-14"),
+            "parcel_id": field_id, "sources": [{**event_source, "note": "Authored 14 June details explicitly tied to the first actual treatment, not just its shared day and field."}]}))
+    wrong_event_dose = confirm(owner, owner.create("facts", {**fact_data(farm["id"], key="dose", value="0.75", unit="L/ha", basis="calendar_date", period="2026-06-14"),
+        "parcel_id": field_id, "sources": [{"record_id": same_day_peer["id"], "record_kind": "operations", "revision": same_day_peer["revision"], "note": "Dose belongs to the second treatment only."}]}))
+    ambiguous_dose = confirm(owner, owner.create("facts", {**fact_data(farm["id"], key="dose", value="0.90", unit="L/ha", basis="calendar_date", period="2026-06-14"),
+        "parcel_id": field_id, "sources": [{"note": "The notebook has two visits on this day; this loose dose has no identified event and cannot be assigned automatically."}]}))
+    blocked = owner.get(review_path).json()
+    blocked_item = next(item for item in blocked["items"] if item["key"] == unresolved["key"])
+    assert blocked_item["can_complete"] is False
+    assert {wrong_event_dose["id"], ambiguous_dose["id"]}.isdisjoint({r["id"] for r in blocked_item["evidence"]})
+    assert owner.post(f"/checklists/{checklist['id']}/items/{unresolved['key']}/complete", expected=422, json={**unresolved_body,
+        "expected_input_fingerprint": blocked["expected_input_fingerprint"], "evidence_fact_ids": [wrong_event_dose["id"], ambiguous_dose["id"]],
+        "evidence_revisions": {wrong_event_dose["id"]: wrong_event_dose["revision"], ambiguous_dose["id"]: ambiguous_dose["revision"]}}).json()["error"]["code"] == "checklist_issue_unresolved"
+    document = owner.post("/documents", expected=201, files={"file": ("authored-14-june-dose.txt", b"First treatment, 14 June 2026: dose 0.50 L/ha. Second treatment: 0.75 L/ha.\n", "text/plain")}, data={"farm_id": farm["id"]}).json()
+    cited_dose = confirm(owner, owner.create("facts", {**fact_data(farm["id"], key="dose", value="0.50", unit="L/ha", basis="calendar_date", period="2026-06-14"),
+        "parcel_id": field_id, "sources": [event_source, {"document_id": document["id"], "document_revision": document["revision"], "note": "Read the original first-treatment dose, not the second visit."}]}))
+    peer_citation = confirm(owner, owner.create("facts", {**fact_data(farm["id"], key="dose", value="0.75", unit="L/ha", basis="calendar_date", period="2026-06-14"),
+        "parcel_id": field_id, "sources": [{"record_id": same_day_peer["id"], "record_kind": "operations", "revision": same_day_peer["revision"]},
+            {"document_id": document["id"], "document_revision": document["revision"], "note": "Separate second-treatment citation. Its later source issue must not be assigned to the first treatment."}]}))
+    sound = owner.get(review_path).json()
+    assert next(item for item in sound["items"] if item["key"] == unresolved["key"])["can_complete"] is True
+    document = owner.post(f"/documents/{document['id']}/extract", json={"expected_revision": document["revision"], "document_type": "notebook"}).json()
+    broken = owner.get(review_path).json()
+    broken_item = next(item for item in broken["items"] if item["key"] == unresolved["key"])
+    assert broken_item["can_complete"] is False and cited_dose["id"] not in {r["id"] for r in broken_item["evidence"]}
+    assert broken_item["source_integrity_issues"], "A fresh fact revision/fingerprint cannot rehabilitate its stale cited document."
+    assert owner.post(f"/checklists/{checklist['id']}/items/{unresolved['key']}/complete", expected=422, json={**unresolved_body,
+        "expected_input_fingerprint": broken["expected_input_fingerprint"], "evidence_fact_ids": [cited_dose["id"]],
+        "evidence_operation_ids": [incomplete_work["id"]], "evidence_document_ids": [document["id"]],
+        "evidence_revisions": {cited_dose["id"]: cited_dose["revision"], incomplete_work["id"]: incomplete_work["revision"], document["id"]: document["revision"]}}).json()["error"]["code"] == "checklist_issue_unresolved"
+    owner.post(f"/facts/{cited_dose['id']}/review", json={"expected_revision": cited_dose["revision"], "decision": "rejected", "note": "Original citation is stale after re-extraction; retain it and independently review a current citation."})
+    confirm(owner, owner.create("facts", {**fact_data(farm["id"], key="dose", value="0.50", unit="L/ha", basis="calendar_date", period="2026-06-14"),
+        "parcel_id": field_id, "sources": [event_source, {"document_id": document["id"], "document_revision": document["revision"], "note": "Explicitly re-read the first actual treatment against the current document revision."}]}))
+    stale = owner.post(f"/checklists/{checklist['id']}/items/{unresolved['key']}/complete", expected=409, json=unresolved_body).json()
+    assert stale["error"]["code"] == "checklist_context_changed"
+    review = owner.get(review_path).json()
+    evidence_item = next(item for item in review["items"] if item["key"] == unresolved["key"])
+    assert evidence_item["can_complete"] is True and evidence_item["evidence"]
+    assert peer_citation["id"] not in {r["id"] for r in evidence_item["evidence"]}, "A different event's stale source must neither resolve nor block this sound event's own closure."
+    eligible = [record for record in evidence_item["evidence"] if record["kind"] in {"facts", "operations"}]
+    evidence_body = {"expected_revision": checklist["revision"], "expected_input_fingerprint": review["expected_input_fingerprint"],
+        "note": "Compared the confirmed notebook entries for this farm's actual 2026 treatment dates.",
+        "evidence_fact_ids": [r["id"] for r in eligible if r["kind"] == "facts"],
+        "evidence_operation_ids": [r["id"] for r in eligible if r["kind"] == "operations"],
+        "evidence_revisions": {r["id"]: r["revision"] for r in eligible}}
+    complete_path = f"/checklists/{checklist['id']}/items/{evidence_item['key']}/complete"
+    other_farm = owner.create("farms", farm_data("Same workspace but unrelated evidence farm"))
+    invalid_evidence = [confirm(owner, owner.create("facts", fact_data(other_farm["id"], key="dose", value="0.50", unit="L/ha", basis="calendar_date", period="2026-06-11"))),
+        owner.create("facts", fact_data(farm["id"], key="dose", value="0.25", unit="L/ha", basis="calendar_date", period="2026-06-20")),
+        confirm(owner, owner.create("facts", fact_data(farm["id"], key="dose", value="0.50", unit="L/ha", basis="calendar_date", period="2025-06-11")))]
+    for invalid in invalid_evidence:
+        live = owner.get(review_path).json()
+        rejected = owner.post(complete_path, expected=409, json={**evidence_body, "expected_input_fingerprint": live["expected_input_fingerprint"],
+            "evidence_fact_ids": [invalid["id"]], "evidence_operation_ids": [], "evidence_revisions": {invalid["id"]: invalid["revision"]}}).json()
+        assert rejected["error"]["code"] == "evidence_context_changed"
+    live = owner.get(review_path).json()
+    evidence_body["expected_input_fingerprint"] = live["expected_input_fingerprint"]
+    outsider.post(complete_path, expected=404, json=evidence_body)
+    assert owner.post(complete_path, expected=409, json={**evidence_body, "evidence_revisions": {}}).json()["error"]["code"] == "evidence_context_changed"
+    checklist = owner.post(complete_path, json=evidence_body).json()
+    completed = next(item for item in checklist["data"]["items"] if item["key"] == evidence_item["key"])
+    assert completed["done"] is True and completed["status"] == "evidence_reviewed"
+    assert owner.post(f"/tasks/{linked_task['id']}/complete", json={"expected_revision": linked_task["revision"], "note": "Reviewed this task's own linked action, not every unrelated checklist step."}).json()["data"]["status"] == "done"
+    assert any(not item["done"] for item in checklist["data"]["items"]), "A task's own item can finish while unrelated actions remain open."
+
+    live = owner.get(review_path).json()
+    human = next(item for item in live["items"] if item["mode"] == "human_review")
+    human_path = f"/checklists/{checklist['id']}/items/{human['key']}/complete"
+    human_body = {"expected_revision": checklist["revision"], "expected_input_fingerprint": live["expected_input_fingerprint"], "note": "Read the cited source limits; the national deadline remains unknown, not certified."}
+    assert owner.post(human_path, expected=422, json=human_body).json()["error"]["code"] == "explicit_review_required"
+    checklist = owner.post(human_path, json={**human_body, "review_acknowledged": True}).json()
+    assert next(i for i in checklist["data"]["items"] if i["key"] == human["key"])["status"] == "review_recorded"
+    still_unknown = next(rule for rule in owner.get(f"/compliance/farms/{farm['id']}").json()["obligations"] if rule["id"] == "eu-ppp-surface-use")
+    assert still_unknown["deadline"]["date"] is None and still_unknown["status"] != "ready_for_review"
+    prior_revision = checklist["revision"]
+    withdrawn = owner.get(f"/operations/{incomplete_work['id']}").json()
+    owner.post(f"/operations/{withdrawn['id']}/review", json={"expected_revision": withdrawn["revision"], "decision": "rejected",
+        "note": "Farmer withdrew this 14 June transcription after review. Preserve history and explicitly reassess its follow-ups; 11 June is not a substitute."})
+    current_review = owner.get(review_path).json()
+    old_action = next(item for item in current_review["items"] if item["key"] == evidence_item["key"])
+    assert current_review["needs_refresh"] is True and old_action["requires_refresh"] is True
+    assert old_action["can_complete"] is False and "event_context_changed" in {issue["code"] for issue in old_action["issues"]}
+    assert owner.post(complete_path, expected=422, json={**evidence_body, "expected_revision": prior_revision,
+        "expected_input_fingerprint": current_review["expected_input_fingerprint"]}).json()["error"]["code"] == "checklist_issue_unresolved"
+    assert owner.post(f"/checklists/{checklist['id']}/refresh", expected=409, json={"expected_revision": prior_revision,
+        "expected_input_fingerprint": "0" * 64}).json()["error"]["code"] == "checklist_context_changed"
+    refreshed = owner.post(f"/checklists/{checklist['id']}/refresh", json={"expected_revision": prior_revision,
+        "expected_input_fingerprint": current_review["expected_input_fingerprint"]}).json()
+    assert refreshed["revision"] == prior_revision + 1 and all(not item["done"] for item in refreshed["data"]["items"])
+    history = owner.get(f"/checklists/{checklist['id']}/history").json()["items"]
+    assert any(h["revision"] == prior_revision and any(i.get("done") for i in h["data"]["items"]) for h in history)
+    owner.post(f"/checklists/{checklist['id']}/refresh", expected=409, json={"expected_revision": prior_revision,
+        "expected_input_fingerprint": current_review["expected_input_fingerprint"]})
+    refreshed_review = owner.get(review_path).json()
+    earlier = next(item for item in refreshed_review["items"] if item["key"] == "earlier-follow-ups")
+    assert earlier["mode"] == "human_review" and earlier["can_complete"] is True
+    reviewed_followup = owner.post(f"/checklists/{checklist['id']}/items/{earlier['key']}/complete", json={"expected_revision": refreshed["revision"],
+        "expected_input_fingerprint": refreshed_review["expected_input_fingerprint"], "review_acknowledged": True,
+        "note": "Reviewed withdrawn-event follow-ups against current evidence; this review does not establish that the 14 June event occurred."}).json()
+    assert next(i for i in reviewed_followup["data"]["items"] if i["key"] == earlier["key"])["status"] == "review_recorded"
+
+    # Ordinary pack/manual checklists keep strict real fact keys, review, farm
+    # and actual ISO-date year validation; an old whole-checklist task is strict.
+    legacy = owner.create("checklists", {"farm_id": farm["id"], "title": "Actual day evidence review", "reporting_year": 2026,
+        "items": [{"key": "dose", "label": "Dose recorded on the actual application day", "done": False}]})
+    whole_task = owner.create("tasks", {"farm_id": farm["id"], "title": "Older whole checklist follow-up", "checklist_id": legacy["id"]})
+    owner.post(f"/tasks/{whole_task['id']}/complete", expected=422, json={"expected_revision": whole_task["revision"], "note": "The whole linked checklist is still incomplete."})
+    for invalid, error in zip(invalid_evidence, ("invalid_evidence", "invalid_evidence", "wrong_period")):
+        result = owner.post(f"/checklists/{legacy['id']}/items/dose/complete", expected=422, json={"expected_revision": legacy["revision"], "evidence_fact_ids": [invalid["id"]]}).json()
+        assert result["error"]["code"] == error
+    actual_dose = next(r for r in owner.get("/facts").json()["items"] if r["data"].get("key") == "dose"
+        and r["data"].get("period") == "2026-06-11" and r["data"].get("farm_id") == farm["id"] and r["data"].get("review_status") == "confirmed")
+    legacy = owner.post(f"/checklists/{legacy['id']}/items/dose/complete", json={"expected_revision": legacy["revision"], "evidence_fact_ids": [actual_dose["id"]]}).json()
+    assert legacy["data"]["items"][0]["evidence_fact_ids"] == [actual_dose["id"]], "Actual-day facts in 2026 must be eligible without converting the date into a year string."
+
     before = owner.get(f"/requests/{request['id']}/checks", params={"selected_fact_ids": ""}).json()
     assert before["status"] != "ready_for_review" and before["issues"]
     assert all(issue["fix_url"].startswith("/app/") for issue in before["issues"])
@@ -218,6 +358,31 @@ def test_source_backed_ppp_checks_ask_for_actual_use_and_leave_national_timing_u
     assert owner.get(f"/requests/{request['id']}").json()["data"]["status"] == "draft", "Preflight must not approve, file or mutate the request."
     outsider.get(f"/compliance/farms/{farm['id']}", expected=404)
     outsider.get(f"/requests/{request['id']}/checks", expected=404)
+    # Correct native Boolean and multi-choice answers through explicit proposals
+    # and review; serializing them as prose must never change applicability.
+    profile_body["expected_farm_revision"] = farm["revision"]
+    professional = owner.get(f"/facts/{professional['id']}").json()
+    use_types = owner.get(f"/facts/{use_types['id']}").json()
+    for source, value in ((professional, False), (use_types, ["closed_space"])):
+        answer = {"key": source["data"]["key"], "value": value}
+        assert owner.post(profile_path, expected=409, json={**profile_body, "answers": [answer]}).json()["error"]["code"] == "profile_correction_required"
+        owner.post(profile_path, expected=409, json={**profile_body, "answers": [{**answer, "supersedes_id": source["id"], "expected_source_revision": source["revision"] - 1}]})
+        proposal = owner.post(profile_path, json={**profile_body, "answers": [{**answer, "supersedes_id": source["id"], "expected_source_revision": source["revision"]}]}).json()["facts"][0]
+        assert proposal["data"]["value"] == value and type(proposal["data"]["value"]) is type(value)
+        assert proposal["data"]["review_status"] == "proposed" and proposal["data"]["supersedes_id"] == source["id"]
+        assert owner.get(f"/facts/{source['id']}").json()["data"]["review_status"] == "confirmed"
+        typed = next(q for q in owner.get(f"/compliance/farms/{farm['id']}").json()["profile_review"] if q["key"] == answer["key"])
+        assert any(item["id"] == source["id"] and item["value"] == source["data"]["value"] for item in typed["confirmed"])
+        proposal = confirm(owner, proposal, "Corrected the current activity answer against the authored farm notebook; keep the previous review in history.")
+        assert proposal["data"]["value"] == value
+        assert owner.get(f"/facts/{source['id']}").json()["data"]["review_status"] == "rejected"
+        current = next(q for q in owner.get(f"/compliance/farms/{farm['id']}").json()["profile_review"] if q["key"] == answer["key"])
+        assert current["current_value"] == value and current["state"] == "confirmed"
+    for key, text in (("uses_professional_plant_protection", "false"), ("ppp_use_type", '["closed_space"]')):
+        bad = owner.post("/facts", expected=422, json={"data": fact_data(farm["id"], key=key, value=text, unit=None)}).json()
+        assert bad["error"]["code"] == "invalid_profile_answer"
+    editable_profile = owner.create("facts", fact_data(farm["id"], key="organic_operator", value=True, unit=None))
+    assert owner.patch(f"/facts/{editable_profile['id']}", expected=422, json={"expected_revision": editable_profile["revision"], "data": {"value": "false"}}).json()["error"]["code"] == "invalid_profile_answer"
     farm = owner.patch(f"/farms/{farm['id']}", json={"expected_revision": farm["revision"], "data": {"notes": "A changed farm invalidates an old checklist creation context."}}).json()
     owner.post(f"/compliance/farms/{farm['id']}/checklist", expected=409, json=checklist_body)
 
