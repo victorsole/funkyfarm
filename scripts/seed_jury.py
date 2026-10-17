@@ -32,6 +32,7 @@ LOCAL_WEB = "http://127.0.0.1:5189"
 PRODUCTION_WEB = "https://funkyfarm.elfeel.me"
 PRODUCTION_API = PRODUCTION_WEB + "/api/v1"
 FIXTURE = "lpis-correction-2026-v1"
+FIXTURE_VERSION = 4
 
 
 class SeedError(Exception):
@@ -75,6 +76,14 @@ def load(path: Path, api=LOCAL_API):
         state = json.loads(path.read_text(encoding="utf-8"))
         if state.get("version") != 1 or state.get("api") != api:
             raise SeedError("This handoff belongs to a different seed or API. Nothing was overwritten.")
+        # The previous script saved accounts before requesting its unversioned
+        # workspace key, but did not retain a response from an older fixture.
+        # Replay that exact key once to recover its identity, never delete it.
+        if "demo" not in state and "workspace_requests" not in state and any(
+                account.get("registered") for account in state.get("accounts", {}).values()):
+            state["legacy_workspace_pending"] = True
+            state["workspace_requests"] = {}
+            save(path, state)
         return state
     seed_id = secrets.token_hex(12)
     notice = ("Local sample accounts only. Never publish these credentials or reuse the passwords elsewhere."
@@ -179,6 +188,18 @@ def ensure_membership(state, private_file, owner, member, account_key, workspace
     save(private_file, state)
 
 
+def request_workspace(state, private_file, owner, key):
+    requests = state.setdefault("workspace_requests", {})
+    retained = requests.get(key)
+    if retained is None:
+        result = owner.call("POST", "/examples/workspace", {"fixture_id": FIXTURE, "acknowledged": True}, key)
+        retained = {"run_id": result["run_id"], "workspace_id": result["workspace"]["id"],
+                    "fixture_version": result.get("fixture_version")}
+        requests[key] = retained
+        save(private_file, state)
+    return retained
+
+
 def seed(state, private_file):
     clients = {key: Client(state["api"]) for key in state["accounts"]}
     try:
@@ -187,11 +208,19 @@ def seed(state, private_file):
             save(private_file, state)
         owner, adviser, viewer = (clients[key] for key in ("farmer", "adviser", "viewer"))
         if "demo" not in state:
-            result = owner.call("POST", "/examples/workspace", {"fixture_id": FIXTURE, "acknowledged": True},
-                                "jury-workspace-" + state["seed_id"])
-            if result.get("fixture_version") != 4:
-                raise SeedError("The API did not create the current v4 fixture; retry state was retained without replacing any run.")
-            state["demo"] = {"run_id": result["run_id"], "workspace_id": result["workspace"]["id"]}
+            result = None
+            if state.get("legacy_workspace_pending"):
+                legacy = request_workspace(state, private_file, owner, "jury-workspace-" + state["seed_id"])
+                state["legacy_workspace_pending"] = False
+                save(private_file, state)
+                if legacy.get("fixture_version") == FIXTURE_VERSION:
+                    result = legacy
+            if result is None:
+                result = request_workspace(state, private_file, owner,
+                                           f"jury-workspace-v{FIXTURE_VERSION}-" + state["seed_id"])
+            if result.get("fixture_version") != FIXTURE_VERSION:
+                raise SeedError("The API did not create the current v4 fixture. Its run identity is retained privately; no run was replaced. Deploy v4 before seeding. A version-scoped key already bound to an older fixture needs operator review, not an automatic new attempt.")
+            state["demo"] = {"run_id": result["run_id"], "workspace_id": result["workspace_id"]}
             save(private_file, state)
         workspace_id = state["demo"]["workspace_id"]
         owner.workspace(workspace_id)

@@ -206,7 +206,8 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   expect(publicFeature.properties).toMatchObject({ superficie: claimed, admisibilidad: coefficient, uso_sigpac: 'PR', incidencias: '140' });
   await page.getByText('Photo, reference and date details', { exact: true }).click();
   await expect(page.getByRole('link', { name: `SIGPAC source for ${official.reference}`, exact: true })).toHaveAttribute('href', official.attributes_url);
-  await expect(page.getByText(/Photo capture date: not established/)).toBeVisible();
+  expect(sigpac.image.capture_date).toBeNull(); expect(sigpac.source.campaign_year).toBeNull();
+  await expect(page.getByText(/Photo date: unknown\. Reference checked: .*; campaign year in the source: unknown\./)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^(Draw excluded area|Close boundary|Save for comparison|Use my location)$/ })).toHaveCount(0);
   await expect(page.getByText('Choose an optional background map', { exact: true })).toHaveCount(0);
@@ -319,7 +320,8 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   expect(writes).toEqual(expectedWrites);
   await page.goto(`/app/fields/${farm.id}/check?parcel_id=${pasture.id}&expected_farm_revision=${before.revision}`);
   const guided = page.getByRole('region', { name: 'Guided public parcel correction', exact: true });
-  await expect(guided).toContainText('has 3 holes. The current private outline has 0');
+  await expect(guided).toContainText('D04 has 3 gaps to keep outside the field.');
+  await expect(guided).toContainText('Your drawing currently has 0 gaps.');
   const referenceDownload = page.waitForEvent('download');
   await guided.getByRole('button', { name: 'Download the retained source GeoJSON', exact: true }).click();
   const referenceFile = await referenceDownload; expect(await referenceFile.failure()).toBeNull();
