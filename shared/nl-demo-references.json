@@ -1,0 +1,119 @@
+{
+  "id": "nl-pdok-brp-practice-2026-10-18",
+  "checked_date": "2026-10-18",
+  "country": "NL",
+  "provider": "Rijksdienst voor Ondernemend Nederland (RVO) / PDOK",
+  "collection_url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas?f=json",
+  "metadata_url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1?f=json",
+  "rights_mark": "Public Domain Mark 1.0",
+  "rights_url": "https://creativecommons.org/publicdomain/mark/1.0/deed.nl",
+  "attribution": "BRP Gewaspercelen 2025, RVO / PDOK. Historical public references; private practice edits identified separately.",
+  "source_year": 2025,
+  "geometry_crs": "OGC:CRS84",
+  "source_snapshot": {
+    "file": "pdok-brp-flevoland-100.geojson",
+    "retrieved_on": "2026-09-21",
+    "sha256": "b4b650c929d0abd7d95dc63bb94f67a403f67119ebd86e19aefe67d2dc1bb5c7",
+    "query_url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items?bbox=5.62%2C52.50%2C5.72%2C52.58&f=json&limit=100",
+    "limited_regional_selection": true
+  },
+  "cross_check": "Four individual features re-read from the official service on 18 October 2026: IDs, complete geometry and literal properties matched the retained snapshot. Feature jaar is the source year, independent of app year or service update.",
+  "references": [
+    {
+      "use": "west",
+      "feature_id": "f3127fdf-d604-5087-8f89-0d6ce1cad058",
+      "url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items/f3127fdf-d604-5087-8f89-0d6ce1cad058?f=json",
+      "properties": {
+        "category": "Grasland",
+        "gewas": "Grasland, tijdelijk",
+        "gewascode": 266,
+        "jaar": 2025,
+        "status": "Definitief"
+      },
+      "geometry_sha256": "54421c637eef230b3dbdf70fa5d1fd253d987c1272eb4b2510d8becafb2d3a69",
+      "bbox": [
+        5.672611853687522,
+        52.525384850302615,
+        5.673809706275951,
+        52.52643831612302
+      ],
+      "approximate_area_ha": 0.64352,
+      "area_method": "spherical local approximation; not a survey"
+    },
+    {
+      "use": "east",
+      "feature_id": "a014a8fd-98cc-5cba-8270-500e9a6051c3",
+      "url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items/a014a8fd-98cc-5cba-8270-500e9a6051c3?f=json",
+      "properties": {
+        "category": "Grasland",
+        "gewas": "Grasland, tijdelijk",
+        "gewascode": 266,
+        "jaar": 2025,
+        "status": "Definitief"
+      },
+      "geometry_sha256": "fdd902579e5e0f29eff0bbcc8d1c0dcf3f846cb6a0ee70134e61ed315affc97a",
+      "bbox": [
+        5.672943036058133,
+        52.52412890474664,
+        5.677565490610409,
+        52.52595993112531
+      ],
+      "approximate_area_ha": 4.05933,
+      "area_method": "spherical local approximation; not a survey"
+    },
+    {
+      "use": "missing",
+      "feature_id": "bd60f0e2-7975-57e8-9511-cb965e093234",
+      "url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items/bd60f0e2-7975-57e8-9511-cb965e093234?f=json",
+      "properties": {
+        "category": "Grasland",
+        "gewas": "Grasland, natuurlijk. Met landbouwactiviteiten.",
+        "gewascode": 331,
+        "jaar": 2025,
+        "status": "Definitief"
+      },
+      "geometry_sha256": "9fd7d90f174402b297c7a12fb0dd17372aab2f8efe0c2322082189c407796d16",
+      "bbox": [
+        5.692146651665857,
+        52.52482396925794,
+        5.695389178095762,
+        52.52676230400559
+      ],
+      "approximate_area_ha": 2.61634,
+      "area_method": "spherical local approximation; not a survey"
+    },
+    {
+      "use": "ams",
+      "feature_id": "9bdb6cf4-1840-53ba-b19a-e5397bca93d6",
+      "url": "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1/collections/brpgewas/items/9bdb6cf4-1840-53ba-b19a-e5397bca93d6?f=json",
+      "properties": {
+        "category": "Grasland",
+        "gewas": "Grasland, natuurlijk. Met landbouwactiviteiten.",
+        "gewascode": 331,
+        "jaar": 2025,
+        "status": "Definitief"
+      },
+      "geometry_sha256": "fd65894396c30b43217bff07f18cb6f43b5a93a4255f088a96da1575d1f1e5ed",
+      "bbox": [
+        5.689873909041611,
+        52.52680757082107,
+        5.692610391716602,
+        52.52831743065978
+      ],
+      "approximate_area_ha": 1.70086,
+      "area_method": "spherical local approximation; not a survey"
+    }
+  ],
+  "practice_changes": {
+    "nl-overlap": "First private outline translated five metres east and south using a spherical approximation to stage an overlap. Original public geometries do not overlap. West proposal restores the public boundary plus a small authored inner hole; alternative east proposal trims the overlap. These are private practice edits, not official findings or legal exclusions.",
+    "nl-missing-documents": "Original private outline is exact public geometry; the smaller proposed outline is authored and does not establish that a source change is needed.",
+    "nl-ams-response": "Private outline is exact public geometry. Work note, question and photo description are authored, not observed activity or monitoring."
+  },
+  "limits": [
+    "No ownership, tenancy, actual claim, current crop, eligibility or consent is inferred from a public reference.",
+    "A parcel is not a holding; neighbouring references do not establish one farm.",
+    "Historical 2025 source labels and 2026 practice claims remain separate.",
+    "Areas below are approximate geometry calculations, not published official or eligible areas.",
+    "Czech and Slovak cases use separately attributed OpenStreetMap community boundaries, not official LPIS; see shared/mapped-demo-references.json."
+  ]
+}

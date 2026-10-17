@@ -9,7 +9,6 @@
 .hackathon-demo-link { color: var(--blue); font-size: .76rem; font-weight: 650; white-space: nowrap; text-underline-offset: 4px; }
 .farm-demo-entry { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
 .farm-demo-entry strong { color: var(--forest); }
-.workspace-topbar > .language-picker { margin-left: auto; }
 .tools-index { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
 .tools-index section { margin: 0; }
 .tools-index h2 { font-size: 1.5rem; }

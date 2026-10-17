@@ -1,0 +1,9 @@
+Public community-map outlines for the Czech and Slovak practice cases
+
+© OpenStreetMap contributors
+https://www.openstreetmap.org/copyright
+
+This three-feature extract and its adapted data are available under the Open Database License 1.0 (ODbL):
+https://opendatacommons.org/licenses/odbl/1-0/
+
+These are community-mapped agricultural outlines, not official LPIS or ownership boundaries. Geometry is preserved from the public OSM API; private practice changes are labelled separately. Mapping edit dates do not establish current crops, a survey date, a claim or eligibility.

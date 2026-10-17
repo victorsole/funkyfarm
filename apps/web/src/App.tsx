@@ -4,7 +4,7 @@ import { api, errorMessage } from './api';
 import { useSession } from './auth';
 import { Button, Loading, Notice } from './components';
 import type { Session } from './types';
-import { useI18n, Text, type Language, type TranslationKey } from './i18n';
+import { useI18n, Text, type TranslationKey } from './i18n';
 import { HomePage, FarmPage, FarmDetailPage } from './pages/Core';
 import { RequestsPage, RequestDetailPage } from './pages/Requests';
 import { CasesPage, NewCasePage, CaseDetailPage } from './pages/Cases';
@@ -40,11 +40,6 @@ const primary = [
   { path: 'record-work', name: 'Notebook', detail: 'Work, purchases and sales', icon: 'work', label: undefined },
   { path: 'tools', name: 'Tools', detail: 'All farm tools', icon: 'documents', label: undefined },
 ];
-
-function LanguagePicker() {
-  const { language, setLanguage, languages, t } = useI18n();
-  return <label className="language-picker"><span className="sr-only">{t('common.language')}</span><select aria-label={t('common.language')} title={t('language.draftNotice')} value={language} onChange={event => setLanguage(event.target.value as Language)}>{languages.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>;
-}
 
 function BrandMark({ className = '' }: { className?: string }) {
   return <img className={`funkyfarmers-logo ${className}`} width="1397" height="1126" src="/assets/funkyfarmers-logo.png" alt="Funkyfarmers" />;
@@ -148,7 +143,6 @@ function Shell() {
       <header className="workspace-topbar">
         <Link className="hackathon-demo-link" to="/app/demo">Hackathon demo</Link>
         {!online && <div className="connection-status" role="status"><span className="connection-dot is-offline"/>Offline</div>}
-        <LanguagePicker/>
         <details className="account-menu">
           <summary><span className="avatar" aria-hidden="true">{visibleName(session?.user.display_name, 'Farmer').slice(0, 1).toUpperCase()}</span><span className="account-name">{visibleName(session?.user.display_name, 'Farmer')}<small>{session?.workspace.role}</small></span><Chevron className="account-chevron"/></summary>
           <div className="account-dropdown">
@@ -201,7 +195,6 @@ function AuthPage() {
       </div><p className="auth-footnote">Your farm records, kept together.</p>
     </section>
     <main className="auth-main"><div className="auth-form-wrap">
-      <LanguagePicker/>
       <p className="eyebrow">{registering ? 'A fresh page' : 'Pick up where you left off'}</p><h2>{registering ? 'Make yourself at home.' : 'Welcome back.'}</h2><p className="muted">{registering ? 'Create your private farm workspace.' : 'Sign in to open your farm workspace.'}</p>
       {sessionError && <Notice kind="warning">{sessionError} <button className="text-button" type="button" onClick={() => void refresh()}><Text id="common.retry"/></button></Notice>}{error && <Notice kind="error">{error}</Notice>}
       <form className="auth-form stack" onSubmit={submit} aria-label={registering ? 'Create account' : 'Sign in'}>

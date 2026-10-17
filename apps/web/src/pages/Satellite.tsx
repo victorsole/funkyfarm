@@ -6,7 +6,7 @@ import type { Page, RecordItem } from '../types';
 import { FieldMap, type FieldGeometry, type FieldPoint } from './FieldsMap';
 import './satellite.css';
 
-type Parcel = { id: string; name: string; greenhouse?: boolean; geometry?: FieldGeometry; point?: FieldPoint; approximate_area_ha?: number | null };
+type Parcel = { id: string; name: string; greenhouse?: boolean; geometry?: FieldGeometry; point?: FieldPoint; external_id?: string | null; approximate_area_ha?: number | null };
 type Scene = { id: string; datetime: string; platform?: string; cloud_cover: number | null; provider_url: string; assets?: Record<string, unknown> };
 type Analysis = { scene_id: string; acquired_at: string; status: string; ndvi_mean: number | null; ndvi_median: number | null; valid_land_pixels: number; total_field_pixels: number; valid_fraction: number; preview_png_base64: string; warnings: string[] };
 type SearchData = { farm_id: string; parcel_id: string; field_name: string; provider: string; retrieved_at: string; start_date: string; end_date: string; items: Scene[]; analyses?: Analysis[]; warnings: string[]; has_more?: boolean; interpretation_status: string; imagery_download: string };
@@ -29,6 +29,7 @@ export function SatellitePage() {
   const [success, setSuccess] = useState('');
   const [operationScene, setOperationScene] = useState('');
   const field = fields.find(item => item.id === fieldId);
+  const farm = farms.items.find(item => item.id === farmId);
   useEffect(() => { setFarmId(requestedFarm); setFields([]); setSearches([]); setSelected(null); setFieldId(''); setError(''); setSuccess(''); }, [session?.workspace.id, requestedFarm]);
   useEffect(() => {
     let current = true;
@@ -95,7 +96,7 @@ export function SatellitePage() {
       {farmId && !loading && <Field label="Field"><select value={fieldId} onChange={event => { setFieldId(event.target.value); setSelected(null); setSuccess(''); }} disabled={busy}><option value="">Choose your field</option>{fields.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>}
       {farmId && !loading && !fields.length && <p>Add a field name and its location in <Link to={`/app/fields/${farmId}`}>My fields</Link> first.</p>}
       {field && <><p>{field.approximate_area_ha != null ? `Approximate outline area: ${field.approximate_area_ha.toLocaleString()} ha.` : 'Area unknown; a location point is not a field boundary.'}</p>{field.greenhouse && <Notice kind="warning">This field is under cover. Satellite images do not establish which crop or work is inside the greenhouse. NDVI estimates will be withheld.</Notice>}</>}
-    </div><div>{field && <FieldMap geometry={field.geometry} point={field.point} label={field.name} />}</div></div></section>
+    </div><div>{field && <FieldMap geometry={field.geometry} point={field.point} label={field.name} farm={farm} parcel={field} compact={false} />}</div></div></section>
     {field && <section className="card"><h2>Find images for this field</h2><p>The search sends the supplied field location and dates to the selected public catalogue. It does not send your name, documents or farm accounts.</p>
       <form onSubmit={search}><div className="form-grid"><Field label="From"><input type="date" name="start" required /></Field><Field label="To"><input type="date" name="end" required max={new Date().toISOString().slice(0,10)} /></Field>
         <Field label="Maximum scene cloud cover (%)" hint="This is the whole satellite scene, not your field."><input type="number" name="cloud" min="0" max="100" defaultValue="30" required /></Field>

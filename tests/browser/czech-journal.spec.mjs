@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 const title = 'Czech farmer keeps a requestless journal and separately reviews its correction';
@@ -47,8 +48,11 @@ test(title, async ({ page }) => {
   test.skip(!fixture.czech_farm, 'This focused case uses its own isolated Czech farmer fixture.');
   test.setTimeout(180_000);
   // Nothing in this journey may contact a real authority or external provider.
-  await page.route('**/*', route => ['localhost', '127.0.0.1'].includes(new URL(route.request().url()).hostname)
-    ? route.continue() : route.abort('blockedbyclient'));
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue();
+    return isEOXTile(url) ? backgroundTile(route) : route.abort('blockedbyclient');
+  });
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(fixture.accounts.czech.email);
   await page.getByLabel('Password', { exact: true }).fill(fixture.accounts.czech.password);

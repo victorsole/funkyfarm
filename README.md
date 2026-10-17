@@ -10,6 +10,8 @@ Create an account, add your farm and open **Easy form** on Home. Check saved det
 
 Open the [Hackathon demo](https://funkyfarm.elfeel.me/demo) to compare a staged claim mistake with five real SIGPAC parcels and an official PNOA aerial photo near Cáceres. Save and review a private correction, import a record, then check the paperwork and sourced date conditions. The public parcels do not establish farm ownership or payment eligibility. Seven sample situations contain 39 editable records in a separate workspace. **Start again** keeps your previous work. Official sending stays with you.
 
+The other map examples use 2025 Dutch public parcel boundaries and attributed Czech and Slovak OpenStreetMap outlines. OpenStreetMap outlines are not official LPIS boundaries. Claims, notices and work records are practice examples, separate from the source maps.
+
 The web app uses a private PostgreSQL API. Connected assistants can suggest changes; people approve them.
 
 ## Run

@@ -3,8 +3,9 @@ import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button, Field, Notice } from '../components';
 import type { FieldGeometry, FieldPoint } from '../pages/FieldsMap';
-import { mapSources, type MapSource } from './sources';
+import { defaultMapSource, mapSources, type MapSource } from './sources';
 import { getSpanishDemoSnapshot, type SpanishDemoSelection } from './spanishDemo';
+import { communityReference, dutchReference } from './outlineReferences';
 import './parcel-map.css';
 
 export type ParcelMapBounds = [west: number, south: number, east: number, north: number];
@@ -16,12 +17,17 @@ export type ParcelMapProps = {
   splitLine: number[][];
   mode: 'draw' | 'edit' | 'split';
   disabled?: boolean;
-  /** Keep navigation and opt-in backgrounds, without geometry editing. */
+  /** Keep navigation and background controls, without geometry editing. */
   readOnly?: boolean;
+  /** A small read-only preview; the caller links to the full map controls. */
+  compact?: boolean;
   /** Other private saved fields, displayed only in read-only mode. */
   contextOutlines?: { id: string; label: string; geometry: FieldGeometry }[];
   /** Resolves only a retained code-owned public demo image and reference. */
   snapshot?: SpanishDemoSelection | null;
+  /** Resolves a retained community-map source, not an official LPIS parcel. */
+  communityReference?: number | null;
+  dutchReference?: string | null;
   onGeometry: (geometry: FieldGeometry) => void;
   onSketch: (positions: number[][]) => void;
   onSplitLine: (positions: number[][]) => void;
@@ -129,6 +135,7 @@ export function ParcelMap(props: ParcelMapProps) {
   const expectedGeometry = useRef<string | null>(null);
   const fitted = useRef(false);
   const movedByUser = useRef(false);
+  const backgroundChosenByUser = useRef(false);
   const [ready, setReady] = useState(false);
   const [part, setPart] = useState(0);
   const [selectedRing, setSelectedRing] = useState(0);
@@ -157,8 +164,12 @@ export function ParcelMap(props: ParcelMapProps) {
   const source = sources.find(item => item.id === sourceId);
   const sourceSignature = JSON.stringify(source ?? null);
   const snapshot = getSpanishDemoSnapshot(props.snapshot);
+  const communitySource = communityReference(props.communityReference);
+  const dutchSource = dutchReference(props.dutchReference);
   const snapshotBinding = snapshot ? `${snapshot.id}:${snapshot.field.reference}:${snapshot.image.sha256}` : '';
+  const automaticSourceId = snapshot ? '' : defaultMapSource(props.country, props.region, positionsOf(props))?.id ?? '';
   const instructionId = useId();
+  const compact = props.readOnly && props.compact;
   const parts = partsOf(props.geometry);
   const selectedPart = Math.min(part, Math.max(0, parts.length - 1));
   partRef.current = selectedPart;
@@ -308,6 +319,7 @@ export function ParcelMap(props: ParcelMapProps) {
     map.current?.panBy([x, y], { animate: false });
   }
   function hideBackground() {
+    backgroundChosenByUser.current = true;
     // Remove immediately in the trusted user action as well as effect cleanup.
     tiles.current?.remove(); tiles.current = null;
     setBackgroundAllowed(false); setSourceId(''); setMapError(''); setBackgroundStatus('off');
@@ -343,6 +355,7 @@ export function ParcelMap(props: ParcelMapProps) {
       crs: L.CRS.EPSG3857, center: [54, 15], zoom: 4, minZoom: 2, maxZoom: 22,
       zoomSnap: snapshot ? 0.1 : 1,
       zoomControl: false, attributionControl: true, scrollWheelZoom: false,
+      dragging: !compact, touchZoom: !compact, keyboard: !compact,
       doubleClickZoom: false, worldCopyJump: false, maxBounds: [[-85.05112878, -180], [85.05112878, 180]],
       zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false,
     });
@@ -431,8 +444,11 @@ export function ParcelMap(props: ParcelMapProps) {
     // Metadata identity, not array/object creation on each geometry render, keeps
     // the tile layer stable while a corner is dragged or a draft is updated.
   }, [ready, backgroundAllowed, sourceSignature, backgroundAttempt, snapshotBinding]);
-  useEffect(() => { hideBackground(); }, [props.country, props.region]);
-  useEffect(() => { hideBackground(); }, [snapshotBinding]);
+  useEffect(() => {
+    if (backgroundChosenByUser.current) return;
+    setSourceId(automaticSourceId);
+    setBackgroundAllowed(!!automaticSourceId);
+  }, [automaticSourceId, snapshotBinding]);
 
   useEffect(() => {
     const current = JSON.stringify(props.geometry);
@@ -583,28 +599,30 @@ export function ParcelMap(props: ParcelMapProps) {
     return () => { cleanups.forEach(cleanup => cleanup()); };
   }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.disabled, props.readOnly, props.contextOutlines, props.referenceCandidates, selectedPart, ringIndex, drawingHole, snapshotBinding]);
 
-  return <div className="parcel-map-editor" inert={props.disabled}>
-    <div className="parcel-map-toolbar" aria-label="Map view controls">
+  return <div className={`parcel-map-editor${compact ? ' parcel-map-compact' : ''}`} inert={props.disabled}>
+    {!compact && <div className="parcel-map-toolbar" aria-label="Map view controls">
       <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; map.current?.zoomIn(undefined, { animate: false }); }}>Zoom in</Button>
       <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; map.current?.zoomOut(undefined, { animate: false }); }}>Zoom out</Button>
       {snapshot && <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; focusSelected(); }}>Focus selected field</Button>}
       <Button variant="secondary" disabled={!ready} onClick={fitSupplied}>Fit supplied outlines</Button>
       {!props.readOnly && <Button variant="secondary" disabled={!ready || locating} onClick={useLocation}>{locating ? 'Finding my location…' : 'Use my location'}</Button>}
       {!props.readOnly && parts.length > 1 && <Field label="Part to edit"><select value={selectedPart} disabled={drawingHole} onChange={event => { focusedCorner.current = null; setPart(Number(event.target.value)); setSelectedRing(0); setConfirmation(null); }}>{parts.map((_, index) => <option value={index} key={index}>Part {index + 1}</option>)}</select></Field>}
-    </div>
+    </div>}
     {!props.readOnly && props.mode === 'edit' && <div className="parcel-map-edit-actions"><span>Select a corner to fine-tune it. Nothing is applied to the farm yet.</span><Button variant="secondary" disabled={!undoCount} onClick={undoLast}>Undo last boundary adjustment</Button></div>}
     {!props.readOnly && <div className="parcel-map-pan" aria-label="Move map view"><Button variant="ghost" disabled={!ready} onClick={() => pan(0, -160)}>Move north</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(0, 160)}>Move south</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(160, 0)}>Move east</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(-160, 0)}>Move west</Button></div>}
-    <p id={instructionId}>{props.readOnly ? 'Drag to look around, or zoom in for a closer view.' : props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to look around.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark the dividing line.' : drawingHole ? 'Tap around the gap, then choose Close excluded area.' : 'Click a corner to select it, then drag or fine-tune it below. Drag between corners to look around.'}</p>
+    <p id={instructionId} className={compact ? 'sr-only' : undefined}>{compact ? 'Field location preview. Open the field map for a closer look.' : props.readOnly ? 'Drag to look around, or zoom in for a closer view.' : props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to look around.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark the dividing line.' : drawingHole ? 'Tap around the gap, then choose Close excluded area.' : 'Click a corner to select it, then drag or fine-tune it below. Drag between corners to look around.'}</p>
     {mapError && <Notice kind="warning">{mapError} {props.readOnly ? 'The saved outline remains available without a background.' : 'Your draft is still editable without a background.'}</Notice>}
     {!props.readOnly && (props.mode !== 'edit' || drawingHole) && zoom < 14 && <Notice>Zoom in closer before drawing. This overview does not show your farm's location.</Notice>}
     <div ref={host} className="parcel-map" role="group" aria-label="Field boundary map" aria-describedby={instructionId}/>
+    {communitySource && <p className="parcel-map-credit">Community map outline, not an official LPIS reference. <a href={communitySource.source_url} target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">ODbL</a>. Map year: unknown.</p>}
+    {dutchSource && <p className="parcel-map-credit">Historical BRP outlines · 2025 · <a href={dutchSource.url} target="_blank" rel="noopener noreferrer">RVO / PDOK</a> · <a href="https://creativecommons.org/publicdomain/mark/1.0/deed.nl" target="_blank" rel="noopener noreferrer">Public Domain Mark</a>. Your practice changes are separate from the public reference.</p>}
     {!props.readOnly && props.mode === 'edit' && !drawingHole && ring.length > 0 && <section className="parcel-map-fine-edit" aria-label="Fine-tune a boundary corner">
       <div className="parcel-map-fine-heading"><h3>Fine-tune a corner</h3><span>Draft only</span></div>
       <Field label="Selected boundary corner"><select value={selectedCorner ?? ''} onChange={event => { focusedCorner.current = null; setSelectedCorner(event.target.value === '' ? null : Number(event.target.value)); }}><option value="">Choose a corner, or click one on the map</option>{ring.slice(0, -1).map((_, index) => <option key={index} value={index}>Corner {index + 1}</option>)}</select></Field>
       {selectedCorner !== null && ring[selectedCorner] && <Button variant="ghost" onClick={() => { const instance = map.current; if (!instance) return; movedByUser.current = true; instance.setView(latLng(ring[selectedCorner]), Math.max(instance.getZoom(), 18), { animate: false }); }}>Focus this corner</Button>}
       {selectedCorner !== null && ring[selectedCorner] ? <><div className="parcel-map-fine-coordinates"><Field label="Selected corner longitude"><input inputMode="decimal" value={cornerPosition.longitude} onChange={event => setCornerPosition(previous => ({ ...previous, longitude: event.target.value }))}/></Field><Field label="Selected corner latitude"><input inputMode="decimal" value={cornerPosition.latitude} onChange={event => setCornerPosition(previous => ({ ...previous, latitude: event.target.value }))}/></Field><Button variant="secondary" onClick={() => { const point = [Number(cornerPosition.longitude), Number(cornerPosition.latitude)]; if (!cornerPosition.longitude.trim() || !cornerPosition.latitude.trim() || !validPosition(point)) { setMessage('Enter valid longitude and latitude with a decimal point. Your corner has not moved.'); return; } focusedCorner.current = null; moveCorner(selectedCorner, point); setMessage('Corner position changed in this draft. Undo restores the earlier position.'); }}>Apply corner position</Button></div><div className="parcel-map-nudges"><Field label="Nudge distance"><select value={nudgeMetres} onChange={event => setNudgeMetres(Number(event.target.value))}><option value={0.1}>About 10 cm</option><option value={1}>About 1 m</option><option value={5}>About 5 m</option></select></Field>{([['north',0,1],['south',0,-1],['east',1,0],['west',-1,0]] as const).map(([direction,east,north]) => <Button key={direction} variant="secondary" onClick={() => { focusedCorner.current = null; nudgeCorner(selectedCorner,east,north); }}>Nudge {direction}</Button>)}</div><p>Drag the selected corner, type its coordinates, or use arrow keys while that corner is focused. Shift moves ten nudge steps. Distances are approximate; typed coordinates and nudges do not snap.</p></> : <p>Click a white corner, or choose its number above. The selected corner turns blue. Dragging the map between corners only moves the view.</p>}
     </section>}
-    {!snapshot && <details className="parcel-map-map-details"><summary>Map details and licence</summary><p>Your saved outline or draft is not an official LPIS update. Moving the view does not move any coordinates. <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p></details>}
+    {!snapshot && !compact && <details className="parcel-map-map-details"><summary>Map details and licence</summary><p>Your saved outline or draft is not an official LPIS update. Moving the view does not move any coordinates. <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p></details>}
     {!props.readOnly && <>
     <fieldset className="parcel-map-comparison"><legend>Comparison outline</legend><label className="parcel-map-consent"><input type="checkbox" checked={snapToComparison && !!(props.reference || snapshot)} disabled={!props.reference && !snapshot} onChange={event => setSnapToComparison(event.target.checked)}/>Help pointer clicks and drags follow the comparison outline</label><p>{props.reference || snapshot ? 'Optional: pointer moves within 10 screen pixels follow the selected comparison edge. Turning this on does not move any corners; typed coordinates and nudges remain exact inputs. The reference itself cannot be changed here.' : 'Choose a comparison outline first. Public candidates are not used until you choose one for comparison.'}</p></fieldset>
     {props.mode === 'edit' && parts[selectedPart] && <fieldset className="parcel-map-exclusions"><legend>Excluded area</legend><p>An excluded area is a hole in this private boundary draft, not a decision about legal eligibility. Other parts and rings are kept; saving a change retains the earlier field outline in history.</p><Field label="Edge to edit"><select value={ringIndex} disabled={drawingHole} onChange={event => { setSelectedRing(Number(event.target.value)); focusedCorner.current = null; setConfirmation(null); }}><option value={0}>Outer edge</option>{parts[selectedPart].slice(1).map((_, index) => <option value={index + 1} key={index}>Excluded area {index + 1}</option>)}</select></Field><div className="parcel-map-toolbar">
@@ -616,12 +634,14 @@ export function ParcelMap(props: ParcelMapProps) {
       {!drawingHole && !props.sketch.length && ringIndex > 0 && <Button variant="secondary" onClick={() => requestConfirmation('remove')}>Remove excluded area</Button>}
     </div>{props.sketch.length > 0 && <p>{props.sketch.length} unfinished excluded-area corners kept in your private draft. {!drawingHole && 'Check the selected part and these points before resuming; the target part is not retained when the editor is reopened.'}</p>}{parts[selectedPart].length >= 20 && <p>This part already has the maximum 19 excluded areas.</p>}{confirmation && confirmation.binding === binding && <div className="parcel-map-confirmation" role="group" aria-label="Confirm excluded-area change"><p>{confirmation.kind === 'close' ? 'Add this closed excluded area to the selected part? The rest of the boundary stays as drawn.' : confirmation.kind === 'cancel' ? 'Discard these unfinished excluded-area points? The boundary stays unchanged. Undo can restore the points.' : 'Remove the selected excluded area from this draft? This fills its hole in the draft, without changing the retained original.'}</p><div className="parcel-map-toolbar"><Button onClick={confirmChange}>{confirmation.kind === 'close' ? 'Confirm excluded area' : confirmation.kind === 'cancel' ? 'Discard unfinished excluded area' : 'Confirm removal of excluded area'}</Button><Button variant="secondary" onClick={() => setConfirmation(null)}>Keep editing</Button></div></div>}</fieldset>}
     </>}
-    {snapshot && <div className="parcel-map-snapshot-source"><p className="parcel-map-credit"><strong>Demo</strong> · PNOA © IGN/SCNE · SIGPAC © FEGA · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p><p className="parcel-map-snapshot-legend"><span>Green: reference</span><span>Orange dashed: your outline</span><span>Red: gaps to leave out</span></p><details><summary>Photo, reference and date details</summary><p>{snapshot.image.attribution}<br />{snapshot.source.attribution}</p><p>Photo date: {snapshot.image.capture_date || 'unknown'}. Reference checked: {snapshot.retrieved_at}; campaign year in the source: {snapshot.source.campaign_year ?? 'unknown'}.</p><p><a href={snapshot.image.source_url} target="_blank" rel="noopener noreferrer">Original PNOA source</a> · <a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">SIGPAC source for {snapshot.field.reference}</a> · <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p><p>Red marks follow the actual gaps in the reference, not a percentage cut out of the field.</p></details>{snapshotStatus === 'failed' && <Notice kind="warning">The photo could not open. Your outlines are still available.</Notice>}{snapshotStatus === 'loading' && <p role="status">Opening the cached aerial photograph…</p>}</div>}
-    {!snapshot && <details className="parcel-map-background-options" open={props.readOnly ? undefined : true}><summary hidden={!props.readOnly}>Choose an optional background map</summary>
-    <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
-      <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
-      <p>The map provider receives the area you view and your IP address, but not your private farm records. Nothing is requested until you turn the background on.</p>
+    {snapshot && compact && <p className="parcel-map-credit">PNOA © IGN/SCNE · SIGPAC © FEGA · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">CC BY 4.0</a> · Photo date: {snapshot.image.capture_date || 'unknown'}.{snapshotStatus === 'failed' && ' Photo unavailable.'}</p>}
+    {snapshot && !compact && <div className="parcel-map-snapshot-source"><p className="parcel-map-credit"><strong>Demo</strong> · PNOA © IGN/SCNE · SIGPAC © FEGA · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p><p className="parcel-map-snapshot-legend"><span>Green: reference</span><span>Orange dashed: your outline</span><span>Red: gaps to leave out</span></p><details><summary>Photo, reference and date details</summary><p>{snapshot.image.attribution}<br />{snapshot.source.attribution}</p><p>Photo date: {snapshot.image.capture_date || 'unknown'}. Reference checked: {snapshot.retrieved_at}; campaign year in the source: {snapshot.source.campaign_year ?? 'unknown'}.</p><p><a href={snapshot.image.source_url} target="_blank" rel="noopener noreferrer">Original PNOA source</a> · <a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">SIGPAC source for {snapshot.field.reference}</a> · <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p><p>Red marks follow the actual gaps in the reference, not a percentage cut out of the field.</p></details>{snapshotStatus === 'failed' && <Notice kind="warning">The photo could not open. Your outlines are still available.</Notice>}{snapshotStatus === 'loading' && <p role="status">Opening the cached aerial photograph…</p>}</div>}
+    {!snapshot && !compact && <details className="parcel-map-background-options" open><summary>Background map</summary>
+    <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { backgroundChosenByUser.current = true; if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
+      <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { backgroundChosenByUser.current = true; if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
+      <p>Local aerial photos open where available, otherwise a dated satellite mosaic. You can turn the background off or choose a street map. The provider sees the map area and your IP address, not your farm records.</p>
       {source && <p>Map from {source.provider}. <a href={source.sourceUrl} target="_blank" rel="noreferrer">About this map</a> · <a href={source.licenseUrl} target="_blank" rel="noreferrer">Licence and attribution</a>. Photos may have been taken in different years. They do not confirm a current crop, official boundary or claim.</p>}
+      {source?.imageryNote && <p>{source.imageryNote}</p>}
       {backgroundAllowed && source && <p role="status">{backgroundStatus === 'loading' ? 'Loading the chosen background…' : backgroundStatus === 'failed' ? props.readOnly ? 'Background unavailable; the supplied outline remains on the neutral map.' : 'Background unavailable; editing remains available on the neutral map.' : outsideCoverage ? 'This view is outside the documented background coverage. Pan back into its coverage or choose another map.' : 'The chosen background is enabled. Its imagery date may be unknown.'}</p>}
       {outsideCoverage && <Notice kind="warning">This provider has no imagery here. Choose another map or move back into the covered area.</Notice>}
       {backgroundStatus === 'failed' && <Button variant="secondary" onClick={() => setBackgroundAttempt(value => value + 1)}>Try background again</Button>}
@@ -630,7 +650,7 @@ export function ParcelMap(props: ParcelMapProps) {
     </details>}
     {locationMessage && <p role="status">{locationMessage}</p>}
     {!props.readOnly && !!props.referenceCandidates?.length && <details className="parcel-map-candidates"><summary>Reference parcels on this map</summary><p>Blue dashed outlines are public references, not your fields. Choose one to compare it with your draft; your saved boundary will not change.</p><ul>{props.referenceCandidates.map(candidate => <li key={candidate.id}><Button variant="ghost" onClick={() => props.onReferenceSelect?.(candidate.id)} disabled={!props.onReferenceSelect}>{candidate.label}</Button></li>)}</ul></details>}
-    {message && <p className="parcel-map-message" role="status">{message}</p>}
+    {message && !compact && <p className="parcel-map-message" role="status">{message}</p>}
     {!props.readOnly && <>
     {props.mode === 'draw' && <div className="parcel-map-toolbar"><Button disabled={props.sketch.length < 3} onClick={() => { props.onGeometry({ type: 'Polygon', coordinates: [[...props.sketch, [...props.sketch[0]]]] }); props.onSketch([]); }}>Close boundary</Button><Button variant="secondary" disabled={!props.sketch.length} onClick={() => props.onSketch(props.sketch.slice(0, -1))}>Undo last corner</Button></div>}
     {props.mode === 'split' && <div className="parcel-map-toolbar"><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine(props.splitLine.slice(0, -1))}>Undo dividing line point</Button><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine([])}>Redraw dividing line</Button></div>}

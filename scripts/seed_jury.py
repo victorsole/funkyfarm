@@ -32,7 +32,7 @@ LOCAL_WEB = "http://127.0.0.1:5189"
 PRODUCTION_WEB = "https://funkyfarm.elfeel.me"
 PRODUCTION_API = PRODUCTION_WEB + "/api/v1"
 FIXTURE = "lpis-correction-2026-v1"
-FIXTURE_VERSION = 4
+FIXTURE_VERSION = 5
 
 
 class SeedError(Exception):
@@ -177,6 +177,8 @@ def ensure_membership(state, private_file, owner, member, account_key, workspace
     if account.get("accepted_workspace_id") == workspace_id:
         raise SeedError("A sample adviser grant was revoked. It was not silently recreated; review the intended access first.")
     pending = account.get("invitation")
+    if pending and pending.get("invitation", {}).get("workspace_id") != workspace_id:
+        raise SeedError("A pending sample invitation belongs to an older workspace. Its token was retained; review it before granting access to a new demo.")
     if pending is None:
         pending = owner.call("POST", "/invitations", {"email": account["email"], "role": "adviser",
             "farm_ids": farms, "permissions": permissions, "expires_in_days": 30})
@@ -207,6 +209,20 @@ def seed(state, private_file):
             client.sign_in(state["accounts"][key])
             save(private_file, state)
         owner, adviser, viewer = (clients[key] for key in ("farmer", "adviser", "viewer"))
+        if "demo" in state:
+            owner.workspace(state["demo"]["workspace_id"])
+            retained = owner.call("GET", "/examples/workspace/" + state["demo"]["run_id"])
+            retained_version = retained.get("fixture_version")
+            if retained_version != FIXTURE_VERSION:
+                if type(retained_version) is not int or retained_version > FIXTURE_VERSION:
+                    raise SeedError("The retained demo has an unsupported version. No workspace was replaced.")
+                state.setdefault("previous_demos", []).append({
+                    "fixture_version": retained_version, "demo": state.pop("demo"),
+                    "steps": state.pop("steps", {}), "handoff": state.pop("handoff", None),
+                })
+                state["steps"] = {}
+                state["ready"] = False
+                save(private_file, state)
         if "demo" not in state:
             result = None
             if state.get("legacy_workspace_pending"):
@@ -219,7 +235,7 @@ def seed(state, private_file):
                 result = request_workspace(state, private_file, owner,
                                            f"jury-workspace-v{FIXTURE_VERSION}-" + state["seed_id"])
             if result.get("fixture_version") != FIXTURE_VERSION:
-                raise SeedError("The API did not create the current v4 fixture. Its run identity is retained privately; no run was replaced. Deploy v4 before seeding. A version-scoped key already bound to an older fixture needs operator review, not an automatic new attempt.")
+                raise SeedError(f"The API did not create the current v{FIXTURE_VERSION} fixture. Its run identity is retained privately; no run was replaced. Deploy this fixture version before seeding. A version-scoped key already bound to an older fixture needs operator review, not an automatic new attempt.")
             state["demo"] = {"run_id": result["run_id"], "workspace_id": result["workspace_id"]}
             save(private_file, state)
         workspace_id = state["demo"]["workspace_id"]

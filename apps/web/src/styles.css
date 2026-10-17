@@ -116,10 +116,7 @@ legend { font-weight: 600; color: var(--forest); padding: 0 7px; }
 .connection-dot { width: 6px; height: 6px; border-radius: 50%; background: #4e7b27; flex-shrink: 0; }
 .connection-dot.is-offline { background: #927024; }
 .account-menu { position: relative; font-size: .8rem; }
-.language-picker { display: flex; align-items: center; gap: 8px; font-size: .65rem; color: var(--muted); }
-.language-picker select { width: auto; max-width: 175px; min-height: 40px; padding: 7px 12px; padding-inline-end: 2.5rem; font-size: .78rem; }
 .translation-note { font-size: .66rem; line-height: 1.6; color: var(--muted); border-left: 2px solid #becfae; padding-left: 11px; margin-bottom: 24px; }
-.auth-form-wrap > .language-picker { justify-content: flex-end; margin-bottom: 15px; }
 .auth-form-wrap > .translation-note { margin-bottom: 28px; }
 .workspace-label select { min-height: 40px; padding: 7px 10px; padding-inline-end: 2.5rem; font-size: .78rem; }
 .account-menu summary { list-style: none; display: flex; align-items: center; gap: 11px; cursor: pointer; }
@@ -342,8 +339,6 @@ details:is(.panel, .card, .paper-section) { padding: 20px 24px; box-shadow: var(
   .workspace-topbar { padding-left: 20px; padding-right: 20px; }
   .folio-label { font-size: .44rem; letter-spacing: .08em; max-width: 150px; line-height: 1.6; }
   .workspace-topbar .folio-label { display: none; }
-  .workspace-topbar .language-picker > span { display: none; }
-  .workspace-topbar .language-picker select { max-width: 130px; }
   .connection-status { font-size: .57rem; gap: 5px; }
   .workspace-topbar { gap: 10px; }
   .account-name { max-width: 110px; font-size: .71rem; }
@@ -370,7 +365,7 @@ details:is(.panel, .card, .paper-section) { padding: 20px 24px; box-shadow: var(
   .record-arrow { margin-left: auto; }
   .workspace-footer { font-size: .57rem; padding: 18px 20px; flex-direction: column; gap: 8px; }
   .empty-state { padding: 30px 18px; }
-  input:not([type='checkbox']):not([type='radio']), select, textarea, .workspace-label select, .language-picker select { font-size: 1rem; }
+  input:not([type='checkbox']):not([type='radio']), select, textarea, .workspace-label select { font-size: 1rem; }
   .actions > .button { flex-basis: auto; min-width: 0; }
   th, td { padding: 12px 14px; }
   details:not(.account-menu):not(.farm-tools-menu) { padding-inline: 13px; }

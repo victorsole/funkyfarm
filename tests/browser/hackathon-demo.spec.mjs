@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
@@ -124,6 +125,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
     if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue();
+    if (isEOXTile(url)) return backgroundTile(route);
     external.push(`${url.origin}${url.pathname}`); return route.abort('blockedbyclient');
   });
   await page.goto('/demo');
@@ -152,7 +154,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const created = responseFor(page, '/examples/workspace', 'POST'); await start.click();
   const response = await created;
   expect(response.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
-  const example = await checked(response); expect(example.fixture_record_count).toBe(39); expect(example.fixture_version).toBe(4);
+  const example = await checked(response); expect(example.fixture_record_count).toBe(39); expect(example.fixture_version).toBe(5);
   const scenario = example.scenarios.find(item => item.key === 'es-protected-unknown'); expect(scenario).toBeTruthy();
   const own = example.records.filter(item => scenario.record_ids.includes(item.id));
   const farm = own.find(item => item.kind === 'farms'); const savedCase = own.find(item => item.kind === 'admin_cases');
@@ -214,6 +216,24 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toHaveCount(0);
   expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(before);
   expect(writes).toEqual([]);
+  await page.goto(`/app/satellite?farm_id=${farm.id}`);
+  await page.getByLabel('Field', { exact: true }).selectOption(stagedParcel.id);
+  const satelliteMap = page.getByRole('group', { name: 'Field boundary map', exact: true });
+  const satelliteAerial = satelliteMap.getByRole('img', { name: 'Retained PNOA aerial photograph of the public Spanish demo area', exact: true });
+  await expect(satelliteAerial).toBeVisible();
+  await expect(satelliteAerial).toHaveJSProperty('naturalWidth', 2048);
+  await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
+  expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(before);
+  expect(writes).toEqual([]);
+  await page.goto(`/app/fields/${farm.id}`);
+  const farmCards = page.locator('.farm-field-card');
+  await expect(farmCards.locator('.parcel-map-compact')).toHaveCount(5);
+  await expect(farmCards.first().getByRole('img', { name: 'Retained PNOA aerial photograph of the public Spanish demo area', exact: true })).toBeVisible();
+  await expect(farmCards.getByRole('button', { name: 'Zoom in', exact: true })).toHaveCount(0);
+  await expect(farmCards.getByLabel('Background map', { exact: true })).toHaveCount(0);
+  await farmCards.first().getByRole('link', { name: 'Open field map', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/app/fields/${farm.id}/check\\?parcel_id=`));
+  await page.getByLabel('Field to look at', { exact: true }).selectOption(String(firstCheck.fields.indexOf(pasture)));
   const unconfirmed = await comparison(page, 'Proposed values — not yet checked');
   await unconfirmed.getByText('Original sources and limits of this comparison', { exact: true }).click();
   await expect(unconfirmed).toContainText(`Unrounded saved values: claim ${claimed} ha; calculated comparison ${calculated} ha; difference ${excess} ha; proposed correction ${calculated} ha`);

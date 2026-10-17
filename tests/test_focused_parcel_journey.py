@@ -53,7 +53,7 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         assert replay["run_id"] == demo["run_id"] and replay["workspace"]["id"] == demo["workspace"]["id"]
         assert demo["workspace"]["id"] != owner.workspace_id and demo["workspace"]["role"] == "owner"
         assert "demo" in demo["notice"].lower() and demo["fixture_record_count"] == 39
-        assert demo["fixture_version"] == 4
+        assert demo["fixture_version"] == 5
         base = [record for record in demo["records"] if record["kind"] not in {"admin_case_events", "demo_runs"}]
         assert len(base) == 39 and len({record["id"] for record in base}) == 39
         assert demo["record_count"] == len(demo["records"]) == sum(item["count"] for item in demo["inventory"])

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 import { readFileSync } from 'node:fs';
 
 const sharedFixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
@@ -36,8 +37,10 @@ async function inspectReadOnlyMap(page) {
   await map.click({ position: { x: 30, y: 30 } });
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^(Draw excluded area|Close boundary|Save for comparison|Use my location)$/ })).toHaveCount(0);
-  await page.getByText('Choose an optional background map', { exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  await expect(page.getByText('Background map', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(page.locator('.parcel-map-credit').filter({ hasText: 'Historical BRP outlines · 2025' })).toBeVisible();
 }
 async function isolated(page) {
   const errors = []; const external = []; const events = []; const writes = [];
@@ -50,8 +53,11 @@ async function isolated(page) {
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
     if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue();
-    if (url.protocol === 'https:' && url.hostname === 'tile.openstreetmap.org' && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
-      return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#dfe8d1"/><text x="10" y="25">Fictional local map fixture</text></svg>' });
+    if (isEOXTile(url)) return backgroundTile(route);
+    if (url.protocol === 'https:' && (
+      url.hostname === 'tile.openstreetmap.org' && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)
+      || url.hostname === 'service.pdok.nl' && /^\/hwh\/luchtfotorgb\/wmts\/v1_0\/Actueel_ortho25\/EPSG:3857\/(?:0\d|1\d|2[01])\/\d+\/\d+\.jpeg$/.test(url.pathname) && !url.search)) {
+      return backgroundTile(route);
     }
     external.push(`${url.origin}${url.pathname}`);
     return route.abort('blockedbyclient');
@@ -239,6 +245,18 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   test.setTimeout(300_000);
   const safety = await isolated(page); await signIn(page);
   const example = await startExample(page); const farm = farmFor(example, 'cz-mock-amendment-window');
+  await page.goto(`/app/fields/${farm.id}/check`);
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('eox-satellite-2016');
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await expect(page.locator('.leaflet-control-attribution')).toContainText('Contains modified Copernicus Sentinel data 2016 & 2017');
+  await expect(page.getByText('This satellite mosaic combines 2016–2017 images.', { exact: false })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Show background map', exact: true }).uncheck();
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  const mapCredit = page.locator('.parcel-map-credit').filter({ hasText: 'Community map outline, not an official LPIS reference.' });
+  await expect(mapCredit).toBeVisible();
+  await expect(mapCredit).toContainText('Map year: unknown.');
+  await expect(mapCredit.getByRole('link', { name: '© OpenStreetMap contributors', exact: true })).toHaveAttribute('href', 'https://www.openstreetmap.org/way/1568293651');
+  await expect(mapCredit.getByRole('link', { name: 'ODbL', exact: true })).toHaveAttribute('href', 'https://opendatacommons.org/licenses/odbl/1-0/');
   await page.goto('/app/home'); await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByRole('link', { name: 'Fix a mistake in filed paperwork', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Fix a mistake in filed paperwork', exact: true })).toBeVisible();

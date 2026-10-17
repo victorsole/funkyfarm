@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 
@@ -63,7 +64,10 @@ async function authoredMapTiles(page) {
     const wms = url.hostname === 'www.wms.nrw.de' && url.pathname === '/geobasis/wms_nw_dop'
       && query.request?.toLowerCase() === 'getmap' && query.version === '1.3.0'
       && query.format === 'image/jpeg' && query.crs === 'EPSG:3857';
-    if (url.protocol !== 'https:' || !(osm || pdok || wms)) {
+    const pnoa = url.hostname === 'www.ign.es' && url.pathname === '/wms-inspire/pnoa-ma'
+      && query.request?.toLowerCase() === 'getmap' && query.version === '1.3.0'
+      && query.format === 'image/jpeg' && query.crs === 'EPSG:3857' && query.layers === 'OI.OrthoimageCoverage';
+    if (url.protocol !== 'https:' || !(osm || pdok || wms || pnoa || isEOXTile(url))) {
       await route.abort('blockedbyclient');
       throw new Error(`Unreviewed external browser request was blocked: ${url.origin}${url.pathname}`);
     }
@@ -292,6 +296,7 @@ test('field draft survives reload after invalid geometry and requires comparison
   const note = 'Authored outline, retained after an error and page reload; not an official LPIS update.';
   await workspace.getByLabel('What changed, or where did this outline come from?', { exact: true }).fill(note);
   await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('');
   await workspace.getByRole('button', { name: 'Use my location', exact: true }).click();
   await expect(workspace.getByText(/Device location shown with about 15 metres accuracy/)).toBeVisible();
   expect((await (await page.request.get(`/api/v1/farms/${fixture.sales_farm.id}/fields`)).json()).items).toHaveLength(0);
@@ -878,6 +883,12 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await workspace.getByRole('button', { name: 'Adjust a field', exact: true }).click();
   await expect(workspace.getByLabel('Which field?', { exact: true })).toHaveValue(originalField.id);
   await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
+  await expect(workspace.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(0);
+  await expect(workspace.getByText('The chosen background is enabled. Its imagery date may be unknown.', { exact: true })).toBeVisible();
+  await workspace.getByRole('checkbox', { name: 'Show background map', exact: true }).uncheck();
+  tiles.calls.length = 0;
   const beforeMapNavigation = await cornerLabels(workspace);
   expect(originalField.point).toEqual({ latitude: 52.0005, longitude: 5.001 });
   const boundaryMap = workspace.getByRole('group', { name: 'Field boundary map', exact: true });
@@ -922,6 +933,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await workspace.getByRole('button', { name: 'Move east', exact: true }).click();
   await workspace.getByRole('button', { name: 'Fit supplied outlines', exact: true }).click();
   expect(await cornerLabels(workspace)).toEqual(beforeMapNavigation);
+  await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
   await workspace.getByLabel('Background map', { exact: true }).selectOption('nl-pdok-aerial');
   expect(tiles.calls).toHaveLength(0);
   await workspace.getByRole('checkbox', { name: 'Show background map', exact: true }).check();
@@ -1073,6 +1085,10 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await page.goto('/app/satellite');
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByLabel('Field', { exact: true }).selectOption(fields[0].id);
+  await expect(page.getByRole('group', { name: 'Field boundary map', exact: true })).toHaveClass(/leaflet-container/);
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   await page.getByLabel('From', { exact: true }).fill('2025-05-01');
   await page.getByLabel('To', { exact: true }).fill('2025-05-20');
   await page.getByLabel('Public data provider', { exact: true }).selectOption('copernicus');
@@ -1099,6 +1115,7 @@ test('Hungarian farmer reads a consented diary page and selected work without im
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (['127.0.0.1', 'localhost'].includes(url.hostname)) return route.continue();
+    if (isEOXTile(url)) return backgroundTile(route);
     await route.abort('blockedbyclient');
     throw new Error(`The authored Hungarian journey must not contact a public host: ${url.origin}`);
   });
@@ -1184,6 +1201,7 @@ test('Luxembourg farmer reviews an original 2026 parcel export before issuing a 
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (['127.0.0.1', 'localhost'].includes(url.hostname)) return route.continue();
+    if (isEOXTile(url)) return backgroundTile(route);
     await route.abort('blockedbyclient');
     throw new Error(`No authority or other external request belongs in this authored source journey: ${url.origin}${url.pathname}`);
   });

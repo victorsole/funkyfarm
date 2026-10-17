@@ -1,0 +1,91 @@
+{
+  "id": "osm-cz-sk-practice-2026-10-18",
+  "checked_date": "2026-10-18",
+  "provider": "OpenStreetMap contributors",
+  "source_kind": "community_mapped_landuse_boundaries",
+  "official_lpis": false,
+  "attribution": "© OpenStreetMap contributors",
+  "license": "Open Database License 1.0 (ODbL)",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "copyright_url": "https://www.openstreetmap.org/copyright",
+  "data_path": "/data/mapped-demo-references.geojson",
+  "data_sha256": "80f8223f3a9de949cb89a0978b4ecd0af448996df95df5498cb6d93119c5ef2c",
+  "references": [
+    {
+      "scenario": "cz-area-crop",
+      "country": "CZ",
+      "way_id": 333054142,
+      "version": 1,
+      "way_last_edit_at": "2015-03-16T12:56:26Z",
+      "source_year": null,
+      "source_url": "https://www.openstreetmap.org/way/333054142",
+      "map_extract_url": "https://api.openstreetmap.org/api/0.6/map?bbox=15.395,49.195,15.425,49.207",
+      "map_extract_sha256": "c1661e860815e2515748b85247e1b1194fb659d0c19fab1898b6c301c8ef96fd",
+      "geometry_sha256": "e72767b4830fa179b11bb46cfdd98c9d099ad2cd5ffc0bd5bfa5756700cc0b39",
+      "mapped_tags": {
+        "landuse": "farmland"
+      },
+      "approximate_area_ha": 2.90457,
+      "area_method": "spherical local approximation, not a survey or official eligible area",
+      "bounds": [
+        15.3976355,
+        49.1952176,
+        15.4011037,
+        49.197725
+      ]
+    },
+    {
+      "scenario": "cz-mock-amendment-window",
+      "country": "CZ",
+      "way_id": 1568293651,
+      "version": 1,
+      "way_last_edit_at": "2026-10-14T15:46:57Z",
+      "source_year": null,
+      "source_url": "https://www.openstreetmap.org/way/1568293651",
+      "map_extract_url": "https://api.openstreetmap.org/api/0.6/map?bbox=15.395,49.195,15.425,49.207",
+      "map_extract_sha256": "c1661e860815e2515748b85247e1b1194fb659d0c19fab1898b6c301c8ef96fd",
+      "geometry_sha256": "1192e281decf8df315cfa5fabd9f4af29043bbf17acabb7016d681439e09a004",
+      "mapped_tags": {
+        "landuse": "farmland"
+      },
+      "approximate_area_ha": 2.97044,
+      "area_method": "spherical local approximation, not a survey or official eligible area",
+      "bounds": [
+        15.406792,
+        49.193092,
+        15.410011,
+        49.196271
+      ]
+    },
+    {
+      "scenario": "sk-announced-check",
+      "country": "SK",
+      "way_id": 841945629,
+      "version": 2,
+      "way_last_edit_at": "2021-05-17T13:02:28Z",
+      "source_year": null,
+      "source_url": "https://www.openstreetmap.org/way/841945629",
+      "map_extract_url": "https://api.openstreetmap.org/api/0.6/map?bbox=18.090,48.695,18.110,48.710",
+      "map_extract_sha256": "016926582d085aa4f28e4e7612a7d1e24b99c5b5cb952e0cda13dba17ef4e0c4",
+      "geometry_sha256": "d3a6f810d6392ac49f97d982c408ec0bb6632723807eb1d707fb1e36ffbf627d",
+      "mapped_tags": {
+        "landuse": "meadow"
+      },
+      "approximate_area_ha": 2.74402,
+      "area_method": "spherical local approximation, not a survey or official eligible area",
+      "bounds": [
+        18.0849606,
+        48.7092773,
+        18.0904645,
+        48.7141172
+      ]
+    }
+  ],
+  "limits": [
+    "These are actual published community map boundaries in their mapped locations, not a cadastral survey or official LPIS extract.",
+    "OSM tags, way edit timestamps and retrieval dates do not establish current crop, farming activity, a source campaign, ownership, eligibility or claims.",
+    "Private proposals are deliberately authored exercises. The original community-map geometry is retained unchanged for comparison.",
+    "Crop labels, observations, notices, response dates and claims in the practice cases remain authored and need separate review.",
+    "The data extract is offered under ODbL separately from the application code licence. Keep contributor attribution when displaying or redistributing it."
+  ]
+}

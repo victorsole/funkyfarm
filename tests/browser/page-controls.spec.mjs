@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 import { createHash } from 'node:crypto';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
@@ -28,8 +29,10 @@ async function readOnlyBrowser(page, { accountControls = false, assistantControl
     const tile = url.protocol === 'https:' && (
       url.hostname === 'tile.openstreetmap.org' && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)
       || url.hostname === 'service.pdok.nl' && url.pathname.startsWith('/hwh/luchtfotorgb/wmts/')
-      || url.hostname === 'www.wms.nrw.de' && url.pathname === '/geobasis/wms_nw_dop');
-    if (tile) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#dfe8d1"/><text x="8" y="22">Authored local navigation fixture</text></svg>' });
+      || url.hostname === 'www.wms.nrw.de' && url.pathname === '/geobasis/wms_nw_dop'
+      || url.hostname === 'www.ign.es' && url.pathname === '/wms-inspire/pnoa-ma'
+      || isEOXTile(url));
+    if (tile) return backgroundTile(route);
     external.push(`${url.origin}${url.pathname}`);
     return route.abort('blockedbyclient');
   });
@@ -51,7 +54,6 @@ async function signIn(page) {
 }
 
 async function fillPreferences(page, values) {
-  await page.getByLabel('Preferred language', { exact: true }).selectOption(values.language);
   await page.getByLabel('Default country', { exact: true }).selectOption(values.country || '');
   await page.getByLabel('Default region', { exact: true }).fill(values.region || '');
   await page.getByLabel('Default reporting year', { exact: true }).fill(String(values.reporting_year));
@@ -77,8 +79,10 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   test.setTimeout(180_000);
   const safety = await readOnlyBrowser(page, { accountControls: true });
   await page.goto('/login');
+  await expect(page.getByRole('combobox', { name: /language/i })).toHaveCount(0);
   await page.getByRole('link', { name: 'Create account', exact: true }).click();
   await expect(page).toHaveURL(/\/register$/);
+  await expect(page.getByRole('combobox', { name: /language/i })).toHaveCount(0);
   await page.getByLabel('Your name', { exact: true }).fill('FICTIONAL unsubmitted form');
   await expect(page.getByRole('form', { name: 'Create account', exact: true }).locator('input[name="password"]')).toHaveAttribute('minlength', '12');
   await page.getByRole('link', { name: 'Sign in', exact: true }).click();
@@ -87,27 +91,28 @@ test('page controls: account defaults, source handbook and legacy navigation do 
   const beforeFarm = await read(page, `/farms/${fixture.farm.id}`);
   const beforeRequest = await read(page, `/requests/${fixture.request.id}`);
 
-  await page.locator('.language-picker select').selectOption('cs');
-  await expect(page.locator('html')).toHaveAttribute('lang', 'cs');
-  await page.locator('.language-picker select').selectOption('en');
+  await expect(page.getByRole('combobox', { name: /language/i })).toHaveCount(0);
   await page.locator('.account-menu > summary').click();
   await page.getByRole('link', { name: 'Account and settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: /language/i })).toHaveCount(0);
+  await expect(page.getByText('Some translated interface labels are still drafts.', { exact: true })).toHaveCount(0);
   const initialPreferences = {
-    language: await page.getByLabel('Preferred language', { exact: true }).inputValue(),
+    language: beforeAccount.data.language,
     country: await page.getByLabel('Default country', { exact: true }).inputValue() || null,
     region: await page.getByLabel('Default region', { exact: true }).inputValue() || null,
     reporting_year: Number(await page.getByLabel('Default reporting year', { exact: true }).inputValue()),
     notifications: await page.getByRole('checkbox', { name: 'Show workspace notifications', exact: true }).isChecked(),
   };
-  const savedPreferences = { language: 'fr', country: 'NL', region: 'FICTIONAL saved region', reporting_year: 2199, notifications: true };
+  const savedPreferences = { language: beforeAccount.data.language, country: 'NL', region: 'FICTIONAL saved region', reporting_year: 2199, notifications: true };
   const savedAccount = await savePreferences(page, savedPreferences, beforeAccount.revision);
   expect(await read(page, '/account')).toEqual({ ...beforeAccount, ...savedAccount });
-  await fillPreferences(page, { language: 'de', country: 'BE', region: 'FICTIONAL unsaved region', reporting_year: 2200, notifications: false });
+  await fillPreferences(page, { country: 'BE', region: 'FICTIONAL unsaved region', reporting_year: 2200, notifications: false });
   expect(await read(page, '/account')).toEqual({ ...beforeAccount, ...savedAccount });
   await page.reload();
   await expect(page.getByLabel('Default region', { exact: true })).toHaveValue(savedPreferences.region);
-  await expect(page.getByLabel('Preferred language', { exact: true })).toHaveValue(savedPreferences.language);
+  await expect(page.getByRole('combobox', { name: /language/i })).toHaveCount(0);
+  expect((await read(page, '/account')).data.language).toBe(beforeAccount.data.language);
   await expect(page.getByLabel('Default country', { exact: true })).toHaveValue(savedPreferences.country);
   await expect(page.getByLabel('Default reporting year', { exact: true })).toHaveValue(String(savedPreferences.reporting_year));
   await expect(page.getByRole('checkbox', { name: 'Show workspace notifications', exact: true })).toBeChecked();

@@ -7,6 +7,7 @@ import type { RecordItem } from '../types';
 import type { FieldGeometry, FieldPoint } from './FieldsMap';
 import { ParcelMap, isDisplayableFieldGeometry } from '../maps/ParcelMap';
 import { resolveSpanishDemo, spanishDemoArea, type SpanishDemoSnapshot } from '../maps/spanishDemo';
+import { resolveCommunityReference, resolveDutchReference } from '../maps/outlineReferences';
 import { SpanishParcelDemo } from './SpanishParcelDemo';
 import './parcelCheck.css';
 
@@ -251,6 +252,8 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
               <ParcelMap key={`${bundle.farm.id}:${bundle.farm.revision}:${selectedIndex}`} readOnly
                 geometry={selected.geometry_status === 'valid' ? parcel?.geometry ?? null : null} point={parcel?.point}
                 snapshot={spanishSnapshot ? { id: spanishSnapshot.id, reference: spanishSnapshot.field.reference } : null}
+                communityReference={resolveCommunityReference(bundle.farm, parcel)}
+                dutchReference={resolveDutchReference(bundle.farm, parcel)}
                 contextOutlines={contextOutlines} reference={null} sketch={[]} splitLine={[]} mode="edit" onGeometry={noMapEdit} onSketch={noMapEdit} onSplitLine={noMapEdit}
                 country={typeof bundle.farm.data.country === 'string' ? bundle.farm.data.country : null}
                 region={typeof bundle.farm.data.region === 'string' ? bundle.farm.data.region : null} />

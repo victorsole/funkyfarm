@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 const title = 'Portuguese farmer preserves literal journal drafts and explicitly prepares a reviewed report';
@@ -86,7 +87,7 @@ test(title, async ({ page }) => {
   const errors = []; const external = []; const authorityEvents = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.method() === 'POST' && /\/api\/v1\/(?:reports\/[^/]+\/receipts|cases\/[^/]+\/events)$/.test(new URL(request.url()).pathname)) authorityEvents.push(request.url()); });
-  await page.route('**/*', route => { const url = new URL(route.request().url()); if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue(); external.push(`${url.origin}${url.pathname}`); return route.abort('blockedbyclient'); });
+  await page.route('**/*', route => { const url = new URL(route.request().url()); if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue(); if (isEOXTile(url)) return backgroundTile(route); external.push(`${url.origin}${url.pathname}`); return route.abort('blockedbyclient'); });
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(fixture.accounts.owner.email);
   await page.getByLabel('Password', { exact: true }).fill(fixture.accounts.owner.password);
