@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS records (
 );
 CREATE INDEX IF NOT EXISTS records_workspace_kind ON records(workspace_id,kind,updated_at DESC);
 CREATE INDEX IF NOT EXISTS records_farm ON records(workspace_id,(data->>'farm_id'));
+-- Only the narrow helper can reserve training workspaces. This is allocation
+-- metadata, not farm data; the runtime receives no table privileges.
+CREATE TABLE IF NOT EXISTS demo_workspace_reservations (
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key_hash text NOT NULL CHECK(length(key_hash)=64),
+    fixture_id text NOT NULL,
+    workspace_id uuid NOT NULL UNIQUE REFERENCES workspaces(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY(user_id,key_hash)
+);
 CREATE TABLE IF NOT EXISTS record_history (
     workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     record_id uuid NOT NULL REFERENCES records(id) ON DELETE CASCADE,
@@ -291,6 +301,44 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,funkyfarm AS $$
  JOIN funkyfarm.workspaces w ON w.id=m.workspace_id
  WHERE m.user_id=current_setting('app.user_id')::uuid ORDER BY w.created_at,w.id
 $$;
+
+CREATE OR REPLACE FUNCTION create_demo_workspace(p_fixture text,p_key text) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,funkyfarm AS $$
+DECLARE
+ uid uuid:=nullif(current_setting('app.user_id',true),'')::uuid;
+ source_workspace uuid:=nullif(current_setting('app.workspace_id',true),'')::uuid;
+ request_hash text; existing funkyfarm.demo_workspace_reservations; result uuid; retained integer;
+BEGIN
+ IF uid IS NULL OR p_fixture<>'lpis-correction-2026-v1'
+  OR p_key IS NULL OR length(p_key) NOT BETWEEN 16 AND 200 OR p_key !~ '^[!-~]+$'
+  OR nullif(current_setting('app.assistant_credential_id',true),'') IS NOT NULL
+  OR NOT EXISTS(SELECT 1 FROM funkyfarm.memberships m JOIN funkyfarm.workspaces w ON w.id=m.workspace_id
+    WHERE m.workspace_id=source_workspace AND m.user_id=uid AND m.role='owner' AND w.owner_id=uid) THEN
+  RAISE EXCEPTION 'owner training workspace allocation required' USING ERRCODE='42501';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(uid::text||':demo-workspace-allocation',0));
+ request_hash:=encode(sha256(convert_to(p_key,'UTF8')),'hex');
+ SELECT * INTO existing FROM funkyfarm.demo_workspace_reservations r WHERE r.user_id=uid AND r.key_hash=request_hash;
+ IF FOUND THEN
+  IF existing.fixture_id<>p_fixture THEN RAISE EXCEPTION 'idempotency_conflict' USING ERRCODE='P0001'; END IF;
+  RETURN existing.workspace_id;
+ END IF;
+ SELECT count(*) INTO retained FROM funkyfarm.demo_workspace_reservations r WHERE r.user_id=uid;
+ IF retained>=20 THEN RAISE EXCEPTION 'demo_workspace_limit' USING ERRCODE='P0001'; END IF;
+ INSERT INTO funkyfarm.workspaces(name,owner_id)
+ VALUES('FICTIONAL training farms '||(retained+1)::text,uid) RETURNING id INTO result;
+ INSERT INTO funkyfarm.memberships(workspace_id,user_id,role) VALUES(result,uid,'owner');
+ INSERT INTO funkyfarm.demo_workspace_reservations(user_id,key_hash,fixture_id,workspace_id)
+ VALUES(uid,request_hash,p_fixture,result);
+ -- FORCE RLS still applies to records; bind the new, actually owned workspace
+ -- only for its single reservation record, then restore the caller's context.
+ PERFORM set_config('app.workspace_id',result::text,true);
+ INSERT INTO funkyfarm.records(id,workspace_id,kind,data)
+ VALUES(gen_random_uuid(),result,'demo_runs',jsonb_build_object('status','reserved','fixture_id',p_fixture,
+  'created_by',uid::text,'source_workspace_id',source_workspace::text,'request_key_hash',request_hash));
+ PERFORM set_config('app.workspace_id',source_workspace::text,true);
+ RETURN result;
+END $$;
 
 CREATE OR REPLACE FUNCTION accept_invitation(p_hash text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,funkyfarm AS $$
@@ -599,5 +647,6 @@ GRANT SELECT,INSERT ON idempotency_keys TO funkyfarm_app;
 GRANT SELECT,INSERT,UPDATE ON user_preferences,public_content TO funkyfarm_app;
 GRANT SELECT,INSERT,UPDATE ON regulatory_source_state TO funkyfarm_app;
 GRANT SELECT,INSERT ON regulatory_source_events TO funkyfarm_app;
+GRANT EXECUTE ON FUNCTION create_demo_workspace(text,text) TO funkyfarm_app;
 GRANT EXECUTE ON FUNCTION oauth_register_client(text,jsonb,timestamptz),oauth_get_client(text),oauth_create_request(uuid,text,jsonb,timestamptz),oauth_get_request(uuid,text),oauth_consume_request(uuid,text),oauth_lookup_record(text,text),adviser_recipients(uuid),report_public_content(uuid,text),community_reports_queue(integer,integer),review_adviser_qualification(uuid,text,text,text,text,text,date) TO funkyfarm_app;
 GRANT EXECUTE ON FUNCTION has_membership(),membership_fingerprint(),record_access(uuid,text,jsonb,boolean),authentication_attempt(text),register_user(text,text,text),login_identity(text),create_session(uuid,text,text,timestamptz),resolve_session(text,uuid),resolve_assistant_token(text),revoke_session(text),workspace_list(),accept_invitation(text),revoke_invitation(uuid),shared_report(text),shared_selection(text),shared_document(text,uuid),moderate_public_content(uuid,text,text),review_adviser_qualification(uuid,text,text,text) TO funkyfarm_app;

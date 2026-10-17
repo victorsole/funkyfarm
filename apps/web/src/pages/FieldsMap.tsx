@@ -63,11 +63,15 @@ export function FieldBoundaryWorkspace({farm,onSaved}:{farm:RecordItem;onSaved:(
   const [query]=useSearchParams();
   const linkedId=query.get('proposal_id');
   const linkedRevision=query.get('expected_revision');
+  const linkedFieldId=query.get('parcel_id');
+  const linkedFarmRevision=query.get('expected_farm_revision');
+  const [replaceLinkedDraft,setReplaceLinkedDraft]=useState(false);
   const canReview=session?.workspace.role==='owner'||session?.workspace.permissions?.includes('review')===true;
   const draft=usePrivateDraft<BoundaryDraft>(`boundary-workspace:${farm.id}`,blankDraft(farm.revision));
   const value=draft.value;
   const [open,setOpen]=useState(false);
   const [fields,setFields]=useState<Parcel[]>([]);
+  const [fieldsLoaded,setFieldsLoaded]=useState(false);
   const [loadedProposals,setProposals]=useState<RecordItem[]>([]);
   const [linked,setLinked]=useState<{key:string;record:RecordItem}|null>(null);
   const [linkedError,setLinkedError]=useState<{key:string;message:string}|null>(null);
@@ -85,7 +89,7 @@ export function FieldBoundaryWorkspace({farm,onSaved}:{farm:RecordItem;onSaved:(
   const proposals=linkedProposal?[linkedProposal,...loadedProposals.filter(item=>item.id!==linkedProposal.id)]:loadedProposals;
   const selectReference=useCallback((reference:IacsFieldReference)=>{if(busy||!draft.ready)return;setSelectedReference(null);draft.setValue(old=>({...old,reference:reference.geometry,referenceSource:reference.source,referenceId:reference.external_id??'',referenceCrop:reference.crop??'',referenceYear:reference.year,retryKey:crypto.randomUUID()}));},[busy,draft.ready,draft.setValue]);
   function set<K extends keyof BoundaryDraft>(key:K,next:BoundaryDraft[K]){draft.setValue(old=>({...old,[key]:next,retryKey:crypto.randomUUID()}));}
-  useEffect(()=>{let active=true;void Promise.all([api.get<{items:Parcel[]}>(`/farms/${farm.id}/fields`),api.get<Page<RecordItem>>(`/farms/${farm.id}/field-proposals?limit=200`)]).then(([list,history])=>{if(active){setFields(list.items);setProposals(history.items);}}).catch(failure=>{if(active)setError(errorMessage(failure));});return()=>{active=false;};},[farm.id,farm.revision,refresh]);
+  useEffect(()=>{let active=true;setFieldsLoaded(false);void Promise.all([api.get<{items:Parcel[]}>(`/farms/${farm.id}/fields`),api.get<Page<RecordItem>>(`/farms/${farm.id}/field-proposals?limit=200`)]).then(([list,history])=>{if(active){setFields(list.items);setProposals(history.items);setFieldsLoaded(true);}}).catch(failure=>{if(active)setError(errorMessage(failure));});return()=>{active=false;};},[farm.id,farm.revision,refresh]);
   useEffect(()=>{
     if(!linkedId)return;
     let active=true;
@@ -98,6 +102,14 @@ export function FieldBoundaryWorkspace({farm,onSaved}:{farm:RecordItem;onSaved:(
     return()=>{active=false;};
   },[linkKey,farm.id,linkedId,linkedRevision]);
   const chosen=fields.filter(field=>value.parentIds.includes(field.id));
+  const linkedFields=fields.filter(field=>field.id===linkedFieldId&&field.active!==false);
+  const linkedField=linkedFields.length===1?linkedFields[0]:null;
+  const fieldLinkStale=query.getAll('parcel_id').length>1||query.getAll('expected_farm_revision').length>1||!!linkedFieldId&&(!linkedFieldId.trim()||linkedFieldId.length>100)||linkedFarmRevision!==null&&(!/^[1-9]\d*$/.test(linkedFarmRevision)||Number(linkedFarmRevision)!==farm.revision);
+  const hasPrivateWork=!!(value.name||value.note||value.geometry||value.sketch.length||value.splitLine.length||value.parentIds.length||value.savedId||value.latitude||value.longitude);
+  useEffect(()=>{setReplaceLinkedDraft(false);},[linkedFieldId,linkedFarmRevision,farm.revision,value.retryKey]);
+  const checkParams=new URLSearchParams({expected_farm_revision:String(farm.revision),reporting_year:query.get('reporting_year')||String(farm.data.reporting_year)});
+  if(linkedFieldId)checkParams.set('parcel_id',linkedFieldId);
+  if(query.get('case_id')&&query.get('expected_case_revision')){checkParams.set('case_id',query.get('case_id')!);checkParams.set('expected_case_revision',query.get('expected_case_revision')!);}
   const validLocation=value.latitude.trim()!==''&&value.longitude.trim()!==''&&Number.isFinite(Number(value.latitude))&&Number.isFinite(Number(value.longitude));
   const point=validLocation?{latitude:Number(value.latitude),longitude:Number(value.longitude)}:undefined;
   function choose(operation:BoundaryDraft['operation'],field?:Parcel){draft.setValue({...blankDraft(farm.revision),operation,parentIds:field?[field.id]:[],geometry:field?.geometry??null,name:field?.name??'',crop:field?.crop??'',greenhouse:field?.greenhouse===true,externalId:field?.external_id??'',latitude:field?.point?String(field.point.latitude):'',longitude:field?.point?String(field.point.longitude):''});setOpen(true);setError('');setMessage('');}
@@ -133,6 +145,7 @@ export function FieldBoundaryWorkspace({farm,onSaved}:{farm:RecordItem;onSaved:(
   async function discard(record:RecordItem){setBusy(true);setError('');try{const saved=await api.post<RecordItem>(`/field-proposals/${record.id}/discard`,{expected_revision:record.revision,note:'Set aside by the user before applying.'});setProposals(old=>old.map(item=>item.id===record.id?saved:item));setRefresh(count=>count+1);setMessage('This draft was set aside. The draft remains in history and your fields were not changed.');}catch(failure){setError(errorMessage(failure));}finally{setBusy(false);}}
   function resume(record:RecordItem){const p=record.data.parcel as Parcel;draft.setValue({...blankDraft(record.data.base_farm_revision),operation:record.data.previous_parcel?'edit':'draw',parentIds:record.data.previous_parcel?[record.data.previous_parcel.id]:[],geometry:p.geometry??null,name:p.name,crop:p.crop??'',greenhouse:p.greenhouse===true,externalId:p.external_id??'',note:record.data.note??'',latitude:p.point?String(p.point.latitude):'',longitude:p.point?String(p.point.longitude):'',reference:record.data.reference?.geometry??null,referenceSource:record.data.reference?.source??'',referenceId:record.data.reference?.external_id??'',referenceCrop:record.data.reference?.crop??'',referenceYear:record.data.reference?.year??null,savedId:record.id,savedRevision:record.revision});setOpen(true);}
   return <section className="boundary-workspace" aria-labelledby={`boundaries-${farm.id}`}><header className="boundary-heading"><div><p className="eyebrow">Keep your field records in step</p><h2 id={`boundaries-${farm.id}`}>Change boundaries</h2><p>Draw a field, move its corners, divide it or join neighbouring fields. Compare first, then confirm.</p></div><div className="actions"><Button disabled={!draft.ready||busy} onClick={()=>{setOpen(true);setError('');}}>Open boundary tools</Button></div></header>
+    {linkedFieldId&&<section className="card" aria-label="Field opened from the parcel check">{fieldLinkStale?<Notice kind="warning">The farm changed after this field link was prepared. Your private map draft has not been replaced. Recheck the current fields before opening this field for another change.</Notice>:!fieldsLoaded?<p role="status">Opening the selected field…</p>:!linkedField?<Notice kind="warning">This field link does not identify one active saved field. No field has been guessed or opened for editing.</Notice>:<><h3>{linkedField.name}</h3><p>This is the field selected in your parcel check. Opening it does not change an official register or confirm a proposal.</p>{canReview&&<>{hasPrivateWork&&<label className="check-row"><input type="checkbox" checked={replaceLinkedDraft} onChange={event=>setReplaceLinkedDraft(event.target.checked)}/>I want to replace the open private map draft with this field.</label>}<Button disabled={!draft.ready||busy||hasPrivateWork&&!replaceLinkedDraft} onClick={()=>{choose('edit',linkedField);setReplaceLinkedDraft(false);}}>Adjust {linkedField.name}</Button></>}</>}<p><Link to={`/app/fields/${farm.id}/check?${checkParams}`}>Return to the field check</Link></p></section>}
     {linkedId&&(linkedError?.key===linkKey?<Notice kind="warning">{linkedError.message}<p><Link to={`/app/cases?farm_id=${farm.id}`}>Back to saved work</Link></p></Notice>:linkedProposal?<Notice>Opened the saved field change, version {linkedProposal.revision}. Compare it below before making another change.</Notice>:<p role="status">Opening the selected field change…</p>)}
     {error&&<Notice kind="error">{error}</Notice>}{message&&<Notice kind="success">{message}</Notice>}{draft.error&&<Notice kind="warning">{draft.error}</Notice>}
     <FieldFileImport key={`field-file:${session?.user.id}:${session?.workspace.id}:${farm.id}:${farm.revision}`} farm={farm} disabled={busy} onProposed={record=>{setProposals(previous=>[record,...previous.filter(item=>item.id!==record.id)]);setRefresh(count=>count+1);setMessage('The selected fields are one saved proposal. Compare every outline below before confirming; existing fields have not changed.');}}/>

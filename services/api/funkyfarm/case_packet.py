@@ -360,6 +360,9 @@ def _build(spool, session, selection, records, check):
                 folder.add(f"records/{kind}-{stem}.json", _json(outward),
                     f"{label} (saved values)", "application/json", record)
         farm = records[("farms", data["farm_id"])]["data"]
+        if data.get("focused_review_required") or any(data.get(key) is not None for key in ("cap_context", "original_statement", "answer_review")):
+            folder.add("case-context.json", _json({"case_id": selection["case_id"], "case_revision": selection["case_revision"],
+                "content": data, "notice": NOTICE}), "Retained case context and explicitly checked answers", "application/json")
         html, text = _indexes(selection, farm, folder.files, notes)
         check()
         folder.add("index.html", html, "Open this folder", "text/html; charset=utf-8")

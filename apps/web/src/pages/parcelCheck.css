@@ -1,0 +1,56 @@
+.parcel-check { max-width: 1120px; margin: 0 auto; }
+.parcel-check .page-header { margin-bottom: 16px; padding-bottom: 16px; }
+.parcel-check .page-header h1 { margin-bottom: 8px; }
+.parcel-check-steps { display: flex; list-style: none; margin: 16px 0 8px; padding: 0; border-block: 1px solid var(--line); }
+.parcel-check-steps li { flex: 1; }
+.parcel-check-steps button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 0; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.parcel-check-steps button span { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 50%; font-variant-numeric: tabular-nums; }
+.parcel-check-steps button[aria-current="step"] { color: var(--plum); font-weight: 650; background: var(--plum-soft); }
+.parcel-check-steps button[aria-current="step"] span { background: var(--plum); border-color: var(--plum); color: white; }
+.parcel-check-steps button:disabled { opacity: .6; cursor: default; }
+.parcel-check-main { margin: 8px 0 18px; }
+.parcel-check-main > h2 { margin: 0 0 14px; font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 3vw, 2rem); }
+.parcel-check-map-details { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, 1fr); gap: 30px; margin-top: 24px; }
+.parcel-check-facts { margin: 16px 0; }
+.parcel-check-facts > div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.parcel-check-facts dt { color: var(--muted); font-size: .86rem; }
+.parcel-check-facts dd { margin: 5px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.parcel-claim-comparison { border-top: 2px solid var(--plum); padding-top: 14px; }
+.parcel-claim-comparison h3 { font-family: var(--serif); font-size: 1.35rem; font-weight: 500; margin: 8px 0 12px; }
+.parcel-claim-status { margin: 0; color: var(--plum); font-size: .82rem; font-weight: 650; }
+.parcel-claim-values { margin: 0 0 16px; font-variant-numeric: tabular-nums; }
+.parcel-claim-values > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.parcel-claim-values dt { color: var(--muted); font-size: .87rem; }
+.parcel-claim-values dd { margin: 0; flex-shrink: 0; font-weight: 650; }
+.parcel-claim-values .parcel-claim-draft { border-bottom-style: dashed; }
+.parcel-claim-comparison > p:not(.parcel-claim-status) { font-size: .88rem; line-height: 1.55; }
+.parcel-claim-comparison .button { margin-top: 4px; }
+.parcel-claim-comparison details, .parcel-field-details { margin-top: 18px; font-size: .88rem; }
+.parcel-claim-comparison details li { margin-bottom: 14px; }
+.parcel-claim-comparison details li p { margin: 5px 0; }
+.parcel-claim-outline { padding-top: 14px; border-top: 1px solid var(--line); font-size: .88rem; }
+.parcel-claim-next { margin-bottom: 0; }
+.parcel-check-primary { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 28px; }
+.parcel-check-caption { margin: 0 0 8px; text-align: right; color: var(--muted); font-size: .88rem; }
+.parcel-check-caption .button { padding: 6px 10px; font-size: inherit; }
+.parcel-check-issues { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(0, 1.5fr); gap: 28px; margin-top: 24px; }
+.parcel-check-issues nav ul { padding: 0; margin: 0; list-style: none; }
+.parcel-check-issues nav li + li { margin-top: 7px; }
+.parcel-check-issues nav button { display: grid; gap: 5px; width: 100%; border: 1px solid var(--line); border-radius: 5px; padding: 13px; background: var(--paper); color: var(--ink); text-align: left; cursor: pointer; }
+.parcel-check-issues nav button strong { color: var(--muted); font-size: .82rem; font-weight: 500; }
+.parcel-check-issues nav button[aria-current="true"] { border-color: var(--plum); background: var(--plum-soft); }
+.parcel-check-issue { border-left: 2px solid var(--line); padding-left: 26px; min-width: 0; }
+.parcel-check-issue h3 { margin-top: 0; }
+.parcel-check-issue details { margin-top: 22px; }
+.parcel-check-issue details li { margin-bottom: 14px; }
+.parcel-check-pages { margin-top: 20px; font-size: .88rem; }
+.parcel-check-limits { margin: 22px 0; padding: 18px 0; border-top: 1px solid var(--line); }
+.parcel-check-version { color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
+.parcel-check button:focus-visible, .parcel-check a:focus-visible, .parcel-check summary:focus-visible { outline: 2px solid var(--plum); outline-offset: 4px; }
+@media (max-width: 760px) {
+  .parcel-check-map-details, .parcel-check-issues { grid-template-columns: 1fr; gap: 18px; }
+  .parcel-check-issue { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 18px; }
+  .parcel-check-steps button { flex-direction: column; align-items: flex-start; gap: 8px; padding: 13px 9px; font-size: .84rem; }
+  .parcel-check-primary > .button { width: 100%; text-align: center; }
+  .parcel-claim-values > div { flex-wrap: wrap; gap: 4px 14px; }
+}

@@ -24,6 +24,8 @@ import org.json.JSONObject
 @Composable internal fun FieldsHome(model: FarmModel, setup: () -> Unit) {
     Text("My fields", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     Text("Keep field names, crops and boundaries with the farm they belong to.")
+    WebLink(model, "/app/demo", "Hackathon demo · opens website")
+    Text("The jury walkthrough opens in your browser and may ask you to sign in separately. Opening it does not confirm or submit farm records.", style = MaterialTheme.typography.bodySmall)
     if (model.records["farms"].isNullOrEmpty()) { Button(onClick = setup) { Text("Set up my farm first") }; return }
     model.records["farms"].orEmpty().forEach { farm -> FarmFields(model, farm) }
     TextButton(onClick = setup) { Text("Update farm setup") }
@@ -42,6 +44,8 @@ import org.json.JSONObject
     OutlinedButton(onClick = { model.open("farms", id) }) { Text("Farm details and checked facts") }
     OutlinedButton(onClick = { model.cases = obj("create" to true, "job_type" to "fields", "farm_id" to id) }) { Text("Check these fields as a preparation job") }
     if (unavailable) { Text("These fields are no longer available to this account. Reconnect and check your access."); return }
+    WebLink(model, "/app/fields/$id/check", "Check my parcels · opens website")
+    Text("The guided parcel check opens in your browser and may ask you to sign in separately. Nothing is confirmed or sent automatically.", style = MaterialTheme.typography.bodySmall)
     LpisGuide(model, farm)
     if (response == null) Text("Showing fields retained with this farm while the current list loads.", style = MaterialTheme.typography.bodySmall)
     fields.forEach { field -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

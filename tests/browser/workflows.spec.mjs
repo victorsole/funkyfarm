@@ -10,6 +10,15 @@ async function signIn(page, who) {
   await expect(page).toHaveURL(/\/app\/home/);
 }
 
+async function openMoreTool(page, path) {
+  const more = page.locator('details.farm-tools-menu');
+  await expect(more).not.toHaveAttribute('open', '');
+  await more.locator('summary').click();
+  await more.getByRole('navigation', { name: 'More farm tasks', exact: true }).locator(`a[href="${path}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`${path}$`));
+  await expect(more).not.toHaveAttribute('open', '');
+}
+
 async function api(page, path, body) {
   const session = await (await page.request.get('/api/v1/auth/session')).json();
   const response = await page.request.post('/api/v1' + path, { data: body, headers: { 'X-CSRF-Token': session.csrf_token } });
@@ -115,7 +124,7 @@ test('new farmer onboards and records a purchase separately from actual use', as
 
 test('owner reviews a response, exports PDF and starts an explicit correction', async ({ page }) => {
   await signIn(page, 'owner');
-  await page.goto('/app/reports');
+  await openMoreTool(page, '/app/reports');
   await page.getByLabel('Request to answer', { exact: true }).selectOption(fixture.request.id);
   await page.getByLabel('Reporting pack', { exact: true }).selectOption('farm-evidence');
   await page.getByRole('checkbox', { name: /Browser reviewed holding area/ }).check();
@@ -147,23 +156,27 @@ test('owner reviews a response, exports PDF and starts an explicit correction', 
 
 test('adviser accepts a scoped grant, asks for evidence and loses access on revocation', async ({ page, browser }) => {
   await signIn(page, 'adviser');
-  await page.goto('/app/adviser');
+  await openMoreTool(page, '/app/adviser');
   await expect(page.getByRole('heading', { name: 'Adviser desk', exact: true })).toBeVisible();
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.adviser.workspace_id);
   // A stale tab preference must not silently move the active page during refresh.
   const identity = await (await page.request.get('/api/v1/auth/session')).json();
   await page.evaluate(({ userId, workspaceId }) => sessionStorage.setItem('funkyfarm.workspace-selection.v1', JSON.stringify({ userId, workspaceId })), { userId: identity.user.id, workspaceId: fixture.accounts.peer.workspace_id });
+  await page.getByRole('button', { name: 'Accept a farmer’s invitation', exact: true }).click();
   await page.getByLabel('Private invitation code', { exact: true }).fill(fixture.invitation.token);
   const acceptance = page.waitForResponse(response => response.url().endsWith('/api/v1/invitations/accept') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Accept invitation', exact: true }).click();
   expect((await acceptance).status()).toBe(200);
   await expect(page.getByText(/Invitation accepted\. The farm workspace/)).toBeVisible();
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.adviser.workspace_id);
+  await page.getByRole('button', { name: `Open farm · ${fixture.farm.data.name}`, exact: true }).click();
   await expect(page.getByRole('heading', { name: fixture.farm.data.name, exact: true })).toBeVisible();
   await expect(page.getByText(fixture.private.data.name, { exact: true })).toHaveCount(0);
   await chooseWorkspace(page, fixture.accounts.owner.workspace_id);
   await page.reload();
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.owner.workspace_id);
+  await page.getByRole('button', { name: `Open farm · ${fixture.farm.data.name}`, exact: true }).click();
+  await page.getByRole('button', { name: 'Ask this farmer', exact: true }).click();
   await page.getByLabel('Farm', { exact: true }).selectOption(fixture.farm.id);
   await page.getByLabel('Question', { exact: true }).fill('Please check the actual date in the notebook');
   await page.getByLabel('What the farmer needs to provide', { exact: true }).fill('A receipt date alone does not establish when a field treatment happened.');
@@ -173,7 +186,8 @@ test('adviser accepts a scoped grant, asks for evidence and loses access on revo
   try {
     const ownerPage = await ownerContext.newPage();
     await signIn(ownerPage, 'owner');
-    await ownerPage.goto('/app/adviser');
+    await openMoreTool(ownerPage, '/app/adviser');
+    await ownerPage.getByRole('button', { name: 'Give an adviser access', exact: true }).click();
     const invitationRow = ownerPage.locator('li').filter({ hasText: fixture.accounts.adviser.email });
     await invitationRow.getByRole('button', { name: /Revoke/ }).click();
     await expect(invitationRow.getByText('Revoked', { exact: true })).toBeVisible();
@@ -405,7 +419,7 @@ test('Dutch dairy bookkeeper reviews a receipt and mapped CSV without losing unc
   expect(purchases[0].data.tax_amount).toBeNull();
   expect((await collection(page, 'operations'))).toHaveLength(0);
 
-  await page.goto('/app/imports');
+  await openMoreTool(page, '/app/imports');
   const csv = 'source_id,value,comment\r\n0007,0,\r\n0007,"-12,50",NULL\r\n0008,unreadable,unknown\r\n';
   await page.getByLabel('CSV file', { exact: true }).setInputFiles({ name: 'authored-earlier-ledger.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await page.getByLabel('What does one source row describe?', { exact: true }).fill('One earlier annual feed credit observation, not a receipt or actual input use');
@@ -571,6 +585,8 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   expect(afterReview.issues.some(issue => issue.code === 'national_deadline_unknown')).toBe(true);
   await page.goto('/app/home');
   await expect(page.getByRole('heading', { name: `Home at ${fixture.specialist_farm.data.name}`, exact: true })).toBeVisible();
+  await page.getByText('Saved tasks, dates and other farm records', { exact: true }).click();
+  await expect(page.locator('#next-task')).toBeVisible();
   await expect(page.locator('#next-task').getByText(followup.data.title, { exact: true })).toHaveCount(0);
   const homeProgress = await (await page.request.get(`/api/v1/workflow/home?farm_id=${farmId}`)).json();
   expect(homeProgress.next_actions.some(action => action.record_id === followup.id)).toBe(false);
@@ -846,7 +862,8 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   const farm = fixture.land_farm;
   const originalField = farm.data.parcels[0];
   await page.goto(`/app/fields/${farm.id}`);
-  await page.getByRole('link', { name: 'Draw or change fields', exact: true }).click();
+  await page.getByRole('link', { name: 'Check my fields', exact: true }).click();
+  await page.getByRole('link', { name: 'Open this field in the map tools', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`#boundaries-${farm.id}$`));
   const workspace = page.getByRole('region', { name: 'Change boundaries', exact: true });
   await workspace.getByRole('button', { name: 'Open boundary tools', exact: true }).click();
@@ -1220,7 +1237,7 @@ test('Luxembourg farmer reviews an original 2026 parcel export before issuing a 
   await page.goto(`/app/paperwork/${request.id}`);
   await expect(page.getByRole('region', { name: 'Original source tables', exact: true }).getByText('1 confirmed rows · 0 rows waiting for review', { exact: true })).toBeVisible();
   await expect(page.getByText('Add or correct an answer', { exact: true })).toHaveCount(0);
-  await page.goto('/app/reports');
+  await openMoreTool(page, '/app/reports');
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByLabel('Reporting year', { exact: true }).fill('2026');
   await page.getByLabel('Reporting pack', { exact: true }).selectOption('LU-cap-2026');

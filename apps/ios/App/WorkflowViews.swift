@@ -7,7 +7,8 @@ struct WorkflowHomeView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading, spacing: 5) { Text("Your farm, at a glance").font(.title2.bold()); Text(store.account?.workspace.name ?? "").foregroundStyle(.secondary) } }.padding(.vertical, 6)
+                VStack(alignment: .leading, spacing: 8) { BrandMark().frame(maxWidth: .infinity, alignment: .center); Text("Your farm, at a glance").font(.title2.bold()); Text(store.account?.workspace.name ?? "").foregroundStyle(.secondary) }.padding(.vertical, 6)
+                FocusedDemoLink()
                 if store.records("farms").isEmpty {
                     Notice("Set up your farm to see the requests, records and reporting formats that apply to you.")
                     Button("Set up my farm") { setup = true }.buttonStyle(.borderedProminent)

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -199,7 +200,6 @@ private val tabLabels = listOf("Home", "Work", "Fields", "Forms", "Files")
             Text("API: ${model.origin}", style = MaterialTheme.typography.bodySmall)
             Text("Drafts and queued files are encrypted with AndroidKeyStore, scoped to this account and workspace. Signing out removes them from this device.")
             Text("The interface uses no automatic motion. Android font scaling, TalkBack labels and system touch targets are supported.")
-            LogoCredit()
             PendingChanges(model)
             TextButton(onClick = { account = false; onboarding = true }) { Text("Farm setup") }
             TextButton(onClick = { account = false; support = "imports" }) { Text("Imports and existing records") }
@@ -219,7 +219,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
 @Composable private fun Login(model: FarmModel) {
     var endpoint by remember { mutableStateOf(model.origin) }; var email by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var register by remember { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize(), color = Paper) { Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(20.dp)); Image(painterResource(R.drawable.barn_logo), "FunkyFarm barn logo", Modifier.size(88.dp)); Text("funkyfarm", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Less paperwork. More growing.", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(20.dp)); Image(painterResource(R.drawable.funkyfarmers_logo), "Funkyfarmers logo: two farming grasshoppers", Modifier.fillMaxWidth().height(220.dp), contentScale = ContentScale.Fit); Text("funkyfarm", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Less paperwork. More growing.", style = MaterialTheme.typography.titleLarge)
         Text("Your farm records, source documents and reviewed reports in one private workspace.")
         Heading(if (register) "Create your workspace" else "Welcome back")
         if (model.message.isNotBlank()) Notice(model.message)
@@ -233,14 +233,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
         var config by remember { mutableStateOf(false) }; TextButton(onClick = { config = !config }) { Text("Local API connection") }
         if (config) { OutlinedTextField(endpoint, { endpoint = it }, label = { Text("API origin") }, modifier = Modifier.fillMaxWidth()); Text("Android emulator: http://10.0.2.2:8139. Physical devices require a reachable HTTPS service or an authorized USB reverse connection.", style = MaterialTheme.typography.bodySmall) }
         if (model.busy) WorkingIndicator()
-        LogoCredit()
     } }
-}
-
-@Composable private fun LogoCredit() {
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-    TextButton(onClick = { uriHandler.openUri("https://game-icons.net/1x1/delapouite/barn.html") }) { Text("Barn logo by Delapouite · Game-icons.net", style = MaterialTheme.typography.bodySmall) }
-    TextButton(onClick = { uriHandler.openUri("https://creativecommons.org/licenses/by/3.0/") }) { Text("CC BY 3.0 · artwork unchanged", style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable private fun WorkingIndicator() {

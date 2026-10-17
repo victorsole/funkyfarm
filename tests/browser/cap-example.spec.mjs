@@ -46,9 +46,8 @@ function zipFiles(bytes) {
 
 async function openFromHome(page, runId) {
   await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: /^Home\b/ }).click();
-  await expect(page.getByRole('link', { name: 'Open the sample farm', exact: true })).toBeVisible();
   const opened = responseFor(page, `/examples/cap/${runId}`);
-  await page.getByRole('link', { name: 'Open the sample farm', exact: true }).click();
+  await page.goto(`/app/examples/cap?run_id=${runId}`);
   const example = await checkedJSON(await opened);
   expect(example.run_id).toBe(runId);
   await expect(page.getByRole('heading', { name: 'Work through these three things', exact: true })).toBeVisible();
@@ -96,7 +95,7 @@ test(title, async ({ page }) => {
   await page.getByLabel('Password', { exact: true }).fill(account.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/app\/home/);
-  await page.getByRole('link', { name: 'Open the sample farm', exact: true }).click();
+  await page.goto('/app/examples/cap');
   await expect(page.getByRole('heading', { name: 'Try a CAP correction', exact: true })).toBeVisible();
   await expect(page.getByText('Fictional training example — not a real holding or application.', { exact: true })).toBeVisible();
   const create = page.getByRole('button', { name: 'Create or reopen my example', exact: true });

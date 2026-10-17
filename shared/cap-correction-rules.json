@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "checked_date": "2026-10-17",
+  "scope": "Parcel evidence checks and preparation of corrections to filed CAP applications, not a legal eligibility or filing-permission engine.",
+  "sources": {
+    "beneficiary_responsibility": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 6(2)",
+      "review_note": "Beneficiary responsibility includes automatic claims. Per-value app review is an implementation safeguard, not a prescribed statutory UI."
+    },
+    "prefill_correction": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 5(6)–(8)",
+      "review_note": "National correction deadline and guiding alerts; correcting local prefill is not official filing."
+    },
+    "maximum_eligible_area": {
+      "title": "Delegated Regulation (EU) 2022/1172",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1172-20260101",
+      "version": "2026-01-01",
+      "article": "Article 2(7)(a)",
+      "review_note": "Member State determines maximum eligible area using national criteria, ineligible elements and possible margin. A locally computed polygon area is a distinct technical measurement."
+    },
+    "parcel_identity": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 8(3)(a)",
+      "review_note": "Unambiguous parcel identity must come from supplied evidence; private app identity is not automatically an authority ID."
+    },
+    "claim_delineation": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 8(3)(b)",
+      "review_note": "Declared intervention area may be smaller than total parcel area. Overlap is a discrepancy for review, not by itself a finding of fraud or ineligibility."
+    },
+    "crop_evidence": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 8(3)(d)",
+      "review_note": "Crop is relevant where required. Do not infer a legally confirmed crop from imagery or a previous year."
+    },
+    "protected_area_context": {
+      "title": "Delegated Regulation (EU) 2022/1172",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1172-20260101",
+      "version": "2026-01-01",
+      "article": "Article 2(7)(g)",
+      "review_note": "Protected-area location is recorded context, not automatic eligibility or a blanket prohibition."
+    },
+    "correction_deadline": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(1)(a)–(c), 7(6)",
+      "review_note": "The Member State sets and communicates the deadline; it must be no later than 15 calendar days before the first instalment. This EU ceiling is not a verified national deadline."
+    },
+    "ams_correction": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(1)(a)",
+      "review_note": "AMS branch restricts specified non-monitorable breaches found outside AMS/administrative checks and amendments after notification of an intended on-site check."
+    },
+    "other_correction": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(1)(c)",
+      "review_note": "Other-intervention branch covers announced checks and awareness from unannounced on-site checks, with an exception for the part unaffected by detected non-compliance. Locked input does not establish unannounced-check awareness."
+    },
+    "animal_correction": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(1)(b), 7(2)–(4)",
+      "review_note": "Animal branch includes a separate identification/registration cutoff and automatic-claim withdrawal rules; outside this parcel-focused evaluator."
+    },
+    "administrative_or_ams_finding": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(2)",
+      "review_note": "Administrative/AMS findings do not impose a blanket bar; affected-part correction follows the branch conditions. Authority corrections require beneficiary awareness and opportunity to disagree."
+    },
+    "official_channel": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 7(5)–(6)",
+      "review_note": "Actual amendments/withdrawals use national official communication channels. Preparation and app approval are not transmission or acceptance."
+    },
+    "ams_response": {
+      "title": "Implementing Regulation (EU) 2022/1173",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02022R1173-20260806",
+      "version": "2026-08-06",
+      "article": "Article 10(8)",
+      "review_note": "Actual authority information can be answered by Article 7 amendment or additional evidence; public imagery alone is not an authority AMS finding."
+    }
+  },
+  "rules": {
+    "national_deadline": "Never invent a Member State deadline or treat the EU first-instalment-minus-15 ceiling as the national deadline.",
+    "notice_scope": "Do not apply animal/other unaffected-part exceptions to the AMS branch by analogy.",
+    "preparation": "may_prepare authorises no official amendment, withdrawal or submission; all outputs are source-backed preparation guidance only.",
+    "missing_parameters": "Country, intervention, applicable national rule, control-stage evidence and official channels require separate human review. A source pointer is provenance, not verification of its legal contents.",
+    "original_filing": "filed_on is a supplied original filing date, not evidence that the authority received or accepted a filing."
+  },
+  "limits": [
+    "Primary indexed English bodies reviewed; direct HTTP reader was challenge-blocked. Consolidation labels do not independently verify every amending act's commencement.",
+    "No national deadline or rule set is installed here.",
+    "No universal legal eligibility, payment estimate, financial-loss statistic or Natura decision.",
+    "Rule version 1 follows the indexed consolidations checked 17 October 2026; refresh and national review remain separate."
+  ]
+}

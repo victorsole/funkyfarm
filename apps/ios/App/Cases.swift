@@ -110,6 +110,7 @@ struct CaseDetailView: View {
                     ForEach(["authority", "scheme", "reporting_year", "deadline", "original_reference", "original_submitted_at", "reason"], id: \.self) { key in if let value = current.data[key], value != .null { LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: value.text) } }
                     Button("Reload current case") { Task { await load() } }.disabled(busy || !store.sessionVerified)
                     if editable { Button("Edit draft details and selected sources") { edit = true }.disabled(busy || !store.sessionVerified) }
+                    if current.value("job_type") == "correction" { FocusedParcelLink(record: current, destination: .correction, contextLoaded: detailLoaded && !busy) }
                 }
                 sourceSection(current)
                 itemSection(current)

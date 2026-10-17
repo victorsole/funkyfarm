@@ -21,7 +21,7 @@ const names = new Set([
   'check_capture', 'check_compliance', 'propose_checklist', 'report_dependencies', 'list_deadlines',
   'regulatory_changes', 'adviser_help', 'propose_request', 'propose_field_change',
   'list_cases', 'read_case', 'check_case', 'propose_case_draft',
-  'read_lpis_guide',
+  'read_lpis_guide', 'check_parcels',
 ]);
 const identifier = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));

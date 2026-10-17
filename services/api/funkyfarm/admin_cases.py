@@ -16,6 +16,7 @@ from .models import ApiError, StrictModel
 from .records import matches_reporting_period
 from .reporting import _blockers, digest
 from .security import Session, require_roles, require_session
+from .cap_corrections import CapContext, answer_page, answer_review, correction_guide, validate_cap_context
 
 router = APIRouter(prefix="/cases", tags=["guided administrative cases"])
 NOTICE = "Preparation and human-recorded external events only. Nothing here sends a submission, changes official LPIS, verifies authority acceptance or establishes complete national legal compliance."
@@ -59,6 +60,9 @@ class CreateCase(CaseInput):
     deadline: date | None = None
     original_reference: str | None = Field(default=None, max_length=240)
     original_submitted_at: date | None = None
+    original_statement: str | None = Field(default=None, max_length=4000)
+    cap_context: CapContext | None = None
+    focused_review_required: bool = Field(default=False, strict=True)
     reason: str | None = Field(default=None, max_length=4000)
     references: list[Reference] = Field(default_factory=list, max_length=100)
 
@@ -70,6 +74,9 @@ class CasePatch(CaseInput):
     deadline: date | None = None
     original_reference: str | None = Field(default=None, max_length=240)
     original_submitted_at: date | None = None
+    original_statement: str | None = Field(default=None, max_length=4000)
+    cap_context: CapContext | None = None
+    focused_review_required: bool | None = Field(default=None, strict=True)
     reason: str | None = Field(default=None, max_length=4000)
     references: list[Reference] | None = Field(default=None, max_length=100)
 
@@ -83,6 +90,12 @@ class ReviewCase(StrictModel):
     expected_revision: int = Field(ge=1, strict=True)
     expected_fingerprint: str = Field(pattern="^[0-9a-f]{64}$")
     acknowledged: bool = Field(strict=True)
+
+
+class ReviewAnswers(StrictModel):
+    expected_revision: int = Field(ge=1, strict=True)
+    fingerprint: str = Field(pattern="^[0-9a-f]{64}$")
+    checked_ids: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(max_length=512)
 
 
 class AddItem(CaseInput):
@@ -153,7 +166,12 @@ def _bounded(data):
 
 
 def _content(data):
-    return {key: deepcopy(data.get(key)) for key in ("farm_id", "title", "job_type", "reporting_year", "authority", "scheme", "deadline", "original_reference", "original_submitted_at", "reason", "references", "items")}
+    content = {key: deepcopy(data.get(key)) for key in ("farm_id", "title", "job_type", "reporting_year", "authority", "scheme", "deadline", "original_reference", "original_submitted_at", "reason", "references", "items")}
+    # Do not rewrite the content hashes of pre-existing reviewed cases.
+    for key in ("original_statement", "cap_context", "focused_review_required", "answer_review"):
+        if key in data:
+            content[key] = deepcopy(data[key])
+    return content
 
 
 def _case(conn, case_id):
@@ -367,6 +385,8 @@ def _checks(conn, item, *, lock=False):
         if reference["role"] != "original" and reference["kind"] in {"reports", "requests", "checklists"} and value.get("reporting_year") not in (None, data["reporting_year"]):
             add("case_reference_period", "Select the response or requested records for this case's explicit reporting year.", href=href)
     if data["job_type"] == "correction":
+        if data.get("focused_review_required") and not (data.get("original_statement") or "").strip():
+            add("case_original_statement_required", "State what you actually filed originally before preparing this as a post-filing correction. An issued app report alone is not proof of filing.", href=f"/app/cases/{item['id']}/correction?step=1")
         if not (data.get("original_reference") or "").strip() and not any(ref["role"] == "original" for ref in current):
             add("case_original_required", "Add the original submitted reference or select its original record.")
         if not (data.get("reason") or "").strip():
@@ -400,12 +420,23 @@ def _checks(conn, item, *, lock=False):
             binding = binding_by_id.get(pin["id"])
             if not binding or binding["kind"] != "documents" or binding["revision"] != pin["revision"]:
                 add("case_item_evidence_changed", "An item's reviewed document changed or is unavailable. Review that item against its current evidence.")
+    answers = None
+    if data.get("focused_review_required"):
+        answers = answer_review(item, farm, records, bindings, _content(data))
+        if not answers["all_checked"]:
+            add("case_answers_unchecked", "Open the focused answer review and explicitly check every current answer and boundary map before reviewing this case.", href=f"/app/cases/{item['id']}/correction?step=4")
+    guide = correction_guide(item, records) if data.get("cap_context") is not None else None
+    if guide and guide["evaluation"]["status"] != "may_prepare":
+        add("case_correction_guidance", guide["evaluation"]["explanation"], severity="warning", href=f"/app/cases/{item['id']}/correction?step=3")
     add("case_national_coverage_unverified", "This checks the selected app records only. Confirm the applicable national requirements, requested records and official process with the recipient or adviser.", severity="warning")
-    fingerprint = digest({"case_id": item["id"], "content": _content(data), "farm_revision": farm["revision"], "bindings": bindings, "report_states": states, "issues": issues})
+    fingerprint_input = {"case_id": item["id"], "content": _content(data), "farm_revision": farm["revision"], "bindings": bindings, "report_states": states, "issues": issues}
+    if guide:
+        fingerprint_input["correction_guide"] = guide["evaluation"]
+    fingerprint = digest(fingerprint_input)
     can_review = not any(issue["severity"] == "error" for issue in issues)
     return {"case_id": item["id"], "case_revision": item["revision"], "fingerprint": fingerprint, "can_review": can_review,
         "issues": issues, "references": views, "next_action": "Review this prepared selection" if can_review else next(issue["message"] for issue in issues if issue["severity"] == "error"),
-        "notice": NOTICE}, bindings
+        "notice": NOTICE, **({"answer_review": {key: answers[key] for key in ("fingerprint", "total", "checked_count", "all_checked")}} if answers else {})}, bindings
 
 
 def _audit(conn, case_record, session, action, **details):
@@ -429,6 +460,7 @@ def prepare_case_draft(conn, body: CreateCase):
     _nonblank(data["title"], "a case title")
     _actual(data.get("original_submitted_at"), "original submission date")
     _references(conn, data["references"], farm["id"])
+    validate_cap_context(data)
     return _bounded({**data, "items": [], "status": "draft", "review": None, "external_status_notice": EXTERNAL_NOTICE})
 
 
@@ -496,13 +528,63 @@ def edit_case(case_id: UUID, body: EditCase, idempotency_key: str | None = Heade
                 _nonblank(patch["title"], "a case title")
             if "references" in patch and patch["references"] is None:
                 raise ApiError(422, "case_references_required", "Use an empty list to clear the selected references.")
+            if "focused_review_required" in patch and patch["focused_review_required"] is None:
+                raise ApiError(422, "case_focus_required", "Choose whether this case requires focused answer review.")
+            if item["data"].get("focused_review_required") and patch.get("focused_review_required") is False:
+                raise ApiError(422, "case_focus_required", "Keep focused review enabled for this case. Check the actual current answers rather than bypassing their review.")
             data = {**item["data"], **patch, "review": None}
             _actual(data.get("original_submitted_at"), "original submission date")
             _references(conn, data["references"], data["farm_id"])
+            validate_cap_context(data)
             updated = _save(conn, item, data)
             _audit(conn, updated, session, "updated", changes=patch)
             return updated
         return _retry(conn, idempotency_key, f"edit:{case_id}", session, body, perform)
+
+
+@router.get("/{case_id}/correction-guide")
+def case_correction_guide(case_id: UUID, session: Session = Depends(require_session)):
+    _human(session)
+    with transaction(session) as conn:
+        item = _case(conn, case_id)
+        _, records, _, _ = _context(conn, item)
+        return correction_guide(item, records)
+
+
+@router.get("/{case_id}/answer-review")
+def case_answer_review(case_id: UUID, limit: int = Query(5, ge=1, le=5), offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
+    _human(session)
+    with transaction(session) as conn:
+        item = _case(conn, case_id)
+        farm, records, bindings, _ = _context(conn, item)
+        return answer_page(answer_review(item, farm, records, bindings, _content(item["data"])), limit, offset)
+
+
+@router.post("/{case_id}/answer-review")
+def record_answer_review(case_id: UUID, body: ReviewAnswers, idempotency_key: str | None = Header(None), session: Session = Depends(require_session)):
+    _human(session)
+    with transaction(session) as conn:
+        def perform():
+            item = _lock(conn, session, case_id, body.expected_revision)
+            _editable(item)
+            farm, records, bindings, _ = _context(conn, item, lock=True)
+            result = answer_review(item, farm, records, bindings, _content(item["data"]))
+            if result["fingerprint"] != body.fingerprint:
+                raise ApiError(409, "case_answers_changed", "The case values or source revisions changed. Reload and compare the current answers; none of these checks were applied.")
+            rows = {row["id"]: row for row in result["items"]}
+            if len(set(body.checked_ids)) != len(body.checked_ids) or any(identifier not in rows for identifier in body.checked_ids):
+                raise ApiError(422, "case_answer_selection", "Explicitly check only the displayed current answer IDs, without duplicates or unknown answers.")
+            checks = {row["id"]: deepcopy(row["check"]) for row in result["items"] if row["checked"]}
+            at = _now()
+            for identifier in body.checked_ids:
+                checks[identifier] = {"row_hash": rows[identifier]["row_hash"], "actor_id": session.user_id, "at": at}
+            retained_rows = [{key: deepcopy(value) for key, value in row.items() if key not in {"checked", "check"}} for row in result["items"]]
+            review = {"fingerprint": result["fingerprint"], "rows": retained_rows, "checks": checks}
+            updated = _save(conn, item, {**item["data"], "answer_review": review, "review": None})
+            _audit(conn, updated, session, "answers_checked", checked_ids=body.checked_ids, fingerprint=result["fingerprint"])
+            result = answer_review(updated, farm, records, bindings, _content(updated["data"]))
+            return {"case": updated, "answer_review": answer_page(result)}
+        return _retry(conn, idempotency_key, f"answer-review:{case_id}", session, body, perform)
 
 
 @router.get("/{case_id}/checks")

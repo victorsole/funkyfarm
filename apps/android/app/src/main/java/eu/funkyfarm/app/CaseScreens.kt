@@ -196,6 +196,10 @@ private fun JSONArray?.objectsOrEmpty() = this?.objects().orEmpty()
             Text(data.text("external_status_notice").ifBlank { "All sending and responses are recorded by a person. They are not independently verified with an authority." })
             listOf("reporting_year", "authority", "scheme", "deadline", "original_reference", "original_submitted_at", "reason").forEach { field -> if (data.has(field)) CaseValue(field.replace('_', ' '), data.opt(field)) }
             if (editable) OutlinedButton(onClick = { edit = true }, enabled = !pending) { Text("Update the draft and chosen sources") }
+            if (data.text("job_type") == "correction") {
+                WebLink(model, "/app/cases/$id/correction", "Check this paperwork correction · opens website")
+                Text("The step-by-step correction opens in your browser and may ask you to sign in separately. Review the original, changes and prefilled answers there; nothing is confirmed or sent automatically.", style = MaterialTheme.typography.bodySmall)
+            }
             if (data.text("job_type") == "fields") { WebLink(model, "/app/fields/${data.getString("farm_id")}", "Draw, split or merge boundaries on the website"); Text("The advanced map editor opens in the browser. Native source review remains here; a private location pin is not a boundary submission.") }
             Text("Originals, changes and supporting records", style = MaterialTheme.typography.titleLarge)
             val references = check?.optJSONArray("references")?.objects() ?: data.optJSONArray("references").objectsOrEmpty()

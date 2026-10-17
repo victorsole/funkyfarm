@@ -9,6 +9,11 @@ import { HomePage, FarmPage, FarmDetailPage } from './pages/Core';
 import { RequestsPage, RequestDetailPage } from './pages/Requests';
 import { CasesPage, NewCasePage, CaseDetailPage } from './pages/Cases';
 import { CapExamplePage } from './pages/CapExample';
+import { DemoWorkspacePage } from './pages/DemoWorkspace';
+import { HackathonDemoPage } from './pages/HackathonDemo';
+import { PublicDemoPage } from './pages/PublicDemo';
+import { ParcelCheckPage } from './pages/ParcelCheck';
+import { CorrectionWizardPage } from './pages/CorrectionWizard';
 import { TasksPage, TaskPage } from './pages/Task';
 import { DocumentsPage, DocumentDetailPage } from './pages/Documents';
 import { ReportsPage, ReportDetailPage } from './pages/Reports';
@@ -24,15 +29,17 @@ import { CommunityPage } from './pages/Community';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
 import './pages/administration.css';
+import './brand.css';
 
 const primary = [
   { path: 'home', name: 'Home', detail: 'What needs doing', icon: 'home', label: 'nav.home' },
-  { path: 'record-work', name: 'Record work', detail: 'Add today’s farm work', icon: 'work', label: 'nav.recordWork' },
   { path: 'fields', name: 'My fields', detail: 'Land, crops and farm details', icon: 'farm', label: 'nav.fields' },
   { path: 'paperwork', name: 'Paperwork', detail: 'Requests and deadlines', icon: 'requests', label: 'nav.paperwork' },
-  { path: 'documents', name: 'Documents', detail: 'Keep your files together', icon: 'documents', label: 'nav.documents' },
+  { path: 'record-work', name: 'Notebook', detail: 'Work, purchases and sales', icon: 'work', label: undefined },
 ];
 const secondary = [
+  ['documents', 'Documents', 'nav.documents'], ['tasks', 'Tasks and questions', undefined],
+  ['examples', 'Try a sample farm', undefined],
   ['help', 'Help and assistants', undefined], ['checks', 'Farm checks', undefined],
   ['community', 'Ask a person', 'nav.community'], ['updates', 'Source updates', undefined],
   ['adviser', 'Adviser view', 'nav.advisers'], ['imports', 'Import records', 'nav.imports'],
@@ -46,11 +53,7 @@ function LanguagePicker() {
 }
 
 function BrandMark({ className = '' }: { className?: string }) {
-  return <img className={className} width="40" height="46" src="/assets/barn.svg" alt="" style={{objectFit: 'contain'}} />;
-}
-
-function LogoCredit() {
-  return <a href="/assets/barn-LICENSE.txt" target="_blank" rel="noreferrer">Barn logo: Delapouite · CC BY 3.0</a>;
+  return <img className={`funkyfarmers-logo ${className}`} width="1397" height="1126" src="/assets/funkyfarmers-logo.png" alt="Funkyfarmers" />;
 }
 
 function NavIcon({ name }: { name: string }) {
@@ -113,7 +116,7 @@ function Shell() {
   useEffect(() => {
     const page = caseSection ? 'Paperwork' : (primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
       ?? secondary.find(([path]) => location.pathname.startsWith(`/app/${path}`))?.[1] ?? 'Workspace');
-    document.title = `${page} · FunkyFarm`;
+    document.title = `${page} · Funkyfarmers`;
     if (location.hash) {
       let fragment = location.hash.slice(1);
       try { fragment = decodeURIComponent(fragment); } catch { /* Keep malformed fragments harmless. */ }
@@ -132,35 +135,36 @@ function Shell() {
   return <div className="workspace-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
-      <Link to="/app/home" className="brand" aria-label="funkyfarm home"><BrandMark /><span>funky<span className="brand-second">farm<span className="brand-dot">.</span></span></span></Link>
+      <Link to="/app/home" className="brand" aria-label="Funkyfarmers home"><BrandMark /></Link>
       <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name} · {workspace.role}</option>)}</select> : <strong>{session?.workspace.name}</strong>}</div>
-      <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${t(item.label as TranslationKey)}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{t(item.label as TranslationKey)}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
+      <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${item.label ? t(item.label as TranslationKey) : item.name}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{item.label ? t(item.label as TranslationKey) : item.name}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
       <div className="sidebar-bottom"><p className="sidebar-note">A little less paperwork.<br/>More time for the farm.</p><span className="private-label"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="6" width="9" height="7" rx="1"/><path d="M3.5 6V3.5a2.5 2.5 0 0 1 5 0V6"/></svg> Private farm records</span></div>
     </aside>
     <div className="workspace-body">
       <header className="workspace-topbar">
         <div className="folio-label"><span className="folio-rule"/><span>FARM RECORDS, KEPT TOGETHER</span></div>
+        <Link className="hackathon-demo-link" to="/app/demo">Hackathon demo</Link>
         <div className="connection-status" role="status" aria-label="Browser connection"><span className={online ? 'connection-dot' : 'connection-dot is-offline'}/>{online ? 'Online' : 'Offline'}</div>
         <LanguagePicker/>
         <details className="account-menu">
           <summary><span className="avatar" aria-hidden="true">{session?.user.display_name.slice(0, 1).toUpperCase()}</span><span className="account-name">{session?.user.display_name}<small>{session?.workspace.role}</small></span><Chevron className="account-chevron"/></summary>
           <div className="account-dropdown">
             <p className="muted">{session?.user.email}</p>
-            <nav aria-label="More farm tools">{secondary.map(([path, name, label]) => <Link key={path} to={`/app/${path}`} onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{label ? t(label as TranslationKey) : name}<Chevron/></Link>)}</nav>
+            <Link to="/app/settings" onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>Account and settings</Link>
             <p className="account-privacy">Signing out removes this account’s private form drafts from this browser.</p>
             <Button variant="ghost" loading={signingOut} onClick={() => void signOut()}><Text id="auth.signOut"/></Button>
           </div>
         </details>
       </header>
-      <nav className="administration-tools" aria-label="More farm tasks"><span>Need a hand?</span>{secondary.map(([path, name, label]) => <NavLink key={path} to={`/app/${path}`}>{label ? t(label as TranslationKey) : name}</NavLink>)}</nav>
+      <details className="farm-tools-menu"><summary>More farm tools</summary><nav className="administration-tools" aria-label="More farm tasks">{secondary.map(([path, name, label]) => <NavLink key={path} to={`/app/${path}`} onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{label ? t(label as TranslationKey) : name}</NavLink>)}</nav></details>
       <main id="main-content" className="main-content" tabIndex={-1}>
         <p className="translation-note"><Text id="language.draftNotice"/></p>
         {!online && <Notice kind="warning">You are offline. Forms with private drafts can keep your changes on this device. Check their save message before leaving. Saving farm records and loading new files need a connection.</Notice>}
         {sessionError && <Notice kind="error">{sessionError}</Notice>}
         {logoutError && <Notice kind="error">{logoutError}</Notice>}
-        <div className="page-enter" key={location.pathname}><PageBoundary><Outlet /></PageBoundary></div>
+        <div className="page-enter" key={JSON.stringify([session?.user.id, session?.workspace.id, session?.workspace.role, session?.workspace.farm_ids, session?.workspace.permissions, location.pathname])}><PageBoundary><Outlet /></PageBoundary></div>
       </main>
-      <footer className="workspace-footer"><span>FunkyFarm · The farm folio</span><LogoCredit/><Link to="/app/help">Help with the paperwork</Link></footer>
+      <footer className="workspace-footer"><span>Funkyfarmers · The farm folio</span><Link to="/app/help">Help with the paperwork</Link></footer>
     </div>
   </div>;
 }
@@ -170,9 +174,12 @@ function AuthPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const registering = location.pathname === '/register';
+  const nextValues = new URLSearchParams(location.search).getAll('next');
+  const demoNext = nextValues.length === 1 && nextValues[0] === '/app/demo';
+  const nextQuery = demoNext ? '?next=%2Fapp%2Fdemo' : '';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · FunkyFarm`; }, [registering]);
+  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · Funkyfarmers`; }, [registering]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -182,12 +189,12 @@ function AuthPage() {
       const body = { email: String(fields.get('email')).trim(), password: String(fields.get('password')), ...(registering ? { display_name: String(fields.get('display_name')).trim() } : {}) };
       const session = await api.post<Session>(registering ? '/auth/register' : '/auth/login', body);
       acceptSession(session);
-      navigate(location.pathname.startsWith('/app/') ? location.pathname + location.search : '/app/home', { replace: true });
+      navigate(demoNext ? '/app/demo' : location.pathname.startsWith('/app/') ? location.pathname + location.search : session.workspace.role === 'adviser' ? '/app/adviser' : '/app/home', { replace: true });
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
   return <div className="auth-layout">
     <section className="auth-story">
-      <Link className="brand" to="/"><BrandMark/><span>funky<span className="brand-second">farm.</span></span></Link>
+      <Link className="brand" to="/demo"><BrandMark/></Link>
       <div className="auth-story-content"><p className="eyebrow">The farm folio</p><h1>Good records.<br/>Room to grow.</h1><p>Keep farm work, field details and paperwork together, ready when you need them.</p>
         <div className="folio-illustration" aria-hidden="true"><div className="folio-back"/><div className="folio-sheet"><div className="sheet-heading"><BrandMark/><span>THE FARM<br/>FOLIO / 01</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-box"><span>Farm work. Fields. Paperwork.</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-signature">Ready when you need it.</div></div><div className="folio-stamp">KEPT<br/>TOGETHER</div></div>
       </div><p className="auth-footnote">Your farm records, kept together.</p>
@@ -202,8 +209,7 @@ function AuthPage() {
         <label className="field"><span className="field-label"><Text id="auth.password"/></span><input type="password" name="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 12 : 1} maxLength={256} aria-describedby={registering ? 'password-help' : undefined}/>{registering && <small className="muted" id="password-help">Use at least 12 characters.</small>}</label>
         <Button type="submit" loading={busy}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
       </form>
-      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to FunkyFarm?'} <Link to={registering ? '/login' : '/register'}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
-      <p className="muted"><small><LogoCredit/></small></p>
+      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to Funkyfarmers?'} <Link to={`${registering ? '/login' : '/register'}${nextQuery}`}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
     </div></main>
   </div>;
 }
@@ -214,6 +220,7 @@ function NotFound() {
 
 export default function App() {
   const { session, loading } = useSession();
+  const location = useLocation();
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
     // Vite's development client must stay outside the public offline cache.
@@ -221,22 +228,27 @@ export default function App() {
     void navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => undefined);
   }, []);
   if (loading) return <div className="boot-screen"><BrandMark/><Loading /></div>;
-  if (!session) return <AuthPage />;
+  if (!session) return location.pathname === '/demo' ? <PublicDemoPage/> : <AuthPage />;
   return <Routes>
+    <Route path="/demo" element={<PublicDemoPage/>}/>
     <Route path="/app" element={<Shell/>}>
-      <Route index element={<Navigate to="home" replace/>}/>
+      <Route index element={<Navigate to={session.workspace.role === 'adviser' ? 'adviser' : 'home'} replace/>}/>
       <Route path="home" element={<HomePage/>}/>
+      <Route path="demo" element={<HackathonDemoPage/>}/>
+      <Route path="examples" element={<DemoWorkspacePage/>}/>
       <Route path="examples/cap" element={<CapExamplePage/>}/>
       <Route path="tasks" element={<TasksPage/>}/>
       <Route path="tasks/:id" element={<TaskPage/>}/>
       <Route path="record-work" element={<RecordWorkPage/>}/>
       <Route path="fields" element={<FarmPage/>}/>
       <Route path="fields/:id" element={<FarmDetailPage/>}/>
+      <Route path="fields/:id/check" element={<ParcelCheckPage/>}/>
       <Route path="paperwork" element={<RequestsPage/>}/>
       <Route path="paperwork/:id" element={<RequestDetailPage/>}/>
       <Route path="cases" element={<CasesPage/>}/>
       <Route path="cases/new" element={<NewCasePage/>}/>
       <Route path="cases/:id" element={<CaseDetailPage/>}/>
+      <Route path="cases/:id/correction" element={<CorrectionWizardPage/>}/>
       <Route path="documents" element={<DocumentsPage/>}/>
       <Route path="documents/:id" element={<DocumentDetailPage/>}/>
       <Route path="reports" element={<ReportsPage/>}/>
@@ -260,6 +272,6 @@ export default function App() {
       <Route path="advisers" element={<LegacyRedirect to="/app/adviser"/>}/>
       <Route path="*" element={<NotFound/>}/>
     </Route>
-    <Route path="*" element={<Navigate to="/app/home" replace/>}/>
+    <Route path="*" element={<Navigate to={session.workspace.role === 'adviser' ? '/app/adviser' : '/app/home'} replace/>}/>
   </Routes>;
 }

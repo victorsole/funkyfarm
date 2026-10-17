@@ -154,21 +154,29 @@ def workspaces(session: Session = Depends(require_session)):
 @router.get("/adviser/overview")
 def adviser_overview(limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0),
                      session: Session = Depends(require_session)):
+    from dataclasses import replace
+
+    if session.credential_scope != "interactive":
+        raise ApiError(403, "interactive_session_required", "Open the signed-in adviser desk to view client workspaces.")
     with transaction(session) as conn:
         memberships = conn.execute("SELECT * FROM workspace_list()").fetchall()
     memberships = [row for row in memberships if row["role"] in {"owner", "adviser"}]
     clients = []
     for workspace in memberships[offset:offset + limit]:
-        scoped = Session(session.user_id, str(workspace["id"]), workspace["role"], session.csrf_token)
+        scoped = replace(session, workspace_id=str(workspace["id"]), role=workspace["role"])
         try:
             with transaction(scoped) as conn:
                 # Each client uses a separate server-authorized RLS transaction.
                 # Returned rows and counts therefore retain the current farm grant.
-                pages = {kind: list_records(conn, kind, 100, 0) for kind in ("farms", "requests", "tasks")}
+                pages = {kind: list_records(conn, kind, 100, 0) for kind in ("farms", "requests", "tasks", "admin_cases")}
                 report_page = list_records(conn, "reports", 100, 0)
                 reviews = conn.execute(
                     "SELECT kind,count(*) AS total FROM records WHERE kind IN ('facts','operations','purchases') "
                     "AND deleted_at IS NULL AND data->>'review_status'='proposed' GROUP BY kind"
+                ).fetchall()
+                case_rows = conn.execute(
+                    "SELECT data->>'status' AS status,count(*) AS total FROM records "
+                    "WHERE kind='admin_cases' AND deleted_at IS NULL GROUP BY data->>'status'"
                 ).fetchall()
         except ApiError as error:
             if error.status == 403:
@@ -183,12 +191,13 @@ def adviser_overview(limit: int = Query(20, ge=1, le=50), offset: int = Query(0,
             for blocker in report["data"].get("blockers", []):
                 if blocker.get("code") not in {"missing_fact", "missing_requirement", "missing_evidence"}:
                     continue
-                missing.append({"request_id": report["data"].get("request_id"), "report_id": report["id"],
+                missing.append({"farm_id": report["data"].get("farm_id"), "request_id": report["data"].get("request_id"), "report_id": report["id"],
                                 "code": blocker["code"], "message": blocker["message"], "field": blocker.get("field"),
                                 "checked_at": report["updated_at"], "basis": "saved_draft_check"})
         clients.append({"workspace": json_safe(workspace),
                         **{kind: page["items"] for kind, page in pages.items()},
                         "missing_information": missing[:100],
+                        "case_counts": {row["status"] or "unknown": row["total"] for row in case_rows},
                         "review_counts": counts, "totals": {kind: page["total"] for kind, page in pages.items()},
                         "truncated": len(missing) > 100 or report_page["total"] > len(report_page["items"]) or any(page["total"] > len(page["items"]) for page in pages.values())})
     return {"clients": clients, "total": len(memberships), "limit": limit, "offset": offset,

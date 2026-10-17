@@ -541,7 +541,14 @@ def farmers(service_url):
             with psycopg.connect(admin_url, connect_timeout=5) as connection:
                 assert connection.execute("SELECT current_database()").fetchone()[0] == TEST_DATABASE
                 for farmer in created:
-                    connection.execute("DELETE FROM funkyfarm.workspaces WHERE id=%s", (UUID(farmer.workspace_id),))
+                    # A generated owner can now create additional fictional
+                    # workspaces. Remove those before any generated actor, since
+                    # advisers may appear in another owner's retained history.
+                    connection.execute(
+                        "DELETE FROM funkyfarm.workspaces w USING funkyfarm.users u "
+                        "WHERE w.owner_id=u.id AND u.id=%s AND u.email=%s",
+                        (UUID(farmer.user_id), farmer.email),
+                    )
                 for farmer in created:
                     connection.execute("DELETE FROM funkyfarm.users WHERE id=%s AND email=%s", (UUID(farmer.user_id), farmer.email))
 

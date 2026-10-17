@@ -31,16 +31,18 @@ enum FarmStyle {
 
 struct BrandMark: View {
     var body: some View {
-        Image("barn").renderingMode(.template).resizable().scaledToFit().foregroundStyle(.primary)
-            .frame(width: 70, height: 64).accessibilityHidden(true)
+        Image("funkyfarmers-logo").renderingMode(.original).resizable().scaledToFit()
+            .frame(maxWidth: 300, maxHeight: 245)
+            .accessibilityLabel("Funkyfarmers. Less bureaucracy. More farming.")
     }
 }
 
 struct LogoCredit: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Link("Barn logo by Delapouite · Game-icons.net", destination: URL(string: "https://game-icons.net/1x1/delapouite/barn.html")!)
-            Link("CC BY 3.0 · tinted for appearance", destination: URL(string: "https://creativecommons.org/licenses/by/3.0/")!)
+        DisclosureGroup("Third-party artwork notices") {
+            Text("The current full-colour lockup was supplied for this project and is displayed unchanged. The earlier barn illustration's notice is retained below; it does not describe the current logo.")
+            Link("Earlier barn artwork by Delapouite · Game-icons.net", destination: URL(string: "https://game-icons.net/1x1/delapouite/barn.html")!)
+            Link("Earlier artwork licence · CC BY 3.0", destination: URL(string: "https://creativecommons.org/licenses/by/3.0/")!)
         }.font(.footnote)
     }
 }
@@ -59,7 +61,7 @@ struct SignInView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading) { Text("funkyfarm").font(.title2.bold()); Text("Your farm. Your evidence.").foregroundStyle(.secondary) } }
+                    BrandMark().frame(maxWidth: .infinity, alignment: .center)
                     Text("Handle requests with the farm records you already have. Review every new fact and approve each report yourself.")
                 }
                 Section(register ? "Create your private workspace" : "Open your workspace") {
@@ -163,7 +165,7 @@ struct TodayView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading, spacing: 5) { Text("A little less paperwork.").font(.title2.bold()); Text(store.account?.workspace.name ?? "Your workspace").foregroundStyle(.secondary) } }.padding(.vertical, 8)
+                VStack(alignment: .leading, spacing: 8) { BrandMark().frame(maxWidth: .infinity, alignment: .center); Text(store.account?.workspace.name ?? "Your workspace").foregroundStyle(.secondary) }.padding(.vertical, 8)
                 Button { capture = true } label: { Label("Add document", systemImage: "doc.badge.plus") }.buttonStyle(.borderedProminent)
             }
             SyncBanner()

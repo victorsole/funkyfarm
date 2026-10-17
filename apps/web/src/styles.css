@@ -344,6 +344,12 @@ details > summary { cursor: pointer; }
   .auth-form-wrap h2 { font-size: 2.25rem; }
   .auth-form-wrap > .muted { margin-bottom: 25px; }
 }
+.farm-tools-menu { border-bottom: 1px solid var(--line); background: #f0ece4; }
+.farm-tools-menu > summary { min-height: 44px; padding: 13px 5.1%; color: var(--plum); font-size: .8rem; cursor: pointer; }
+.farm-tools-menu > .administration-tools { border-bottom: 0; padding-top: 0; }
+.farm-reveal-panel { scroll-margin-top: 24px; animation: farm-panel-reveal .8s ease-out; }
+.farm-reveal-panel:focus-visible { outline: 2px solid var(--plum); outline-offset: 5px; }
+@keyframes farm-panel-reveal { from { box-shadow: 0 0 0 4px var(--plum-soft); } to { box-shadow: 0 0 0 4px transparent; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   .spinner { border-right-color: currentColor; border-style: dotted; }

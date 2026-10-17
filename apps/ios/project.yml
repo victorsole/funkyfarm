@@ -16,7 +16,7 @@ targets:
     sources:
       - App
       - Shared/IntakeInbox.swift
-      - path: ../web/public/assets/barn.png
+      - path: Resources/funkyfarmers-logo.png
         buildPhase: resources
       - path: ../web/public/assets/barn-LICENSE.txt
         buildPhase: resources

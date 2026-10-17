@@ -1,8 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "FunkyFarm",
   "locked_on": "2026-10-16",
-  "purpose": "Keep the records a farmer will need, complete paperwork, and handle corrections with as little repeated entry as possible.",
+  "purpose": "Check parcel outlines before filing, prepare corrections after filing, and explicitly review reused answers without repeated entry.",
+  "current_focus": ["Private LPIS parcel drawing and checks", "Source-backed after-filing correction preparation", "Explicit review of every reused answer", "Highlighted Spain pasture hackathon demo", "Seven isolated fictional farm scenarios with 39 editable records", "Simple farmer steps and a permission-scoped adviser worklist"],
   "farmer_pages": ["Home", "Record work", "My fields", "Paperwork", "Documents"],
   "adviser_flow": ["Get permission", "Review allowed farms", "Ask only for missing details", "Prepare and review", "Complete authorised work and keep confirmation"],
   "modules": ["Support applications", "Land and field corrections", "Farm records", "Animals", "Purchases and sales", "Inspections and certificates", "Letters and corrections", "Obligations and sustainability checklists", "Changes to requirements", "Private adviser questions and public knowledge sharing", "Connected assistants and optional in-app help"],

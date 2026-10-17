@@ -108,7 +108,7 @@ test(title, async ({ page }) => {
   const { farm } = await checkedJSON(await onboard);
   expect(farm.data.country).toBe('PT'); expect(farm.data.reporting_year).toBe(2026);
   await expect(page).toHaveURL(/\/app\/documents/);
-  await nav.getByRole('link', { name: /^Record work\b/ }).click();
+  await nav.getByRole('link', { name: /^Notebook\b/ }).click();
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   const journal = page.locator('#portuguese-journal');
   await expect(journal.getByRole('heading', { name: 'Portuguese surface-treatment journal', exact: true })).toBeVisible();

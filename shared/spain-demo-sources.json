@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "checked_date": "2026-10-17",
+  "country": "ES",
+  "region": "Extremadura",
+  "purpose": "Source notes for a fictional Caceres sheep-farm pasture review; not an eligibility decision or filing connector.",
+  "sources": [
+    {
+      "id": "extremadura-sigpac-2026-resolution",
+      "title": "Resolucion de 30 de enero de 2026: mantenimiento y actualizacion del SIGPAC",
+      "url": "https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=230o&xml=2026060302",
+      "edition": "DOE 23, 4 February 2026, pages 6464-6496; original resolution dated 30 January 2026",
+      "checked_date": "2026-10-17",
+      "retrieval": "Official HTML opened; relevant returned sections read. Not a complete amendment audit.",
+      "supports": [
+        {"section": "Primero", "fact": "SIGPAC does not establish ownership or legally recognised property boundaries."},
+        {"section": "Segundo.1", "fact": "The declarant checks graphical boundaries and land use against reality, and separately checks that pasture CSP reflects the admissible percentage."},
+        {"section": "Tercero", "fact": "PR means pasto arbustivo: naturally producing forage with notable shrubs. Shrubs alone do not establish ineligibility."},
+        {"section": "Cuarto.1", "fact": "A discrepancy needs a reasoned, documented modification request to the competent regional SIGPAC authority."},
+        {"section": "Quinto", "fact": "CSP determines maximum admissible pasture area. Temporary unproductive elements may require further deductions from the declaration."},
+        {"section": "Septimo", "fact": "Type 7 concerns whole-recinto CSP change; type 8 concerns splitting a recinto to change CSP on part."}
+      ],
+      "unknowns": ["Later amendments not exhaustively checked.", "No scheme eligibility certification or official rounding rule established."]
+    },
+    {
+      "id": "extremadura-sigpac-allegations-service",
+      "title": "Alegaciones al Sistema de Informacion Geografica de la Politica Agraria Comunitaria (SIGPAC)",
+      "url": "https://www.juntaex.es/w/5698",
+      "edition": "2026 service; displayed update 17 June 2026",
+      "checked_date": "2026-10-17",
+      "retrieval": "Official search excerpts read and official page opened; response exposed page metadata rather than its complete body.",
+      "supports": [
+        {"section": "Documentacion", "fact": "Evidence depends on allegation type; listed categories include dated georeferenced photographs, technical report, use-right documentation and livestock-use report. They are not all mandatory for every case."},
+        {"section": "Lugar y forma de presentacion", "fact": "Electronic submission uses SGA, by the person, a representative or an authorised collaborating entity."}
+      ],
+      "unknowns": ["SGA App-specific evidence capture or submission functionality not verified.", "No API, import format, prefill access or successful authority acceptance verified.", "Service text describes the resolution by its publication date; the original legal act is dated 30 January 2026."]
+    }
+  ],
+  "demo_limits": {
+    "fictional": true,
+    "sigpac_reference": "10:999:0:0:12:34:1",
+    "physical_area_ha": "6.70",
+    "csp_percent": "45",
+    "illustrative_product_ha": "3.015",
+    "displayed_maximum_ha": "3.02",
+    "displayed_difference_ha": "3.68",
+    "arithmetic_note": "3.68 is the physical area minus the displayed rounded maximum, not an established authority rounding rule or exact legal overclaim. These values and reference are authored fiction, not retrieved SIGPAC data.",
+    "filing_deadline": null,
+    "correction_deadline": null,
+    "official_submission_enabled": false,
+    "eligibility_certified": false
+  },
+  "recommendation": "Demonstrate reviewing the outline, then the independently supplied CSP and other eligibility evidence. If the reference data is disputed, prepare a reasoned evidence packet for the competent SGA route; do not relabel a local edit as an official correction or completed submission.",
+  "research_limits": "Two searches and two official-page opens only; Firecrawl quota exhausted, authorised web fallback used. No farmer account, live parcel lookup, provider call or form submission. Current national or regional deadlines were not established for this fictional case."
+}

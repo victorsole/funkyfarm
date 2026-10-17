@@ -15,6 +15,7 @@ struct FieldsView: View {
             Section {
                 FarmPicker(selected: $farmID)
                 if let farm { NavigationLink("Edit farm details") { FarmSetupView(existing: farm) } }
+                if let farm { FocusedParcelLink(record: farm, destination: .parcelCheck) }
                 if store.records("farms").isEmpty { NavigationLink("Set up my farm") { FarmSetupView() } }
                 if !farmID.isEmpty { NavigationLink { FieldEditor(farmID: farmID, expectedRevision: revision) } label: { Label("Add a field", systemImage: "plus") } }
                 if !farmID.isEmpty { NavigationLink("Preview fields from a GeoJSON or KML file") { FieldFileImportView(farmID: farmID, onProposed: { Task { await load() } }) } }
