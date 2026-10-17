@@ -6,7 +6,10 @@ async function signIn(page, who) {
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(fixture.accounts[who].email);
   await page.getByLabel('Password', { exact: true }).fill(fixture.accounts[who].password);
+  const loginResponse = page.waitForResponse(response =>
+    new URL(response.url()).pathname === '/api/v1/auth/login' && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await loginResponse).status(), 'Sign-in HTTP response').toBe(200);
   await expect(page).toHaveURL(/\/app\/home/);
 }
 

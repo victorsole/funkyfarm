@@ -19,6 +19,8 @@ def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, autho
     land = farmers("Browser Dutch arable boundary reviewer")
     luxembourg = farmers("Browser Luxembourg source reviewer")
     czech = farmers("Browser Czech journal keeper")
+    focused = farmers("Browser focused sample-workspace reviewer")
+    focused_farm = focused.create("farms", farm_data("Browser focused review original holding"))
     czech_farm = czech.create("farms", {**farm_data("FICTIONAL Czech journal holding"), "country": "CZ", "region": None, "farm_type": "arable"})
     luxembourg_farm = luxembourg.create("farms", {**farm_data("Fictional Luxembourg parcel-source holding"), "country": "LU", "region": None, "farm_type": "arable"})
     intake_farm = intake.create("farms", {**farm_data("Fictional Dutch dairy holding"), "country": "NL", "region": None, "farm_type": "livestock", "area_ha": 12.5})
@@ -41,9 +43,9 @@ def test_browser_farmer_adviser_and_report_workflows(farmers, browser_app, autho
     request = owner.create("requests", {"farm_id": farm["id"], "title": "Browser annual evidence response", "recipient": "Fictional review office", "country": "DE", "reporting_year": 2026, "deadline": None, "pack_id": "farm-evidence", "requirements": [], "status": "draft"})
     invitation = owner.post("/invitations", json={"email": adviser.email, "role": "adviser", "farm_ids": [farm["id"]], "permissions": ["read", "review"], "expires_in_days": 1}, expected=201).json()
     accounts = {name: {"email": farmer.email, "password": farmer.password, "workspace_id": farmer.workspace_id}
-                for name, farmer in (("onboarding", onboarding), ("owner", owner), ("adviser", adviser), ("seller", seller), ("intake", intake), ("specialist", specialist), ("peer", peer), ("land", land), ("luxembourg", luxembourg), ("czech", czech))}
+                for name, farmer in (("onboarding", onboarding), ("owner", owner), ("adviser", adviser), ("seller", seller), ("intake", intake), ("specialist", specialist), ("peer", peer), ("land", land), ("luxembourg", luxembourg), ("czech", czech), ("focused", focused))}
     settings = {"accounts": accounts, "farm": farm, "private": private, "fact": fact, "request": request, "invitation": invitation, "sales_farm": sales_farm,
-        "intake_farm": intake_farm, "specialist_farm": specialist_farm, "peer_farm": peer_farm, "land_farm": land_farm, "luxembourg_farm": luxembourg_farm, "czech_farm": czech_farm, "inspection": inspection, "adviser_id": adviser.user_id}
+        "intake_farm": intake_farm, "specialist_farm": specialist_farm, "peer_farm": peer_farm, "land_farm": land_farm, "luxembourg_farm": luxembourg_farm, "czech_farm": czech_farm, "focused_farm": focused_farm, "inspection": inspection, "adviser_id": adviser.user_id}
     directory = browser_app["directory"]
     environment = {**os.environ, "FUNKYFARM_BROWSER_URL": browser_app["url"],
                    "FUNKYFARM_BROWSER_FIXTURES": json.dumps(settings),

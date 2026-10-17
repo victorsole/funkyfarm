@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
+const sharedFixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
+// Keep these four journeys' sign-ins and original-farm assertions together,
+// without consuming the unrelated report owner's per-email auth budget.
+const fixture = { ...sharedFixture, farm: sharedFixture.focused_farm,
+  accounts: { ...sharedFixture.accounts, owner: sharedFixture.accounts?.focused } };
 const responseFor = (page, path, method = 'GET') => page.waitForResponse(response =>
   new URL(response.url()).pathname === `/api/v1${path}` && response.request().method() === method);
 async function checked(response) {

@@ -454,6 +454,15 @@ def oauth_registration(service_url):
 @pytest.fixture
 def farmers(service_url):
     admin_url = checked_database("FUNKYFARM_TEST_ADMIN_DATABASE_URL")
+    # The session-scoped HTTP service sees every journey at this same address.
+    # Isolate its shared address budget between tests, not within a journey;
+    # each generated identity still has the unchanged per-email sign-in limit.
+    with psycopg.connect(admin_url, connect_timeout=5) as connection:
+        assert connection.execute("SELECT current_database()").fetchone()[0] == TEST_DATABASE
+        connection.execute(
+            "DELETE FROM funkyfarm.auth_attempts WHERE bucket=%s",
+            ("address:" + hashlib.sha256(b"127.0.0.1").hexdigest(),),
+        )
     created = []
 
     def register(name):
