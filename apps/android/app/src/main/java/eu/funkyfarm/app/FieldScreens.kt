@@ -37,9 +37,12 @@ import org.json.JSONObject
     val fields = if (unavailable) emptyList() else response?.optJSONArray("items")?.objects() ?: farm.data().optJSONArray("parcels")?.objects().orEmpty()
     var editing by remember { mutableStateOf<JSONObject?>(null) }
     var newField by remember { mutableStateOf(false) }
+    var importingFile by remember(id) { mutableStateOf(false) }
     Text(farm.title(), style = MaterialTheme.typography.titleLarge)
     OutlinedButton(onClick = { model.open("farms", id) }) { Text("Farm details and checked facts") }
+    OutlinedButton(onClick = { model.cases = obj("create" to true, "job_type" to "fields", "farm_id" to id) }) { Text("Check these fields as a preparation job") }
     if (unavailable) { Text("These fields are no longer available to this account. Reconnect and check your access."); return }
+    LpisGuide(model, farm)
     if (response == null) Text("Showing fields retained with this farm while the current list loads.", style = MaterialTheme.typography.bodySmall)
     fields.forEach { field -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(field.optString("name"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -53,6 +56,7 @@ import org.json.JSONObject
     } } }
     if (fields.isEmpty()) Text("No fields recorded yet. You can start with names; a point or boundary is optional.")
     Button(onClick = { newField = true }) { Text("Add a field") }
+    OutlinedButton(onClick = { importingFile = true }, enabled = !model.offline) { Text("Preview fields from a GeoJSON or KML file") }
     Text("Drawing, splitting and merging field boundaries continue in the website editor. Review the proposed boundary there before approving it; a location pin is not a boundary.", style = MaterialTheme.typography.bodySmall)
     WebLink(model, "/app/fields/$id", "Draw, split or merge fields on the website")
     Text("The boundary editor opens in your browser and may ask you to sign in. The same farm record is used; edits still need review.", style = MaterialTheme.typography.bodySmall)
@@ -60,6 +64,10 @@ import org.json.JSONObject
     if (proposals.isNotEmpty()) Text("Field changes to check", style = MaterialTheme.typography.titleLarge)
     proposals.forEach { proposal -> FieldProposalReview(model, farm, proposal) }
     if (newField || editing != null) FieldProposalEditor(model, farm, editing) { newField = false; editing = null }
+    if (importingFile) FieldFileImport(model, farm, { importingFile = false }) {
+        model.loadExtra(key, "/farms/$id/fields")
+        model.loadExtra(proposalsKey, "/farms/$id/field-proposals")
+    }
 }
 
 @Composable private fun FieldProposalEditor(model: FarmModel, farm: JSONObject, field: JSONObject?, close: () -> Unit) {
@@ -88,7 +96,7 @@ import org.json.JSONObject
     }
 }
 
-@Composable private fun FieldProposalReview(model: FarmModel, farm: JSONObject, proposal: JSONObject) {
+@Composable internal fun FieldProposalReview(model: FarmModel, farm: JSONObject, proposal: JSONObject) {
     val data = proposal.data()
     if (data.optString("status") != "proposed") return
     val proposed = data.optJSONArray("parcels")?.objects() ?: listOfNotNull(data.optJSONObject("parcel"))
@@ -127,7 +135,7 @@ import org.json.JSONObject
     } }
 }
 
-@Composable private fun FieldReviewParcel(parcel: JSONObject, heading: String) {
+@Composable internal fun FieldReviewParcel(parcel: JSONObject, heading: String) {
     Text(heading, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Text(parcel.optString("name").ifBlank { "Supplied reference" })
     FieldOutline(parcel)
@@ -150,7 +158,7 @@ private fun polygonRings(geometry: JSONObject): List<List<Pair<Double, Double>>>
     } } }
 }
 
-@Composable private fun FieldOutline(field: JSONObject) {
+@Composable internal fun FieldOutline(field: JSONObject) {
     val geometry = field.optJSONObject("geometry")
     val rings = remember(geometry?.toString()) { geometry?.let { runCatching { polygonRings(it) }.getOrNull() }.orEmpty() }
     val points = rings.flatten()

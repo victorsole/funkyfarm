@@ -18,6 +18,7 @@ from .security import Session, require_roles, require_session
 
 router = APIRouter(tags=["fields"])
 EPS = 1e-12
+MAX_OVERLAP_POSITIONS = 50_000
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 ElementTree.register_namespace("", KML_NAMESPACE)
 
@@ -29,7 +30,7 @@ def invalid(message):
 def coordinate(value):
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         invalid("Each GeoJSON position needs exactly [longitude, latitude].")
-    if any(isinstance(v, bool) or not isinstance(v, (float, int)) or not math.isfinite(v) for v in value):
+    if any(isinstance(v, bool) or not isinstance(v, (float, int)) or isinstance(v, float) and not math.isfinite(v) for v in value):
         invalid("Coordinates must be finite numbers.")
     lon, lat = value
     if not -180 <= lon <= 180 or not -90 <= lat <= 90:
@@ -184,20 +185,60 @@ def active_parcels(farm):
     return [p for p in farm_parcels(farm) if p.get("active") is not False]
 
 
-def overlaps(parcel, others):
-    from .geometry import exact_overlap
+def _overlap_outline(geometry, cache, *, skip_invalid=False):
+    # Retain each source object in this operation-local cache, so Python object
+    # identities cannot be reused and no geometry leaks into another request.
+    key = id(geometry)
+    if key not in cache:
+        try:
+            normalized = validate_geometry(geometry)
+        except ApiError as error:
+            cache[key] = {"source": geometry, "error": error}
+        else:
+            positions = sum(len(ring) for polygon in polygons(normalized) for ring in polygon)
+            total = cache.get("positions", 0) + positions
+            if total > MAX_OVERLAP_POSITIONS:
+                raise ApiError(422, "field_overlap_work_limit", "These outlines exceed the bounded overlap review. Prepare a smaller change or simplify overly detailed outlines; no fields were skipped or applied.")
+            cache["positions"] = total
+            from .geometry import engine
+            shape, _, _, _, _, explain = engine()
+            value = shape(normalized)
+            if value.is_empty or not value.is_valid:
+                # As before, only structurally invalid stored outlines are
+                # skipped; a GEOS topology error must still stop the review.
+                raise ApiError(422, "invalid_geometry", "Review the outline before continuing: " + explain(value))
+            entry = {"source": geometry, "geometry": normalized, "shape": value,
+                     "bounds": value.bounds, "area": value.area}
+            cache[key] = entry
+            cache[id(normalized)] = entry
+    entry = cache[key]
+    if "error" in entry:
+        if skip_invalid:
+            return None
+        raise entry["error"]
+    return entry
+
+
+def _outline_overlap(own, other):
+    a, b = own["bounds"], other["bounds"]
+    if a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]:
+        return False
+    return own["shape"].intersection(other["shape"]).area > max(1e-14, min(own["area"], other["area"]) * 1e-9)
+
+
+def overlaps(parcel, others, *, cache=None):
     if not parcel.get("geometry"):
         return []
+    cache = {} if cache is None else cache
     result = []
-    own = validate_geometry(parcel["geometry"])
+    own = _overlap_outline(parcel["geometry"], cache)
     for other in others:
         if other["id"] == parcel["id"] or not other.get("geometry"):
             continue
-        try:
-            their = validate_geometry(other["geometry"])
-        except ApiError:
+        their = _overlap_outline(other["geometry"], cache, skip_invalid=True)
+        if their is None:
             continue
-        if exact_overlap(own, their):
+        if _outline_overlap(own, their):
             result.append({"id": other["id"], "name": other.get("name", other["id"])})
     return result
 
@@ -290,6 +331,14 @@ def proposals(farm_id: str, limit: int = Query(50, ge=1, le=200), offset: int = 
         return list_records(conn, "field_change_proposals", limit, offset, farm_id)
 
 
+@router.get("/field-proposals/{proposal_id}")
+def proposal_detail(proposal_id: str, session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        proposal = fetch_record(conn, "field_change_proposals", proposal_id)
+        fetch_record(conn, "farms", proposal["data"]["farm_id"])
+        return proposal
+
+
 @router.post("/farms/{farm_id}/field-proposals")
 def propose(farm_id: str, body: Proposal, session: Session = Depends(require_session), retry_key: str | None = Header(None, alias="Idempotency-Key")):
     with transaction(session) as conn:
@@ -325,13 +374,14 @@ def comparison_data(previous, proposed, reference=None):
             "reference": reference, "meaning": "Approximate outline comparison only; not eligible area or an official correction decision."}
 
 
-def proposal_data(farm, previous, parcels, operation, note, session, reference=None, split_line=None):
+def proposal_data(farm, previous, parcels, operation, note, session, reference=None, split_line=None, *, overlap_cache=None):
     reference = reference_data(reference)
     excluded = {p["id"] for p in previous}
     neighbours = [p for p in active_parcels(farm) if p["id"] not in excluded]
+    overlap_cache = {} if overlap_cache is None else overlap_cache
     overlapping = []
     for parcel in parcels:
-        overlapping.extend(overlaps(parcel, neighbours))
+        overlapping.extend(overlaps(parcel, neighbours, cache=overlap_cache))
     warnings = []
     for parcel in parcels:
         warnings.extend(geometry_summary(parcel.get("geometry"))["warnings"])
@@ -377,6 +427,41 @@ def create_proposal_in_transaction(conn, farm_id, body: Proposal, session):
     return insert_record(conn, "field_change_proposals", prepare_field_proposal(conn, farm_id, body, session))
 
 
+def prepare_import_proposal(farm, rows, note, session, source):
+    """Keep a reviewed file selection together as one private additive change."""
+    if not 1 <= len(rows) <= 20 or not isinstance(note, str) or not note.strip() or len(note) > 4000:
+        raise ApiError(422, "field_import_selection", "Choose between one and twenty fields and explain where these outlines came from.")
+    parcels, identifiers, overlap_cache = [], {parcel["id"] for parcel in farm_parcels(farm)}, {}
+    for row in rows:
+        identifier = str(UUID(row["id"]))
+        if identifier in identifiers:
+            raise ApiError(409, "field_import_identifier", "An imported field already exists in this farm. Reload its current fields; nothing was replaced.")
+        identifiers.add(identifier)
+        parcel = Parcel.model_validate({"id": identifier, "name": row["name"], "geometry": row["geometry"],
+            "crop": row.get("crop"), "external_id": row.get("external_id")}).model_dump(mode="json")
+        parcel["geometry"] = _overlap_outline(parcel["geometry"], overlap_cache)["geometry"]
+        if not parcel["name"].strip():
+            raise ApiError(422, "field_import_name", "Give every imported field a name before preparing it.")
+        parcel["import_source"] = {"id": source["id"], "sha256": source["sha256"], "row_id": identifier,
+            "source_year": source.get("source_year"), "source_origin": source["source_origin"]}
+        parcels.append(parcel)
+    data = proposal_data(farm, [], parcels, "import", note, session, overlap_cache=overlap_cache)
+    data["import_source"] = deepcopy(source)
+    data["warnings"].append("These are new private field records from a supplied file. Existing fields were not matched or replaced; the file does not prove current crop, ownership, eligible area or an official registration.")
+    for index, parcel in enumerate(parcels):
+        data["overlapping_fields"].extend(overlaps(parcel, parcels[:index], cache=overlap_cache))
+    for label, values in (("names", [p["name"] for p in parcels]), ("references", [p["external_id"] for p in parcels if p.get("external_id")])):
+        if len(values) != len(set(values)):
+            data["warnings"].append(f"Some selected fields have duplicate {label}. Review them before confirming; no duplicate was silently removed.")
+    existing_references = {p.get("external_id") for p in active_parcels(farm) if p.get("external_id")}
+    if any(p.get("external_id") in existing_references for p in parcels):
+        data["warnings"].append("A selected reference is already recorded on this farm. This import adds fields; it does not update a matching existing field.")
+    if data["overlapping_fields"]:
+        data["warnings"].append("Selected new fields overlap each other or an existing field. Compare every outline before explicitly keeping those overlaps.")
+    data["warnings"] = list(dict.fromkeys(data["warnings"]))
+    return data
+
+
 @router.post("/farms/{farm_id}/field-proposals/transform")
 def transform(farm_id: str, body: Transformation, session: Session = Depends(require_session), retry_key: str | None = Header(None, alias="Idempotency-Key")):
     from .geometry import split_outline, merge_outlines
@@ -406,10 +491,12 @@ def transform(farm_id: str, body: Transformation, session: Session = Depends(req
                         "geometry": geometry, "point": None, "crop": body.crop if "crop" in body.model_fields_set else previous[0].get("crop"),
                         "greenhouse": body.greenhouse if body.greenhouse is not None else previous[0].get("greenhouse", False),
                         "external_id": None, "notes": body.note} for index, geometry in enumerate(geometries)]
-            data = proposal_data(farm, previous, parcels, body.operation, body.note, session, body.reference, body.split_line)
+            overlap_cache = {}
+            data = proposal_data(farm, previous, parcels, body.operation, body.note, session, body.reference, body.split_line, overlap_cache=overlap_cache)
             if body.operation == "merge":
-                from .geometry import exact_overlap
-                source_overlaps = [p for index, p in enumerate(previous) if any(exact_overlap(p["geometry"], other["geometry"]) for other in previous[:index])]
+                parent_outlines = [_overlap_outline(parent["geometry"], overlap_cache) for parent in previous]
+                source_overlaps = [p for index, p in enumerate(previous)
+                    if any(_outline_overlap(parent_outlines[index], other) for other in parent_outlines[:index])]
                 if source_overlaps:
                     data["overlapping_fields"].extend({"id": p["id"], "name": p["name"]} for p in source_overlaps)
                     data["warnings"].append("Some selected fields already overlap. The joined area counts their shared ground once; review that reduction explicitly.")
@@ -504,30 +591,51 @@ def kml_proposal(record, parcels):
 
 
 @router.get("/field-proposals/{proposal_id}/export")
-def export_proposal(proposal_id: str, format: Literal["geojson", "correction", "kml"] = "geojson", session: Session = Depends(require_session)):
+def export_proposal(proposal_id: str, format: Literal["geojson", "correction", "kml"] = "geojson", expected_revision: int | None = Query(None, ge=1), retained_revision: int | None = Query(None, ge=1), session: Session = Depends(require_session)):
     with transaction(session) as conn:
         record = fetch_record(conn, "field_change_proposals", proposal_id)
-        data = record["data"]
-        parcels = data.get("parcels", [data["parcel"]])
-        if format == "kml":
-            return Response(kml_proposal(record, parcels), media_type="application/vnd.google-earth.kml+xml",
-                headers={"Content-Disposition": 'attachment; filename="field-correction-draft.kml"', "Cache-Control": "private, no-store"})
-        if format == "geojson":
-            result = {"type": "FeatureCollection", "name": "Private field correction draft", "features": [
-                {"type": "Feature", "id": p["id"], "geometry": p.get("geometry"), "properties": {"name": p.get("name"),
-                    "crop": p.get("crop"), "external_id": p.get("external_id"), "proposal_id": record["id"], "status": data["status"],
-                    "meaning": "Farmer-supplied private outline; not an official LPIS update."}} for p in parcels]}
-            media, filename = "application/geo+json", "field-correction-draft.geojson"
-        else:
-            result = {"title": "Field correction draft for manual authority handoff", "proposal_id": record["id"],
-                "proposal_revision": record["revision"], "base_farm_revision": data["base_farm_revision"],
-                "status": data["status"], "operation": data.get("operation", "edit"), "previous_parcels": data.get("previous_parcels", []),
-                "proposed_parcels": parcels, "comparison": data.get("comparison"), "lineage": data.get("lineage"),
-                "note": data.get("note"), "warnings": data.get("warnings", []),
-                "handoff": "Review this draft with your adviser or national authority using their accepted process. This file has not been submitted and does not alter LPIS or prove eligible area."}
-            media, filename = "application/json", "field-correction-handoff.json"
-        return Response(json.dumps(result, ensure_ascii=False, indent=2), media_type=media,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"})
+        if expected_revision is not None and retained_revision is not None:
+            raise ApiError(422, "field_export_version", "Choose either the current expected version or an explicitly retained historical version.")
+        if expected_revision is not None and record["revision"] != expected_revision:
+            raise ApiError(409, "field_export_changed", "This field change is a different saved version. Review it again before downloading.", {"current_revision": record["revision"]})
+        if retained_revision is not None and retained_revision != record["revision"]:
+            retained = conn.execute("SELECT data FROM record_history WHERE record_id=%s AND kind='field_change_proposals' AND revision=%s",
+                                    (UUID(record["id"]), retained_revision)).fetchone()
+            if retained is None:
+                raise ApiError(404, "field_version_not_found", "This retained field version is unavailable through your current access.")
+            if retained["data"].get("farm_id") != record["data"]["farm_id"]:
+                raise ApiError(409, "field_version_scope", "This retained field version belongs to a different farm context.")
+            record = {**record, "revision": retained_revision, "data": deepcopy(retained["data"])}
+    return render_proposal_export(record, format)
+
+
+def render_proposal_export(record, format):
+    """Render the already selected version without further farm or network reads."""
+    data = record["data"]
+    parcels = data.get("parcels", [data["parcel"]])
+    if format == "kml":
+        return Response(kml_proposal(record, parcels), media_type="application/vnd.google-earth.kml+xml",
+            headers={"Content-Disposition": 'attachment; filename="field-correction-draft.kml"', "Cache-Control": "private, no-store"})
+    if format == "geojson":
+        result = {"type": "FeatureCollection", "name": "Private field correction draft", "features": [
+            {"type": "Feature", "id": p["id"], "geometry": p.get("geometry"), "properties": {"name": p.get("name"),
+                "crop": p.get("crop"), "external_id": p.get("external_id"), "proposal_id": record["id"], "status": data["status"],
+                "meaning": "Farmer-supplied private outline; not an official LPIS update."}} for p in parcels]}
+        media, filename = "application/geo+json", "field-correction-draft.geojson"
+    elif format == "correction":
+        result = {"title": "Field correction draft for manual authority handoff", "proposal_id": record["id"],
+            "proposal_revision": record["revision"], "base_farm_revision": data["base_farm_revision"],
+            "status": data["status"], "operation": data.get("operation", "edit"), "previous_parcels": data.get("previous_parcels", []),
+            "proposed_parcels": parcels, "comparison": data.get("comparison"), "lineage": data.get("lineage"),
+            "note": data.get("note"), "warnings": data.get("warnings", []),
+            "handoff": "Review this draft with your adviser or national authority using their accepted process. This file has not been submitted and does not alter LPIS or prove eligible area."}
+        if data.get("import_source"):
+            result["import_source"] = data["import_source"]
+        media, filename = "application/json", "field-correction-handoff.json"
+    else:
+        raise ApiError(422, "field_export_format", "Choose GeoJSON, KML or the correction record.")
+    return Response(json.dumps(result, ensure_ascii=False, indent=2), media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"})
 
 
 @router.post("/field-proposals/{proposal_id}/discard")
@@ -562,11 +670,14 @@ def approve(proposal_id: str, body: Approval, session: Session = Depends(require
             parents = data.get("previous_parcels", [data["previous_parcel"]] if data.get("previous_parcel") else [])
             parent_ids = {p["id"] for p in parents}
             neighbours = [p for p in active_parcels(farm) if p["id"] not in parent_ids]
-            overlap = [other for parcel in parcels for other in overlaps(parcel, neighbours)]
+            overlap_cache = {}
+            overlap = [other for parcel in parcels for other in overlaps(parcel, neighbours, cache=overlap_cache)]
+            if operation == "import":
+                overlap.extend(other for index, parcel in enumerate(parcels) for other in overlaps(parcel, parcels[:index], cache=overlap_cache))
             if operation == "merge":
-                from .geometry import exact_overlap
+                parent_outlines = [_overlap_outline(parent["geometry"], overlap_cache) for parent in parents]
                 overlap.extend({"id": p["id"], "name": p["name"]} for index, p in enumerate(parents)
-                    if any(exact_overlap(p["geometry"], other["geometry"]) for other in parents[:index]))
+                    if any(_outline_overlap(parent_outlines[index], other) for other in parent_outlines[:index]))
             if overlap and not body.accept_overlap:
                 raise ApiError(422, "overlap_review_required", "Review and explicitly acknowledge the overlapping field outlines.", {"overlapping_fields": overlap})
             reviewed_at = datetime.now(timezone.utc).isoformat()

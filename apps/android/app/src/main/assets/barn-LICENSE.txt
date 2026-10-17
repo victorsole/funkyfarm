@@ -1,0 +1,15 @@
+Barn logo
+
+Artwork: "Barn" by Delapouite
+Author: https://delapouite.com/
+Source: https://game-icons.net/1x1/delapouite/barn.html
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+Legal code: https://creativecommons.org/licenses/by/3.0/legalcode
+
+The SVG and PNG artwork are distributed unchanged from Game-icons.net.
+The iOS interface may tint the image for light or dark appearance.
+Use of this artwork does not imply endorsement by its creator.
+
+This artwork retains its CC BY 3.0 license separately from FunkyFarm's
+AGPL-3.0-or-later software license.

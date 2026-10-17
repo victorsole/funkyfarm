@@ -46,6 +46,40 @@ function viewport(map: L.Map): ParcelMapBounds {
   return bounds.getEast() - bounds.getWest() >= 360 ? [-180, Math.max(-90, bounds.getSouth()), 180, Math.min(90, bounds.getNorth())]
     : [Math.max(-180, bounds.getWest()), Math.max(-90, bounds.getSouth()), Math.min(180, bounds.getEast()), Math.min(90, bounds.getNorth())];
 }
+function positionCount(parts: number[][][][]) { return parts.reduce((total, polygon) => total + polygon.reduce((sum, edge) => sum + edge.length, 0), 0); }
+function cross(a: number[], b: number[], p: number[]) { return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]); }
+function onSegment(a: number[], b: number[], p: number[]) {
+  return Math.abs(cross(a, b, p)) < 1e-12 && p[0] >= Math.min(a[0], b[0]) - 1e-12 && p[0] <= Math.max(a[0], b[0]) + 1e-12 && p[1] >= Math.min(a[1], b[1]) - 1e-12 && p[1] <= Math.max(a[1], b[1]) + 1e-12;
+}
+function segmentsTouch(a: number[], b: number[], c: number[], d: number[]) {
+  const x = cross(a, b, c), y = cross(a, b, d), z = cross(c, d, a), w = cross(c, d, b);
+  return ((x > 1e-12 && y < -1e-12 || y > 1e-12 && x < -1e-12) && (z > 1e-12 && w < -1e-12 || w > 1e-12 && z < -1e-12)) || onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b);
+}
+function insideRing(point: number[], edge: number[][]) {
+  let inside = false;
+  for (let i = 0; i < edge.length - 1; i += 1) {
+    const a = edge[i], b = edge[i + 1];
+    if (onSegment(a, b, point)) return false;
+    if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+function ringsTouch(a: number[][], b: number[][]) {
+  return a.slice(0, -1).some((p, i) => b.slice(0, -1).some((q, j) => segmentsTouch(p, a[i + 1], q, b[j + 1])));
+}
+function excludedAreaError(points: number[][], polygon: number[][][]) {
+  if (points.length < 3 || points.length > 499 || points.some(p => !validPosition(p))) return 'An excluded area needs between 3 and 499 valid corners.';
+  if (new Set(points.map(p => `${p[0]},${p[1]}`)).size !== points.length) return 'Use each corner once; Close excluded area repeats the first corner for you.';
+  const edge = [...points, points[0]];
+  for (let i = 0; i < points.length; i += 1) for (let j = i + 1; j < points.length; j += 1) {
+    if (j !== i + 1 && !(i === 0 && j === points.length - 1) && segmentsTouch(edge[i], edge[i + 1], edge[j], edge[j + 1])) return 'The excluded area cannot cross or touch itself. Undo a corner and redraw it.';
+  }
+  if (Math.abs(points.reduce((sum, p, i) => sum + p[0] * edge[i + 1][1] - edge[i + 1][0] * p[1], 0)) < 1e-12) return 'The excluded area must enclose an area, not just a line.';
+  if (!polygon[0] || points.some(p => !insideRing(p, polygon[0])) || ringsTouch(edge, polygon[0])) return 'Keep the whole excluded area strictly inside the selected part, without touching its outer edge.';
+  if (polygon.slice(1).some(hole => ringsTouch(edge, hole) || insideRing(points[0], hole) || insideRing(hole[0], edge))) return 'Excluded areas cannot touch, overlap or contain each other.';
+  return '';
+}
+type EditSnapshot = { geometry: FieldGeometry; sketch: number[][]; part: number; ring: number; drawingHole: boolean };
 
 /** Controlled geometry editor. Map movement never calls an editing callback. */
 export function ParcelMap(props: ParcelMapProps) {
@@ -59,14 +93,22 @@ export function ParcelMap(props: ParcelMapProps) {
   const tiles = useRef<L.TileLayer | null>(null);
   const deviceLocation = useRef<L.LayerGroup | null>(null);
   const partRef = useRef(0);
+  const ringRef = useRef(0);
+  const drawingHoleRef = useRef(false);
+  const snapRef = useRef(false);
+  const editBinding = useRef('');
   const focusedCorner = useRef<number | null>(null);
-  const undo = useRef<FieldGeometry[]>([]);
+  const undo = useRef<EditSnapshot[]>([]);
   const acknowledgedGeometry = useRef(JSON.stringify(props.geometry));
   const expectedGeometry = useRef<string | null>(null);
   const fitted = useRef(false);
   const movedByUser = useRef(false);
   const [ready, setReady] = useState(false);
   const [part, setPart] = useState(0);
+  const [selectedRing, setSelectedRing] = useState(0);
+  const [drawingHole, setDrawingHole] = useState(false);
+  const [snapToComparison, setSnapToComparison] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ kind: 'close' | 'cancel' | 'remove'; binding: string } | null>(null);
   const [undoCount, setUndoCount] = useState(0);
   const [message, setMessage] = useState('');
   const [mapError, setMapError] = useState('');
@@ -87,7 +129,13 @@ export function ParcelMap(props: ParcelMapProps) {
   const parts = partsOf(props.geometry);
   const selectedPart = Math.min(part, Math.max(0, parts.length - 1));
   partRef.current = selectedPart;
-  const ring = parts[selectedPart]?.[0] ?? [];
+  const ringIndex = Math.min(selectedRing, Math.max(0, (parts[selectedPart]?.length ?? 1) - 1));
+  ringRef.current = ringIndex;
+  drawingHoleRef.current = drawingHole && props.mode === 'edit';
+  snapRef.current = snapToComparison && !!props.reference;
+  const ring = parts[selectedPart]?.[ringIndex] ?? [];
+  const binding = JSON.stringify([props.geometry, props.reference, props.sketch, props.mode, selectedPart, ringIndex, drawingHole]);
+  editBinding.current = binding;
 
   function fitSupplied() {
     const instance = map.current;
@@ -98,10 +146,16 @@ export function ParcelMap(props: ParcelMapProps) {
     fitted.current = true;
     setMessage('Showing your supplied locations. The view did not change any field coordinates.');
   }
+  function rememberEdit() {
+    const previous = latest.current.geometry;
+    if (!previous) return;
+    undo.current = [...undo.current.slice(-29), { geometry: structuredClone(previous), sketch: structuredClone(latest.current.sketch), part: partRef.current, ring: ringRef.current, drawingHole: drawingHoleRef.current }];
+    setUndoCount(undo.current.length);
+  }
   function commit(next: FieldGeometry) {
     if (latest.current.disabled) return;
-    const previous = latest.current.geometry;
-    if (previous) { undo.current = [...undo.current.slice(-29), structuredClone(previous)]; setUndoCount(undo.current.length); }
+    if (positionCount(partsOf(next)) > 1000) { setMessage('The whole boundary can contain at most 1,000 positions, including the closing corners.'); return; }
+    rememberEdit();
     expectedGeometry.current = JSON.stringify(next);
     latest.current.onGeometry(next);
   }
@@ -109,10 +163,10 @@ export function ParcelMap(props: ParcelMapProps) {
     if (latest.current.disabled) return null;
     const current = latest.current.geometry;
     const next = structuredClone(partsOf(current));
-    const outer = next[partRef.current]?.[0];
-    if (!current || !outer || !outer[index] || !validPosition(nextPosition)) return null;
-    outer[index] = nextPosition;
-    if (index === 0) outer[outer.length - 1] = [...nextPosition];
+    const edge = next[partRef.current]?.[ringRef.current];
+    if (!current || !edge || !edge[index] || !validPosition(nextPosition)) return null;
+    edge[index] = nextPosition;
+    if (index === 0) edge[edge.length - 1] = [...nextPosition];
     return current.type === 'Polygon' ? { type: 'Polygon', coordinates: next[0] } : { type: 'MultiPolygon', coordinates: next };
   }
   function moveCorner(index: number, nextPosition: number[]) {
@@ -122,19 +176,68 @@ export function ParcelMap(props: ParcelMapProps) {
   function changeCornerCount(index: number, insert: boolean) {
     const current = latest.current.geometry;
     const next = structuredClone(partsOf(current));
-    const currentOuter = next[partRef.current]?.[0];
-    if (!current || !currentOuter) return;
-    const outer = currentOuter.slice(0, -1);
+    const currentRing = next[partRef.current]?.[ringRef.current];
+    if (!current || !currentRing || latest.current.disabled) return;
+    const outer = currentRing.slice(0, -1);
     if (insert) {
-      if (outer.length >= 499) return;
+      if (outer.length >= 499 || positionCount(next) >= 1000) return;
       const before = outer[index], after = outer[(index + 1) % outer.length];
       outer.splice(index + 1, 0, [(before[0] + after[0]) / 2, (before[1] + after[1]) / 2]);
     } else {
       if (outer.length <= 3) return;
       outer.splice(index, 1);
     }
-    next[partRef.current][0] = [...outer, [...outer[0]]];
+    next[partRef.current][ringRef.current] = [...outer, [...outer[0]]];
     commit(current.type === 'Polygon' ? { type: 'Polygon', coordinates: next[0] } : { type: 'MultiPolygon', coordinates: next });
+  }
+  function pointerPosition(value: L.LatLng): number[] {
+    const instance = map.current, reference = latest.current.reference;
+    if (!instance || !snapRef.current || !reference) return position(value);
+    const referenceParts = partsOf(reference);
+    if (positionCount(referenceParts) > 1000) return position(value);
+    const pointer = instance.latLngToContainerPoint(value);
+    let best: L.Point | null = null, distance = 10 * 10;
+    for (const polygon of referenceParts) for (const edge of polygon) for (let i = 0; i < edge.length - 1; i += 1) {
+      if (!validPosition(edge[i]) || !validPosition(edge[i + 1])) continue;
+      const a = instance.latLngToContainerPoint(latLng(edge[i])), b = instance.latLngToContainerPoint(latLng(edge[i + 1]));
+      const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+      const t = length ? Math.max(0, Math.min(1, ((pointer.x - a.x) * dx + (pointer.y - a.y) * dy) / length)) : 0;
+      const candidate = L.point(a.x + t * dx, a.y + t * dy);
+      const gap = (candidate.x - pointer.x) ** 2 + (candidate.y - pointer.y) ** 2;
+      if (gap <= distance) { best = candidate; distance = gap; }
+    }
+    return position(best ? instance.containerPointToLatLng(best) : value);
+  }
+  function requestConfirmation(kind: 'close' | 'cancel' | 'remove') {
+    if (latest.current.disabled) return;
+    if (kind === 'close') {
+      const error = excludedAreaError(latest.current.sketch, partsOf(latest.current.geometry)[partRef.current] ?? []);
+      if (error) { setMessage(error); return; }
+    }
+    setConfirmation({ kind, binding: editBinding.current });
+  }
+  function confirmChange() {
+    if (!confirmation || latest.current.disabled || confirmation.binding !== editBinding.current) { setConfirmation(null); return; }
+    const current = latest.current.geometry, next = structuredClone(partsOf(current)), polygon = next[partRef.current];
+    if (!current || !polygon) return;
+    if (confirmation.kind === 'close') {
+      const points = latest.current.sketch, error = excludedAreaError(points, polygon);
+      if (error) { setMessage(error); setConfirmation(null); return; }
+      if (polygon.length >= 20 || positionCount(next) + points.length + 1 > 1000) { setMessage('Keep at most 19 excluded areas per part and 1,000 positions across the whole boundary.'); setConfirmation(null); return; }
+      polygon.push([...structuredClone(points), [...points[0]]]);
+      commit(current.type === 'Polygon' ? { type: 'Polygon', coordinates: next[0] } : { type: 'MultiPolygon', coordinates: next });
+      setSelectedRing(polygon.length - 1); setDrawingHole(false); latest.current.onSketch([]);
+      setMessage('Excluded area added to this boundary draft. This does not determine legal eligibility. You can undo this change.');
+    } else if (confirmation.kind === 'cancel') {
+      rememberEdit(); setDrawingHole(false); latest.current.onSketch([]);
+      setMessage('Unfinished excluded area cancelled. The boundary is unchanged; Undo restores the unfinished points.');
+    } else if (ringRef.current > 0 && polygon[ringRef.current]) {
+      polygon.splice(ringRef.current, 1);
+      commit(current.type === 'Polygon' ? { type: 'Polygon', coordinates: next[0] } : { type: 'MultiPolygon', coordinates: next });
+      setSelectedRing(0);
+      setMessage('Excluded area removed from this draft only. The earlier outline remains in history after saving. You can undo this change.');
+    }
+    focusedCorner.current = null; setConfirmation(null);
   }
   function pan(x: number, y: number) {
     movedByUser.current = true;
@@ -194,13 +297,19 @@ export function ParcelMap(props: ParcelMapProps) {
     instance.on('click', (event: L.LeafletMouseEvent) => {
       const current = latest.current;
       if (current.disabled) return;
-      if ((current.mode === 'draw' || current.mode === 'split') && instance.getZoom() < 14) { setMessage('Zoom in closer before drawing. This view covers too large an area.'); return; }
-      if (current.mode === 'draw') {
-        if (current.sketch.length >= 499) { setMessage('This outline has reached 499 corners. Close it before adding another field.'); return; }
-        current.onSketch([...current.sketch, position(event.latlng)]);
+      const addingHole = current.mode === 'edit' && drawingHoleRef.current;
+      if ((current.mode === 'draw' || current.mode === 'split' || addingHole) && instance.getZoom() < 14) { setMessage('Zoom in closer before drawing. This view covers too large an area.'); return; }
+      if (current.mode === 'draw' || addingHole) {
+        if (current.sketch.length >= 499 || (addingHole && positionCount(partsOf(current.geometry)) + current.sketch.length + 2 > 1000)) { setMessage('This outline has reached its position limit. Undo a corner or finish this area before adding more.'); return; }
+        const nextPosition = pointerPosition(event.latlng);
+        if (addingHole) {
+          const polygon = partsOf(current.geometry)[partRef.current];
+          if (!polygon?.[0] || !insideRing(nextPosition, polygon[0]) || polygon.slice(1).some(hole => insideRing(nextPosition, hole) || hole.slice(0, -1).some((p, i) => onSegment(p, hole[i + 1], nextPosition)))) { setMessage('Place this excluded-area corner inside the selected part, away from its outer edge and existing excluded areas.'); return; }
+        }
+        current.onSketch([...current.sketch, nextPosition]); setConfirmation(null);
       } else if (current.mode === 'split') {
         if (current.splitLine.length >= 2) { setMessage('Two dividing-line points are recorded. Choose Redraw dividing line to start again.'); return; }
-        current.onSplitLine([...current.splitLine, position(event.latlng)]);
+        current.onSplitLine([...current.splitLine, pointerPosition(event.latlng)]);
       }
     });
     const observer = new ResizeObserver(() => instance.invalidateSize({ animate: false, pan: false }));
@@ -251,11 +360,16 @@ export function ParcelMap(props: ParcelMapProps) {
     if (current === acknowledgedGeometry.current) return;
     // A different selected field or restored draft starts a different undo
     // history. Never restore another field's outline through this button.
-    if (current !== expectedGeometry.current) { undo.current = []; setUndoCount(0); focusedCorner.current = null; }
+    if (current !== expectedGeometry.current) {
+      undo.current = []; setUndoCount(0); focusedCorner.current = null;
+      setPart(0); setSelectedRing(0); setDrawingHole(false); setConfirmation(null);
+    }
     acknowledgedGeometry.current = current;
     expectedGeometry.current = null;
   }, [props.geometry]);
-  useEffect(() => { undo.current = []; setUndoCount(0); focusedCorner.current = null; }, [props.mode]);
+  useEffect(() => { undo.current = []; setUndoCount(0); focusedCorner.current = null; setPart(0); setSelectedRing(0); setDrawingHole(false); setConfirmation(null); }, [props.mode]);
+  useEffect(() => { setSnapToComparison(false); }, [props.reference]);
+  useEffect(() => { setConfirmation(current => current && current.binding !== binding ? null : current); }, [binding]);
 
   useEffect(() => {
     if (!ready || fitted.current || movedByUser.current || !positionsOf(props).length) return;
@@ -280,42 +394,56 @@ export function ParcelMap(props: ParcelMapProps) {
     for (const candidate of props.referenceCandidates ?? []) {
       const shape = partsOf(candidate.geometry).filter(polygon => polygon.length && polygon.every(edge => edge.length >= 3 && edge.every(validPosition)));
       if (!shape.length) continue;
-      const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: '#466e98', weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false }).addTo(layers);
+      // A read-only candidate must not swallow clicks intended for drawing.
+      const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: '#466e98', weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false, interactive: props.mode === 'edit' && !drawingHole }).addTo(layers);
       candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); latest.current.onReferenceSelect?.(candidate.id); });
     }
     addShape(props.reference, true);
     outline.current = addShape(props.geometry, false);
     if (props.point && validPosition([props.point.longitude, props.point.latitude])) L.circleMarker([props.point.latitude, props.point.longitude], { radius: 5, color: '#294c38', fillOpacity: 1, interactive: false }).addTo(layers);
-    if (props.mode === 'draw' && props.sketch.length) {
-      L.polyline(props.sketch.filter(validPosition).map(latLng), { color: '#21543b', weight: 3, interactive: false }).addTo(layers);
-      for (const p of props.sketch.filter(validPosition)) L.circleMarker(latLng(p), { radius: 4, color: '#21543b', fillOpacity: 1, interactive: false }).addTo(layers);
+    if ((props.mode === 'draw' || props.mode === 'edit') && props.sketch.length) {
+      const color = props.mode === 'edit' ? '#984b35' : '#21543b';
+      L.polyline(props.sketch.filter(validPosition).map(latLng), { color, weight: 3, dashArray: props.mode === 'edit' ? '4 4' : undefined, interactive: false }).addTo(layers);
+      for (const p of props.sketch.filter(validPosition)) L.circleMarker(latLng(p), { radius: 4, color, fillOpacity: 1, interactive: false }).addTo(layers);
     }
     if (props.splitLine.length) {
       L.polyline(props.splitLine.filter(validPosition).map(latLng), { color: '#a13f27', weight: 3, dashArray: '7 4', interactive: false }).addTo(layers);
       for (const p of props.splitLine.filter(validPosition)) L.circleMarker(latLng(p), { radius: 5, color: '#a13f27', fillOpacity: 1, interactive: false }).addTo(layers);
     }
     if (props.mode !== 'edit') return;
-    const selected = partsOf(props.geometry)[partRef.current]?.[0] ?? [];
+    const polygon = partsOf(props.geometry)[selectedPart] ?? [];
+    if (!drawingHole) polygon.slice(1).forEach((hole, index) => {
+      if (!hole.every(validPosition)) return;
+      const area = L.polyline(hole.map(latLng), { color: '#984b35', weight: index + 1 === ringIndex ? 5 : 3, bubblingMouseEvents: false }).addTo(layers);
+      area.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); if (!latest.current.disabled) { setSelectedRing(index + 1); focusedCorner.current = null; setConfirmation(null); } });
+    });
+    if (drawingHole) return;
+    const selected = polygon[ringIndex] ?? [];
+    const handleBinding = editBinding.current;
     const cleanups: (() => void)[] = [];
     selected.slice(0, -1).forEach((p, index) => {
       if (!validPosition(p)) return;
       const marker = L.marker(latLng(p), {
         icon: L.divIcon({ className: 'parcel-map-corner', html: '<span aria-hidden="true"></span>', iconSize: [44, 44], iconAnchor: [22, 22] }),
-        draggable: true, keyboard: true, autoPan: true, autoPanOnFocus: false,
-        title: `Corner ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`,
+        draggable: !props.disabled, keyboard: true, autoPan: true, autoPanOnFocus: false,
+        title: `${ringIndex ? 'Excluded area' : 'Outer edge'} corner ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`,
       }).addTo(cornerLayers);
       marker.on('drag', () => {
-        const next = movedCorner(index, position(marker.getLatLng()));
+        if (latest.current.disabled || editBinding.current !== handleBinding) return;
+        const nextPosition = pointerPosition(marker.getLatLng());
+        marker.setLatLng(latLng(nextPosition));
+        const next = movedCorner(index, nextPosition);
         if (next && outline.current) outline.current.setLatLngs(partsOf(next).map(polygon => polygon.map(edge => edge.map(latLng))));
       });
-      marker.on('dragend', () => { focusedCorner.current = null; moveCorner(index, position(marker.getLatLng())); });
+      marker.on('dragend', () => { if (!latest.current.disabled && editBinding.current === handleBinding) { focusedCorner.current = null; moveCorner(index, pointerPosition(marker.getLatLng())); } });
       const element = marker.getElement();
       if (!element) return;
       element.setAttribute('role', 'button');
-      element.setAttribute('aria-label', `Corner ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`);
+      element.setAttribute('aria-label', `${ringIndex ? 'Excluded area corner' : 'Corner'} ${index + 1}; longitude ${p[0]}, latitude ${p[1]}`);
       const keydown = (event: KeyboardEvent) => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
+        if (latest.current.disabled || editBinding.current !== handleBinding) return;
         const distance = event.shiftKey ? 10 : 1;
         const pixel = instance.project(marker.getLatLng(), instance.getZoom());
         pixel.x += event.key === 'ArrowLeft' ? -distance : event.key === 'ArrowRight' ? distance : 0;
@@ -328,7 +456,7 @@ export function ParcelMap(props: ParcelMapProps) {
       if (focusedCorner.current === index) element.focus({ preventScroll: true });
     });
     return () => { cleanups.forEach(cleanup => cleanup()); };
-  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.referenceCandidates, selectedPart]);
+  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.disabled, props.referenceCandidates, selectedPart, ringIndex, drawingHole]);
 
   return <div className="parcel-map-editor" inert={props.disabled}>
     <div className="parcel-map-toolbar" aria-label="Map view controls">
@@ -336,14 +464,23 @@ export function ParcelMap(props: ParcelMapProps) {
       <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; map.current?.zoomOut(undefined, { animate: false }); }}>Zoom out</Button>
       <Button variant="secondary" disabled={!ready} onClick={fitSupplied}>Fit supplied outlines</Button>
       <Button variant="secondary" disabled={!ready || locating} onClick={useLocation}>{locating ? 'Finding my location…' : 'Use my location'}</Button>
-      {parts.length > 1 && <Field label="Part to edit"><select value={selectedPart} onChange={event => { focusedCorner.current = null; setPart(Number(event.target.value)); }}>{parts.map((_, index) => <option value={index} key={index}>Part {index + 1}</option>)}</select></Field>}
+      {parts.length > 1 && <Field label="Part to edit"><select value={selectedPart} disabled={drawingHole} onChange={event => { focusedCorner.current = null; setPart(Number(event.target.value)); setSelectedRing(0); setConfirmation(null); }}>{parts.map((_, index) => <option value={index} key={index}>Part {index + 1}</option>)}</select></Field>}
     </div>
     <div className="parcel-map-pan" aria-label="Move map view"><Button variant="ghost" disabled={!ready} onClick={() => pan(0, -160)}>Move north</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(0, 160)}>Move south</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(160, 0)}>Move east</Button><Button variant="ghost" disabled={!ready} onClick={() => pan(-160, 0)}>Move west</Button></div>
-    <p id={instructionId}>{props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to move the view.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark a dividing line. Drag the map to move the view.' : 'Drag a white corner to move it. You can also select a corner and use the arrow keys; hold Shift to move farther. Drag elsewhere to move the map.'}</p>
+    <p id={instructionId}>{props.mode === 'draw' ? 'Tap each corner around the field, then choose Close boundary. Drag the map to move the view.' : props.mode === 'split' ? 'Tap outside one edge, then beyond the opposite edge to mark a dividing line. Drag the map to move the view.' : drawingHole ? 'Tap corners inside the selected part, then choose Close excluded area. Finish or cancel this excluded area before changing parts.' : 'Choose the outer edge or an excluded area, then drag a white corner to move it. You can also select a corner and use the arrow keys; hold Shift to move farther. Drag elsewhere to move the map.'}</p>
     {mapError && <Notice kind="warning">{mapError} Your draft is still editable without a background.</Notice>}
-    {props.mode !== 'edit' && zoom < 14 && <Notice>Zoom in closer before drawing. This overview does not show your farm's location.</Notice>}
+    {(props.mode !== 'edit' || drawingHole) && zoom < 14 && <Notice>Zoom in closer before drawing. This overview does not show your farm's location.</Notice>}
     <div ref={host} className="parcel-map" role="group" aria-label="Field boundary map" aria-describedby={instructionId}/>
     <p className="parcel-map-caption">Your boundary draft, not an official LPIS boundary. Moving or zooming the map does not move its corners. <a href="/leaflet-LICENSE.txt" target="_blank" rel="noreferrer">Map software licence</a></p>
+    <fieldset className="parcel-map-comparison"><legend>Comparison outline</legend><label className="parcel-map-consent"><input type="checkbox" checked={snapToComparison && !!props.reference} disabled={!props.reference} onChange={event => setSnapToComparison(event.target.checked)}/>Help pointer clicks and drags follow the comparison outline</label><p>{props.reference ? 'Optional: a pointer within 10 screen pixels of the chosen comparison outline follows its nearest vertex or edge. Turning this on does not move any corners. Typed coordinates and arrow-key adjustments are never snapped. This is a drawing aid, not official accuracy or acceptance.' : 'Choose a comparison outline first. Public candidates are not used until you choose one for comparison.'}</p></fieldset>
+    {props.mode === 'edit' && parts[selectedPart] && <fieldset className="parcel-map-exclusions"><legend>Excluded area</legend><p>An excluded area is a hole in this private boundary draft, not a decision about legal eligibility. Other parts and rings are kept; saving a change retains the earlier field outline in history.</p><Field label="Edge to edit"><select value={ringIndex} disabled={drawingHole} onChange={event => { setSelectedRing(Number(event.target.value)); focusedCorner.current = null; setConfirmation(null); }}><option value={0}>Outer edge</option>{parts[selectedPart].slice(1).map((_, index) => <option value={index + 1} key={index}>Excluded area {index + 1}</option>)}</select></Field><div className="parcel-map-toolbar">
+      {!drawingHole && !props.sketch.length && <Button variant="secondary" disabled={parts[selectedPart].length >= 20 || positionCount(parts) + 4 > 1000} onClick={() => { setDrawingHole(true); setSelectedRing(0); focusedCorner.current = null; setConfirmation(null); setMessage('Drawing an excluded area inside the selected part. No boundary change is made until you close and confirm it.'); }}>Draw excluded area</Button>}
+      {!drawingHole && props.sketch.length > 0 && <Button variant="secondary" onClick={() => { setDrawingHole(true); focusedCorner.current = null; setConfirmation(null); }}>Resume excluded area in part {selectedPart + 1}</Button>}
+      {drawingHole && <Button disabled={props.sketch.length < 3} onClick={() => requestConfirmation('close')}>Close excluded area</Button>}
+      {!!props.sketch.length && <Button variant="secondary" onClick={() => { props.onSketch(props.sketch.slice(0, -1)); setConfirmation(null); }}>Undo excluded-area corner</Button>}
+      {(drawingHole || props.sketch.length > 0) && <Button variant="secondary" onClick={() => requestConfirmation('cancel')}>Cancel excluded area</Button>}
+      {!drawingHole && !props.sketch.length && ringIndex > 0 && <Button variant="secondary" onClick={() => requestConfirmation('remove')}>Remove excluded area</Button>}
+    </div>{props.sketch.length > 0 && <p>{props.sketch.length} unfinished excluded-area corners kept in your private draft. {!drawingHole && 'Check the selected part and these points before resuming; the target part is not retained when the editor is reopened.'}</p>}{parts[selectedPart].length >= 20 && <p>This part already has the maximum 19 excluded areas.</p>}{confirmation && confirmation.binding === binding && <div className="parcel-map-confirmation" role="group" aria-label="Confirm excluded-area change"><p>{confirmation.kind === 'close' ? 'Add this closed excluded area to the selected part? The rest of the boundary stays as drawn.' : confirmation.kind === 'cancel' ? 'Discard these unfinished excluded-area points? The boundary stays unchanged. Undo can restore the points.' : 'Remove the selected excluded area from this draft? This fills its hole in the draft, without changing the retained original.'}</p><div className="parcel-map-toolbar"><Button onClick={confirmChange}>{confirmation.kind === 'close' ? 'Confirm excluded area' : confirmation.kind === 'cancel' ? 'Discard unfinished excluded area' : 'Confirm removal of excluded area'}</Button><Button variant="secondary" onClick={() => setConfirmation(null)}>Keep editing</Button></div></div>}</fieldset>}
     <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
       <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
       <p>The map provider receives the area you view and your IP address, but not your private farm records. Nothing is requested until you turn the background on.</p>
@@ -358,7 +495,7 @@ export function ParcelMap(props: ParcelMapProps) {
     {message && <p className="parcel-map-message" role="status">{message}</p>}
     {props.mode === 'draw' && <div className="parcel-map-toolbar"><Button disabled={props.sketch.length < 3} onClick={() => { props.onGeometry({ type: 'Polygon', coordinates: [[...props.sketch, [...props.sketch[0]]]] }); props.onSketch([]); }}>Close boundary</Button><Button variant="secondary" disabled={!props.sketch.length} onClick={() => props.onSketch(props.sketch.slice(0, -1))}>Undo last corner</Button></div>}
     {props.mode === 'split' && <div className="parcel-map-toolbar"><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine(props.splitLine.slice(0, -1))}>Undo dividing line point</Button><Button variant="secondary" disabled={!props.splitLine.length} onClick={() => props.onSplitLine([])}>Redraw dividing line</Button></div>}
-    {props.mode === 'edit' && <Button variant="secondary" disabled={!undoCount} onClick={() => { const previous = undo.current.pop(); if (previous) { expectedGeometry.current = JSON.stringify(previous); props.onGeometry(previous); } setUndoCount(undo.current.length); }}>Undo last boundary adjustment</Button>}
-    {props.mode === 'edit' && ring.length > 0 && <details className="parcel-map-coordinates"><summary>Adjust corners using coordinates</summary><p>These controls change the selected outer edge. Other parts and excluded inner areas remain as saved. The server checks the resulting outline before saving.</p><div className="parcel-map-corners">{ring.slice(0, -1).map((p, index) => <div className="parcel-map-coordinate-row" key={index}><strong>Corner {index + 1}</strong><Field label="Longitude"><input type="number" min="-180" max="180" step="any" value={p[0]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [event.target.valueAsNumber, p[1]]); }}/></Field><Field label="Latitude"><input type="number" min="-90" max="90" step="any" value={p[1]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [p[0], event.target.valueAsNumber]); }}/></Field><div className="parcel-map-toolbar"><Button variant="ghost" disabled={ring.length >= 500} onClick={() => changeCornerCount(index, true)}>Insert corner after {index + 1}</Button><Button variant="ghost" disabled={ring.length <= 4} onClick={() => changeCornerCount(index, false)}>Remove corner {index + 1}</Button></div></div>)}</div></details>}
+    {props.mode === 'edit' && <Button variant="secondary" disabled={!undoCount} onClick={() => { const previous = undo.current.pop(); if (previous) { expectedGeometry.current = JSON.stringify(previous.geometry); props.onGeometry(previous.geometry); props.onSketch(previous.sketch); setPart(previous.part); setSelectedRing(previous.ring); setDrawingHole(previous.drawingHole); focusedCorner.current = null; setConfirmation(null); setMessage('Last boundary adjustment undone, including its unfinished excluded-area points.'); } setUndoCount(undo.current.length); }}>Undo last boundary adjustment</Button>}
+    {props.mode === 'edit' && !drawingHole && ring.length > 0 && <details className="parcel-map-coordinates"><summary>Adjust corners using coordinates</summary><p>These controls change {ringIndex ? `excluded area ${ringIndex} in the selected part` : 'the selected outer edge'}. Other parts and rings remain as saved. Coordinates and arrow keys do not snap to a comparison. The server checks the resulting outline before saving.</p><div className="parcel-map-corners">{ring.slice(0, -1).map((p, index) => <div className="parcel-map-coordinate-row" key={index}><strong>Corner {index + 1}</strong><Field label="Longitude"><input type="number" min="-180" max="180" step="any" value={p[0]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [event.target.valueAsNumber, p[1]]); }}/></Field><Field label="Latitude"><input type="number" min="-90" max="90" step="any" value={p[1]} onChange={event => { if (event.target.value !== '' && Number.isFinite(event.target.valueAsNumber)) moveCorner(index, [p[0], event.target.valueAsNumber]); }}/></Field><div className="parcel-map-toolbar"><Button variant="ghost" disabled={ring.length >= 500 || positionCount(parts) >= 1000} onClick={() => changeCornerCount(index, true)}>Insert corner after {index + 1}</Button><Button variant="ghost" disabled={ring.length <= 4} onClick={() => changeCornerCount(index, false)}>Remove corner {index + 1}</Button></div></div>)}</div></details>}
   </div>;
 }

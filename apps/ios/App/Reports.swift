@@ -24,6 +24,7 @@ struct ReportDetail: View {
         List {
             Section {
                 Text(current.title).font(.title2.bold())
+                NavigationLink("Correct a submitted mistake using this original report") { CaseEditor(job: .correction, initialFarmID: current.value("farm_id"), initialReference: CaseReference(source: .reports, record: current, role: "original")) }
                 LabeledContent("State", value: current.state == "issued" ? "Approved / issued snapshot" : current.state.capitalized)
                 LabeledContent("Reporting year", value: current.value("reporting_year"))
                 if let notice = current.data["snapshot"]?.object["capability_notice"] { Notice(notice.text) }
@@ -63,6 +64,13 @@ struct ReportDetail: View {
                         if !review.contentReviewed { Text("Visit and explicitly review every range in Report values, Recorded work and Selected evidence, including empty sections.").font(.callout) }
                         Toggle("I checked the values, work and selected evidence in this exact review", isOn: $review.acknowledged).disabled(!review.contentReviewed || review.busy || !store.sessionVerified)
                         Button("Approve reviewed snapshot") { approve = true }.buttonStyle(.borderedProminent).disabled(!canApprove)
+                        if current.data["pack_id"] == .string(CzechJournalData.pack) {
+                            Button("Prepare a corrected journal preview") { reissue = true }.disabled(!canAmend)
+                            Text("The blocked original remains retained. Select the reviewed successor applications and holder in a new preview, then review and approve that version separately.").font(.footnote)
+                        } else if current.data["pack_id"] == .string("pt-ppp-surface-journal") {
+                            Button("Prepare a corrected Portuguese journal preview") { reissue = true }.disabled(!canAmend)
+                            Text("The original preview stays in history. Separately confirm any source-journal correction, then explicitly select the current source revision, actual dated rows and output order for a new review.").font(.footnote)
+                        }
                     }
                     if let amendment = current.data["amendment"]?.object, let message = amendment["message"] { Notice(message.text, warning: amendment["needed"] == .bool(true)); if amendment["needed"] == .bool(true) { Button("Review corrections") { section = .changes } } }
                     if current.state == "issued" {
@@ -88,7 +96,7 @@ struct ReportDetail: View {
             .confirmationDialog("Approve this exact revision, snapshot and current checks?", isPresented: $approve, titleVisibility: .visible) { Button("Approve snapshot") { approveCurrent() } }
             .sheet(item: $export, onDismiss: { if let cleanup { store.removeExport(cleanup); self.cleanup = nil } }) { file in ShareSheet(items: [file.url]) }
             .sheet(isPresented: $receipt, onDismiss: { Task { await review.load(id: item.id, store: store) } }) { NavigationStack { ReceiptEditor(report: current) }.environmentObject(store) }
-            .sheet(isPresented: $reissue, onDismiss: { Task { await review.load(id: item.id, store: store) } }) { NavigationStack { ReportComposer(reissue: current) }.environmentObject(store) }
+            .sheet(isPresented: $reissue, onDismiss: { Task { await review.load(id: item.id, store: store) } }) { NavigationStack { if current.data["pack_id"] == .string("pt-ppp-surface-journal") { PortugueseJournalView(initialFarmID: current.value("farm_id"), reissue: current) } else { ReportComposer(reissue: current) } }.environmentObject(store) }
     }
     private func approveCurrent() {
         guard canApprove, let binding = review.binding else { return }

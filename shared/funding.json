@@ -1,0 +1,73 @@
+{
+  "version": "2026-10-17.1",
+  "checked_date": "2026-10-17",
+  "scope_notice": "Optional organisation-level funding guidance. Separate from your CAP area application, parcel declaration and farm obligations. This guide does not assess your eligibility or submit an application.",
+  "programmes": [
+    {
+      "id": "eu-agrip-promotion",
+      "title": "Agricultural promotion funding (AGRIP)",
+      "description": "EU co-funding for campaigns promoting European agricultural products in EU and international markets.",
+      "programme_type": "organisation_promotion_grant",
+      "country_scope": "EU27 organisation guidance",
+      "relationship_to_cap": "Not an individual farmer's CAP area-payment application. Keep annual parcel and payment administration separate.",
+      "eligibility_status": "not_assessed",
+      "applicant_summary": "For qualifying EU-established organisations with the resources to run a promotional campaign. Being a farmer or making an eligible product does not establish applicant eligibility.",
+      "applicant_types": [
+        "Representative trade/inter-trade organisations and qualifying geographical-indication producer/processor groups",
+        "Producer organisations or associations recognised by an EU country",
+        "Qualifying public-interest agri-food organisations established for at least two years with sector/product representation"
+      ],
+      "applicant_limits": "Private companies are generally not applicants; narrow group exceptions and all other conditions require the official call and eligibility guidance. No cooperative or individual farm has been confirmed eligible here.",
+      "programme_models": [
+        {"id": "SIMPLE", "description": "One or more proposing organisations from the same EU country; national-authority management."},
+        {"id": "MULTI", "description": "At least two proposing organisations from at least two EU countries, or one or more European organisations; REA management."}
+      ],
+      "call_2026": {
+        "status": "closed",
+        "call_ids": ["AGRIP-SIMPLE-2026", "AGRIP-MULTI-2026"],
+        "deadline": "2026-04-23",
+        "deadline_qualification": "Historical closing date explicitly stated on REA's page checked 17 October 2026; not a new deadline for your farm. No deadline time or timezone established.",
+        "status_label": "The 2026 call closed on 23 April 2026."
+      },
+      "future_calls": {
+        "status": "not_verified",
+        "campaign": 2027,
+        "message": "No 2027 call opening or application deadline has been verified. The 2026 page's January 2027 campaign-start milestone is not a 2027 funding call."
+      },
+      "official_links": [
+        {
+          "url": "https://rea.ec.europa.eu/funding-and-grants/promotion-agricultural-products-0/calls-proposals-promotion-agricultural-products_en",
+          "title": "Check current official promotion calls",
+          "purpose": "Official funding guidance, not a CAP parcel application or submission action"
+        },
+        {
+          "url": "https://rea.ec.europa.eu/funding-and-grants/promotion-agricultural-products-0/who-can-apply-promotion-agricultural-products_en",
+          "title": "Read organisation eligibility conditions",
+          "purpose": "Review the actual organisation definition; no personalised eligibility result"
+        }
+      ],
+      "sources": [
+        {
+          "id": "rea-calls",
+          "url": "https://rea.ec.europa.eu/funding-and-grants/promotion-agricultural-products-0/calls-proposals-promotion-agricultural-products_en",
+          "title": "REA — Calls for proposals: Promotion of agricultural products",
+          "edition": "Live 2026 call page, checked 17 October 2026",
+          "checked_date": "2026-10-17"
+        },
+        {
+          "id": "rea-eligibility",
+          "url": "https://rea.ec.europa.eu/funding-and-grants/promotion-agricultural-products-0/who-can-apply-promotion-agricultural-products_en",
+          "title": "REA — Who can apply: Promotion of agricultural products",
+          "edition": "Live eligibility page, checked 17 October 2026; applicant publication listed 22 January 2026",
+          "checked_date": "2026-10-17"
+        }
+      ],
+      "limitations": [
+        "Source-backed general information, not personalised eligibility, an award promise or a legal determination.",
+        "No live call refresh, calculated deadlines, applications, portal prefill or submission integration.",
+        "Legal instruments and the actual call text take precedence over informational REA pages.",
+        "The full call text, programme guide, FAQ and application templates were not inspected for this guide."
+      ]
+    }
+  ]
+}

@@ -9,6 +9,8 @@ struct WorkListView: View {
         List {
             Section {
                 NavigationLink { WorkCaptureView(initialFarmID: farmID) } label: { Label("Record work, a purchase or a sale", systemImage: "square.and.pencil") }
+                if store.records("farms").contains(where: { $0.value("country") == "CZ" && (farmID == nil || $0.id == farmID) }) { NavigationLink("Czech application journal — repeated entries") { CzechJournalView(initialFarmID: farmID) } }
+                if store.records("farms").contains(where: { $0.value("country") == "PT" && (farmID == nil || $0.id == farmID) }) { NavigationLink("Portuguese surface-treatment journal — literal rows") { PortugueseJournalView(initialFarmID: farmID) } }
                 Text("Check quantities, dates and source evidence before saving. New records remain proposals until a separate review.").font(.callout).foregroundStyle(.secondary)
                 Picker("Show", selection: $filter) { Text("All records").tag("all"); Text("Work").tag("operations"); Text("Purchases").tag("purchases"); Text("Sales").tag("sales") }.pickerStyle(.menu)
             }
@@ -16,7 +18,7 @@ struct WorkListView: View {
             if filter == "all" || filter == "operations" {
                 Section("Work records") {
                     if items("operations").isEmpty { Text("No work records are loaded yet.").foregroundStyle(.secondary) }
-                    ForEach(items("operations")) { record in NavigationLink { WorkRecordDetail(collection: "operations", record: record) } label: { RecordRow(item: record) } }
+                    ForEach(items("operations")) { record in NavigationLink { if CzechJournalData.isEntry(record) { CzechApplicationDetail(initial: record) } else { WorkRecordDetail(collection: "operations", record: record) } } label: { RecordRow(item: record) } }
                 }
             }
             if filter == "all" || filter == "purchases" {

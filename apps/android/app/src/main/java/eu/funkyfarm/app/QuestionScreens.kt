@@ -16,18 +16,30 @@ import java.time.LocalDate
     val requests = model.records["requests"].orEmpty().filter { it.data().optString("farm_id") == farm.optString("id") }
     var requestId by remember(farm.optString("id")) { mutableStateOf(requests.firstOrNull()?.optString("id").orEmpty()) }
     var answering by remember { mutableStateOf<JSONObject?>(null) }
-    LaunchedEffect(requestId, model.serverVersion) { if (requestId.isNotBlank()) model.loadExtra("questions:$requestId", "/workflow/questions?request_id=$requestId") }
-    val response = model.extras["questions:$requestId"]
+    var loadedQuestions by remember(requestId) { mutableStateOf<JSONObject?>(null) }
+    var questionFailure by remember(requestId) { mutableStateOf("") }; var reload by remember { mutableStateOf(0) }
+    LaunchedEffect(requestId, model.serverVersion, reload) {
+        loadedQuestions = null; questionFailure = ""
+        if (requestId.isNotBlank()) try { loadedQuestions = model.sourceRequest("/workflow/questions?request_id=$requestId") }
+        catch (error: Throwable) { questionFailure = sourceFailure(error) }
+    }
+    val response = loadedQuestions
     Sheet("A few answers for your paperwork", close) {
         Text("${farm.title()}. Start with the request you are working on. These questions focus on answers that still need attention; checked answers count towards your progress.")
         if (requests.isEmpty()) {
             Text("Add the letter or request first so the questions match the actual recipient, year and reporting pack.")
             Button(onClick = { model.tab = "Paperwork"; close() }) { Text("Go to paperwork") }
         } else Choice("Which request?", requestId, requests.map { it.getString("id") to it.title() }) { requestId = it; answering = null }
-        if ("questions:$requestId" in model.privateUnavailable) Text("This request is no longer available to your account. Its saved answers cannot be opened here.")
+        if (questionFailure.isNotBlank()) { Text(questionFailure, color = MaterialTheme.colorScheme.error); Text("Current questions and journal counts are unavailable. Missing answers or entries have not been counted as zero or complete."); OutlinedButton(onClick = { reload++ }) { Text("Retry current questions and journal counts") } }
         else if (response != null) {
             Text("${response.optInt("completed_count")} of ${response.optInt("total_count")} answers checked", style = MaterialTheme.typography.titleMedium)
             response.optJSONArray("blocked_reasons")?.let { reasons -> repeat(reasons.length()) { Text(reasons.get(it).toString()) } }
+            response.optJSONArray("journals")?.objects()?.forEach { journal -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(journal.text("title"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(journal.text("notice"))
+                journal.optJSONObject("counts")?.let { Text("${it.optInt("total")} active applications · ${it.optInt("proposed")} proposed · ${it.optInt("incomplete")} incomplete · ${it.optInt("pending")} pending follow-up") }
+                if (journal.text("pack_id") == CZECH_JOURNAL_PACK) Button(onClick = { close(); model.czechJournal = obj("farm_id" to farm.getString("id"), "request_id" to requestId, "year" to response.getJSONObject("request").data().optInt("reporting_year")) }) { Text("Complete and review individual journal applications") }
+            } } }
             response.optJSONArray("source_tables")?.objects()?.forEach { table -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(table.optString("label"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("${table.optInt("confirmed_count")} confirmed source rows · ${table.optInt("proposed_count")} waiting for review")
@@ -35,7 +47,7 @@ import java.time.LocalDate
                 OutlinedButton(onClick = { close(); model.sourceImports = obj("profile_id" to table.getString("profile_id"), "farm_id" to farm.getString("id")) }) { Text("Bring in this source table") }
                 TextButton(onClick = { close(); model.sourceImports = obj("mode" to "facts", "profile_id" to table.getString("profile_id"), "farm_id" to farm.getString("id")) }) { Text("Review saved rows from this table") }
             } } }
-            OutlinedButton(onClick = { model.loadExtra("questions:$requestId", "/workflow/questions?request_id=$requestId") }, enabled = !model.busy) { Text("Refresh checked answers and source rows") }
+            OutlinedButton(onClick = { reload++ }, enabled = !model.busy) { Text("Refresh checked answers and source rows") }
             response.optJSONArray("questions")?.objects()?.forEach { question -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(question.optString("prompt").ifBlank { question.optString("label") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 (question.opt("physical_label") as? String)?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
@@ -48,7 +60,8 @@ import java.time.LocalDate
                 if (question.optString("state") == "conflict") {
                     Text("The checked sources disagree. Compare them before recording another answer.")
                     OutlinedButton(onClick = { close(); model.tab = "My fields"; model.open("farms", farm.getString("id")) }) { Text("Compare the farm's competing evidence") }
-                } else Button(onClick = { answering = question }) { Text(if (checked.isEmpty()) "Answer this question" else "Add a corrected answer") }
+                } else if (question.text("key") == CZECH_HOLDER_KEY || question.text("capture_kind") == "journal_holder") Button(onClick = { close(); model.czechJournal = obj("farm_id" to farm.getString("id"), "request_id" to requestId, "year" to response.getJSONObject("request").data().optInt("reporting_year")) }) { Text("Record and separately review holder details") }
+                else Button(onClick = { answering = question }) { Text(if (checked.isEmpty()) "Answer this question" else "Add a corrected answer") }
             } } }
         } else if (requestId.isNotBlank()) Text("Loading questions for this request. A connection is needed to check new answers; your unfinished answers remain saved on this device.")
     }

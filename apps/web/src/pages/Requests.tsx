@@ -7,9 +7,11 @@ import { useRecords } from '../hooks';
 import { usePrivateDraft } from '../offline';
 import type { Pack, Page, RecordItem } from '../types';
 import { ReportAnswer } from './Reports';
+import { CZECH_JOURNAL_PACK, CzechJournal, RetainedCzechJournals } from './CzechJournal';
+import { PORTUGUESE_JOURNAL_PACK, PORTUGUESE_JOURNAL_KEY, portugueseJournalPath } from './RetainedPortugueseJournal';
 
 type Requirement = { id?: string; key: string; label: string; required: boolean; unit?: string | null; temporal_basis?: string; period?: string | null; parcel_id?: string | null; physical_label?: string | null; value_type?: string; choices?: { value: unknown; label: string }[]; prompt?: string; state?: string; proposals?: RecordItem<FactData>[]; confirmed?: RecordItem<FactData>[] };
-type GuidedQuestions = { questions: Requirement[]; completed_count: number; total_count: number; blocked_reasons: string[]; source_tables?: { profile_id: string; label: string; confirmed_count: number; proposed_count: number; import_url: string; review_url: string }[] };
+type GuidedQuestions = { questions: Requirement[]; completed_count: number; total_count: number; blocked_reasons: string[]; journals?: { schema_id: string; pack_id: string; title: string; entries: { operation_id: string; operation_revision: number; title: string; date: string; review_status: string; active: boolean; issues: { message: string }[]; completion_url: string; review_url: string }[]; counts: { total: number; confirmed: number; proposed: number; incomplete: number; pending: number }; pagination: { total: number; limit: number; offset: number; next_offset: number | null } }[]; source_tables?: { profile_id: string; label: string; confirmed_count: number; proposed_count: number; import_url: string; review_url: string }[] };
 type CaptureCheck = { issues: { code: string; severity: string; message: string }[]; can_save: boolean; requires_acknowledgement: string[]; check_token: string };
 type RequestData = {
   farm_id: string; title: string; recipient: string; country: string; region: string | null;
@@ -21,8 +23,8 @@ type FactData = {
   period: string | null; temporal_basis: string; sources: unknown[]; review_status: string; parcel_id?: string | null;
 };
 type ReportData = {
-  request_id?: string; status: string; can_approve?: boolean; approval_blocked_reason?: string;
-  snapshot?: { fields?: { field: string; label: string; value: unknown; unit?: string | null; period?: string | null; row_schema?: unknown }[] };
+  request_id?: string; status: string; can_approve?: boolean; approval_blocked_reason?: string; checksum?: string;
+  snapshot?: { fields?: { field: string; label: string; value: unknown; unit?: string | null; period?: string | null; row_schema?: unknown }[]; journals?: unknown; operations?: unknown };
   current_blockers?: { code: string; message: string; fact_id?: string; field?: string }[];
   blockers?: { code: string; message: string; fact_id?: string; field?: string }[];
 };
@@ -62,19 +64,21 @@ function usePacks(country: string, year: number, region: string | null) {
   return { packs, loading, error };
 }
 
-function RequestChecks({ requestId, revision, documentIds }: { requestId: string; revision: number; documentIds: string[] }) {
+function RequestChecks({ requestId, revision, documentIds, operationIds }: { requestId: string; revision: number; documentIds: string[]; operationIds?: string[] }) {
   const [result, setResult] = useState<RequestPreflight | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const selection = [...documentIds].sort().join(',');
+  const operationSelection = operationIds === undefined ? 'automatic' : [...operationIds].sort().join(',');
   useEffect(() => {
     let active = true; setLoading(true); setResult(null); setError('');
     const query = new URLSearchParams({ selected_document_ids: selection });
+    if (operationIds !== undefined) query.set('selected_operation_ids', operationSelection);
     api.get<RequestPreflight>(`/requests/${requestId}/checks?${query}`).then(value => { if (active) setResult(value); })
       .catch(failure => { if (active) setError(errorMessage(failure)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [requestId, revision, selection, refresh]);
+  }, [requestId, revision, selection, operationSelection, refresh]);
   return <div className="stack"><div className="section-heading"><h3>Check before preparing your answer</h3><Button variant="secondary" disabled={loading} onClick={() => setRefresh(value => value + 1)}>Check again</Button></div><p>Check the requested answers, dates, evidence and available form before preparing a response.</p>
     {loading && <p role="status">Checking this request against your saved information…</p>}{error && <Notice kind="error">{error}</Notice>}
     {result && <><Notice kind={result.status === 'ready_for_review' ? 'success' : 'warning'}>{result.status === 'ready_for_review' ? 'The available checks are ready for your review.' : result.status === 'needs_adviser' ? 'Some details need an adviser’s judgement.' : 'A few details still need attention.'} {result.notice}</Notice>
@@ -298,6 +302,7 @@ function AnswerForm({ farmId, requestId, requestRevision, requirement, period, d
 
 export function RequestDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { session } = useSession();
   const facts = useRecords<FactData>('facts');
   const farms = useRecords<FarmData>('farms');
@@ -313,14 +318,18 @@ export function RequestDetailPage() {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [check, setCheck] = useState<RecordItem<ReportData> | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const journalSelection = usePrivateDraft(`paperwork/${id}/journal-selection`, { ids: [] as string[] });
+  const selectedOperationIds = journalSelection.value.ids;
   const [questionIndex, setQuestionIndex] = useState(0);
   const [showAllAnswers, setShowAllAnswers] = useState(false);
   const [guided, setGuided] = useState<GuidedQuestions | null>(null);
   const [guidedError, setGuidedError] = useState('');
   const [guidedLoading, setGuidedLoading] = useState(false);
+  const [journalOffset, setJournalOffset] = useState(0);
+  const [journalRevision, setJournalRevision] = useState(0);
   async function loadQuestions() {
     setGuidedLoading(true); setGuidedError(''); setGuided(null);
-    try { setGuided(await api.get<GuidedQuestions>(`/workflow/questions?request_id=${id}`)); }
+    try { setGuided(await api.get<GuidedQuestions>(`/workflow/questions?request_id=${id}&journal_limit=50&journal_offset=${journalOffset}`)); }
     catch (failure) { setGuidedError(errorMessage(failure)); } finally { setGuidedLoading(false); }
   }
   async function load() {
@@ -328,13 +337,13 @@ export function RequestDetailPage() {
     try { setRequest(await api.get<RecordItem<RequestData>>(`/requests/${id}`)); }
     catch (failure) { setError(errorMessage(failure)); } finally { setLoading(false); }
   }
-  useEffect(() => { setRequest(null); setCheck(null); setSelectedDocumentIds([]); void load(); }, [id]);
+  useEffect(() => { setRequest(null); setCheck(null); setSelectedDocumentIds([]); setJournalOffset(0); void load(); }, [id]);
   useEffect(() => {
     let current = true; setPack(null);
     if (request?.data.pack_id) api.get<Pack>(`/packs/${encodeURIComponent(request.data.pack_id)}`).then(value => { if (current) setPack(value); }).catch(failure => { if (current) setError(errorMessage(failure)); });
     return () => { current = false; };
   }, [request?.data.pack_id]);
-  useEffect(() => { setGuided(null); if (request) void loadQuestions(); }, [request?.id, request?.revision]);
+  useEffect(() => { setGuided(null); if (request) void loadQuestions(); }, [request?.id, request?.revision, journalOffset]);
   const reviewer = session?.workspace.role === 'owner' || session?.workspace.permissions?.includes('review') === true;
   async function save(data: RequestData) {
     if (!request) return false;
@@ -355,25 +364,31 @@ export function RequestDetailPage() {
   }
   async function prepare() {
     if (!request) return;
+    if (request.data.pack_id === PORTUGUESE_JOURNAL_PACK) { navigate(portugueseJournalPath(request.data.farm_id, { pt_journal_request: request.id })); return; }
     setBusy(true); setError(''); setMessage('');
-    try { const report = await api.post<RecordItem<ReportData>>('/reports', { farm_id: request.data.farm_id, request_id: request.id, pack_id: request.data.pack_id, reporting_year: request.data.reporting_year, selected_document_ids: selectedDocumentIds }); setCheck(await api.get<RecordItem<ReportData>>(`/reports/${report.id}`)); await reports.reload(); }
+    try { const report = await api.post<RecordItem<ReportData>>('/reports', { farm_id: request.data.farm_id, request_id: request.id, pack_id: request.data.pack_id, reporting_year: request.data.reporting_year, selected_document_ids: selectedDocumentIds, ...(request.data.pack_id === CZECH_JOURNAL_PACK ? { operation_ids: selectedOperationIds } : {}) }); setCheck(await api.get<RecordItem<ReportData>>(`/reports/${report.id}`)); await reports.reload(); }
     catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
   if (loading) return <><PageHeader title="Opening request" /><p role="status">Loading saved request…</p></>;
   if (!request) return <><PageHeader title="Request unavailable" /><Notice kind="error">{error || 'This request could not be found.'}</Notice><Button onClick={() => void load()}>Retry</Button><Link to="/app/paperwork">Back to paperwork</Link></>;
   const data = request.data;
+  const isCzechJournal = data.pack_id === CZECH_JOURNAL_PACK;
+  const isPortugueseJournal = data.pack_id === PORTUGUESE_JOURNAL_PACK;
+  const journalGuide = guided?.journals?.find(journal => journal.pack_id === data.pack_id);
+  const journalFarm = farms.items.find(farm => farm.id === data.farm_id);
   const relevantFacts = facts.items.filter(fact => fact.data.farm_id === data.farm_id);
   const requirements = new Map<string, Requirement>();
   for (const field of pack?.requirements ?? pack?.fields ?? []) {
     if (field.fact_key_prefix) continue;
     const key = field.key ?? field.fact_key ?? field.field;
-    if (typeof key === 'string') requirements.set(key, { key, label: String(field.label ?? field.question ?? key), required: field.required !== false, unit: field.unit, temporal_basis: field.temporal_basis });
+    if (typeof key === 'string' && !(isCzechJournal && key === 'cz.ppp.holder') && !(isPortugueseJournal && key === PORTUGUESE_JOURNAL_KEY)) requirements.set(key, { key, label: String(field.label ?? field.question ?? key), required: field.required !== false, unit: field.unit, temporal_basis: field.temporal_basis });
   }
   for (const field of data.requirements ?? []) {
+    if (isCzechJournal && field.key === 'cz.ppp.holder' || isPortugueseJournal && field.key === PORTUGUESE_JOURNAL_KEY) continue;
     if (!(pack?.fields ?? []).some(item => item.fact_key_prefix === field.key)) requirements.set(field.key, field);
   }
   const requestReports = reports.items.filter(report => report.data.request_id === request.id);
-  const questions = guided?.questions ?? [];
+  const questions = (guided?.questions ?? []).filter(question => !(isCzechJournal && question.key === 'cz.ppp.holder') && !(isPortugueseJournal && question.key === PORTUGUESE_JOURNAL_KEY));
   const allRequirements = [...requirements.values()].filter(requirement => !questions.some(question => question.key === requirement.key)).concat(questions);
   const activeQuestion = questions[Math.min(questionIndex, Math.max(0, questions.length - 1))];
   function matchingFacts(requirement: Requirement) {
@@ -384,29 +399,33 @@ export function RequestDetailPage() {
   async function approve() {
     if (!check) return;
     setBusy(true); setError('');
-    try { await api.post(`/reports/${check.id}/approve`, { expected_revision: check.revision }); setCheck(await api.get<RecordItem<ReportData>>(`/reports/${check.id}`)); await reports.reload(); await load(); setMessage('Response approved and retained. Use the official route to complete any filing; approval here does not file it.'); }
+    try { await api.post(`/reports/${check.id}/approve`, { expected_revision: check.revision, ...(check.data.checksum ? { snapshot_checksum: check.data.checksum } : {}) }); setCheck(await api.get<RecordItem<ReportData>>(`/reports/${check.id}`)); await reports.reload(); await load(); setMessage('Response approved and retained. Use the official route to complete any filing; approval here does not file it.'); }
     catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
   return <>
     <PageHeader title={data.title} description={<>{data.recipient} · {data.country}{data.region ? ` / ${data.region}` : ''} · {data.reporting_year}</>} action={reviewer ? <Button variant="secondary" onClick={() => setEditing(value => !value)}>{editing ? 'Close editor' : 'Edit request'}</Button> : undefined} />
-    <Link className="text-link" to="/app/paperwork">← All paperwork</Link>
+    <Link className="text-link" to="/app/paperwork">All paperwork</Link>
+    <p><Link to={`/app/cases/new?${new URLSearchParams({ farm_id: data.farm_id, job_type: pack?.workflow_id === 'inspection' ? 'inspection' : 'correction', reporting_year: String(data.reporting_year), reference_kind: 'requests', reference_id: request.id, reference_revision: String(request.revision), reference_role: pack?.workflow_id === 'inspection' ? 'notice' : 'original' })}`}>{pack?.workflow_id === 'inspection' ? 'Keep this inspection and its follow-up together' : 'Work through a correction with this request'}</Link></p>
     {error && <Notice kind="error">{error} If another device changed this record, reopen the request before retrying.<Button variant="ghost" onClick={() => void load()}>Reload saved request</Button></Notice>}
     {message && <Notice kind="success">{message}</Notice>}
     {editing && <section className="panel"><h2>Review the request details</h2>{farms.error ? <Notice kind="error">{farms.error}</Notice> : <RequestForm key={request.revision} initial={data} draftKey={`request:${request.id}:revision:${request.revision}`} farms={farms.items} busy={busy} submitLabel="Save request changes" onSave={save} />}</section>}
     <section className="panel"><div className="section-heading"><h2>The request at a glance</h2><span className="badge">{data.status}</span></div><dl className="detail-grid"><div><dt>Farm</dt><dd><Link to={`/app/farm/${data.farm_id}`}>{farms.items.find(farm => farm.id === data.farm_id)?.data.name ?? data.farm_id}</Link></dd></div><div><dt>Deadline</dt><dd>{data.deadline ?? 'No deadline recorded'}</dd></div><div><dt>Reporting pack</dt><dd>{pack?.title ?? pack?.name ?? data.pack_id}</dd></div><div><dt>Saved revision</dt><dd>{request.revision}</dd></div></dl>{data.notes && <p>{data.notes}</p>}
       {data.status === 'draft' && <Notice kind="warning">These request details are a draft. Check the recipient, period and requirements against the original before confirming.{reviewer && <div className="actions"><Button onClick={() => void confirm()} loading={busy}>Confirm request details</Button></div>}</Notice>}
     </section>
+    {isPortugueseJournal && <section className="panel"><h2>Prepare the Portuguese record</h2><p>Use the journal to check the producer, individual rows and actual dates. Choose which rows answer this request before preparing its report. Unfinished rows can stay saved without an invented date.</p><Link className="button button-secondary" to={portugueseJournalPath(data.farm_id, { pt_journal_request: request.id })}>Open the Portuguese journal for this request</Link></section>}
+    {isCzechJournal && journalFarm && <CzechJournal farm={journalFarm} year={data.reporting_year} journal={journalGuide} selectedIds={selectedOperationIds} onSelectionChange={ids => { journalSelection.setValue({ ids }); setCheck(null); }} onChanged={async () => { await facts.reload(); await loadQuestions(); setJournalRevision(value => value + 1); setCheck(null); }} />}
+    {isCzechJournal && journalGuide && <section className="panel"><h3>Application checks for this request</h3><p>{journalGuide.counts.total} active application records · {journalGuide.counts.confirmed} checked · {journalGuide.counts.proposed} proposed · {journalGuide.counts.incomplete} incomplete · {journalGuide.counts.pending} with pending follow-up.</p><p>Showing checks {journalGuide.entries.length ? journalGuide.pagination.offset + 1 : 0}–{journalGuide.pagination.offset + journalGuide.entries.length} of {journalGuide.pagination.total} retained records. Original and replacement records remain distinct.</p><ul>{journalGuide.entries.map(entry => <li key={entry.operation_id}><strong>{entry.title} · {entry.date}</strong> · {entry.active ? entry.review_status === 'confirmed' ? 'Checked' : 'Needs checking' : 'Replaced record retained in history'}{entry.issues.map((issue, index) => <p key={index}>{issue.message}</p>)}<div className="actions"><Link to={entry.completion_url}>Complete or correct this application</Link><Link to={entry.review_url}>Review this saved application</Link></div></li>)}</ul><div className="actions"><Button variant="secondary" disabled={guidedLoading || journalGuide.pagination.offset === 0} onClick={() => setJournalOffset(Math.max(0, journalGuide.pagination.offset - journalGuide.pagination.limit))}>Previous application checks</Button><Button variant="secondary" disabled={guidedLoading || journalGuide.pagination.next_offset === null} onClick={() => { if (journalGuide.pagination.next_offset !== null) setJournalOffset(journalGuide.pagination.next_offset); }}>More application checks</Button></div></section>}
     <section className="panel" id="answers"><span id="questions" aria-hidden="true" /><h2>What needs your attention</h2><p>Saved answers are reused. Work through missing answers and changes, one question at a time; the final server check determines whether the response can be approved.</p>
-      {guidedLoading && <p role="status">Checking which answers are still needed…</p>}{guidedError && <Notice kind="error">{guidedError}<Button variant="ghost" onClick={() => void loadQuestions()}>Retry questions</Button></Notice>}
-      {guided && guided.total_count > 0 && <><p role="status">{guided.completed_count} of {guided.total_count} questions have confirmed answers according to the server’s current checks.</p><progress max={Math.max(1, guided.total_count)} value={guided.completed_count} aria-label="Questions with a confirmed answer" /></>}
+      {guidedLoading && <p role="status">Checking which answers are still needed…</p>}{guidedError && <Notice kind="error">{isCzechJournal ? 'Journal guidance is unavailable. No completion verdict is available. ' : ''}{guidedError}<Button variant="ghost" onClick={() => void loadQuestions()}>Retry questions</Button></Notice>}
+      {guided && !isPortugueseJournal && guided.total_count > 0 && <><p role="status">{guided.completed_count} of {guided.total_count} questions have confirmed answers according to the server’s current checks.</p><progress max={Math.max(1, guided.total_count)} value={guided.completed_count} aria-label="Questions with a confirmed answer" /></>}
       {!!guided?.source_tables?.length && <section aria-label="Original source tables"><h3>Review your original rows</h3><p>Bring the tables that apply to your farm. Check the rows before confirming them; these counts do not establish eligibility or a complete application.</p>{guided.source_tables.map(table => <article className="panel" key={table.profile_id}><h4>{table.label}</h4><p>{table.confirmed_count} confirmed rows · {table.proposed_count} rows waiting for review</p><div className="actions"><Link to={table.import_url}>Bring in this table</Link><Link to={table.review_url}>Review saved rows</Link></div></article>)}</section>}
       {!!guided?.blocked_reasons.length && <Notice kind="warning"><ul>{guided.blocked_reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></Notice>}
       {!!questions.length && <div className="actions"><Button variant="ghost" disabled={questionIndex === 0} onClick={() => setQuestionIndex(value => Math.max(0, value - 1))}>Previous question</Button><span>Question {Math.min(questionIndex + 1, questions.length)} of {questions.length}</span><Button variant="ghost" disabled={questionIndex >= questions.length - 1} onClick={() => setQuestionIndex(value => Math.min(questions.length - 1, value + 1))}>Next question</Button></div>}
-      {guided && !questions.length && guided.total_count > 0 && <Notice>Saved answers are available for these questions. Check the response below for source conflicts, required evidence and other remaining conditions.</Notice>}
+      {guided && !isPortugueseJournal && !questions.length && guided.total_count > 0 && (!isCzechJournal || guided.completed_count === guided.total_count) && <Notice>Saved answers are available for these questions. Check the response below for source conflicts, required evidence and other remaining conditions.</Notice>}
       <Button variant="ghost" onClick={() => setShowAllAnswers(value => !value)}>{showAllAnswers ? 'Return to guided questions' : 'Review all saved answers'}</Button>
       {facts.loading && <p role="status">Loading farm answers…</p>}{facts.error && <Notice kind="error">{facts.error}<Button variant="ghost" onClick={() => void facts.reload()}>Retry answers</Button></Notice>}
       {documents.error && <Notice kind="warning">Source documents could not be loaded: {documents.error}<Button variant="ghost" onClick={() => void documents.reload()}>Retry documents</Button></Notice>}
-      {!requirements.size && !guided?.source_tables?.length && <Notice>The request has no additional questions and its pack questions have not loaded. Use the server check below to identify missing requirements.</Notice>}
+      {!isPortugueseJournal && !requirements.size && !guided?.source_tables?.length && !guided?.journals?.length && <Notice>The request has no additional questions and its pack questions have not loaded. Use the server check below to identify missing requirements.</Notice>}
       {(showAllAnswers ? allRequirements : activeQuestion ? [activeQuestion] : []).map(requirement => <article id={`question-${requirement.id ?? requirement.key}`} key={requirement.id ?? requirement.key} className="evidence-card"><h3>{requirement.prompt ?? requirement.label}</h3>{(requirement.physical_label || requirement.period) && <p><strong>{requirement.physical_label}</strong>{requirement.period ? ` · ${requirement.period}` : ''}</p>}<p className="muted">{requirement.required ? 'Required' : 'Optional'}{requirement.unit ? ` · Expected unit: ${requirement.unit}` : ''}{requirement.state === 'conflict' ? ' · Sources disagree; review the existing answers.' : ''}</p>
         {matchingFacts(requirement).map(fact => <div className="panel inset" key={fact.id}><div className="section-heading"><strong>{literal(fact.data.value)}{fact.data.unit ? ` ${fact.data.unit}` : ''}</strong><span className="badge">{fact.data.review_status}</span></div><p>Period: {fact.data.period === null ? 'None supplied' : fact.data.period} · {fact.data.temporal_basis.replaceAll('_', ' ')} · Revision {fact.revision}</p>
           {fact.data.temporal_basis !== 'static' && fact.data.period !== String(data.reporting_year) && <Notice kind="warning">This answer has a different period or an exact date. Review its applicability; the report’s checks decide whether it can be used.</Notice>}
@@ -418,11 +437,13 @@ export function RequestDetailPage() {
       {!reviewer && <Notice>An owner or a person with delegated review permission must confirm these answers.</Notice>}
     </section>
     <section className="panel"><h2>Prepare the response</h2><p>The server checks the selected pack, confirmed facts, periods and competing evidence. Preparing a draft does not approve or submit it.</p>
-      <RequestChecks requestId={request.id} revision={request.revision + relevantFacts.reduce((sum, fact) => sum + fact.revision, 0)} documentIds={selectedDocumentIds} />
-      <fieldset><legend>Include selected evidence</legend><p className="muted">Choose the documents relevant to this request. The response retains their references; original files remain private.</p>{documents.items.filter(document => !document.data.farm_id || document.data.farm_id === data.farm_id).map(document => <label className="checkbox-field" key={document.id}><input type="checkbox" checked={selectedDocumentIds.includes(document.id)} onChange={event => { setSelectedDocumentIds(previous => event.target.checked ? [...previous, document.id] : previous.filter(value => value !== document.id)); setCheck(null); }} /><span>{document.data.name ?? document.data.filename ?? document.data.title ?? document.id}</span></label>)}{!documents.loading && !documents.items.length && <p>No evidence documents yet. <Link to="/app/documents">Add a document</Link> when one is available.</p>}</fieldset>
-      {reviewer && <Button loading={busy} onClick={() => void prepare()}>Check & prepare response</Button>}
+      {isPortugueseJournal ? <p>The journal editor checks the selected rows and dates before creating the response. Choose supporting documents there; approving the final report is a separate step.</p> : <><RequestChecks requestId={request.id} revision={request.revision + journalRevision + relevantFacts.reduce((sum, fact) => sum + fact.revision, 0)} documentIds={selectedDocumentIds} operationIds={isCzechJournal ? selectedOperationIds : undefined} />
+      <fieldset><legend>Include selected evidence</legend><p className="muted">Choose the documents relevant to this request. The response retains their references; original files remain private.</p>{documents.items.filter(document => !document.data.farm_id || document.data.farm_id === data.farm_id).map(document => <label className="checkbox-field" key={document.id}><input type="checkbox" checked={selectedDocumentIds.includes(document.id)} onChange={event => { setSelectedDocumentIds(previous => event.target.checked ? [...previous, document.id] : previous.filter(value => value !== document.id)); setCheck(null); }} /><span>{document.data.name ?? document.data.filename ?? document.data.title ?? document.id}</span></label>)}{!documents.loading && !documents.items.length && <p>No evidence documents yet. <Link to="/app/documents">Add a document</Link> when one is available.</p>}</fieldset></>}
+      {isCzechJournal && journalSelection.error && <Notice kind="warning">{journalSelection.error}</Notice>}
+      {reviewer && <Button loading={busy} disabled={isCzechJournal && (!journalSelection.ready || !selectedOperationIds.length)} onClick={() => void prepare()}>{isPortugueseJournal ? 'Choose journal rows for this request' : 'Check & prepare response'}</Button>}
       {check && <div className="stack"><h3>Preview the response</h3>{blockers?.length ? <Notice kind="warning"><p>These checks need attention before approval:</p><ul>{blockers.map((blocker, index) => <li key={`${blocker.code}-${index}`}>{blocker.message}{blocker.field ? ` (${blocker.field})` : ''}</li>)}</ul></Notice> : blockers ? <Notice kind="success">The server found no blocking requirements in this draft. Review the values before approving.</Notice> : <Notice>Open the response to inspect its server checks.</Notice>}
         {!!check.data.snapshot?.fields?.length && <div className="table-scroll"><table><thead><tr><th>Field</th><th>Value</th><th>Unit</th><th>Period</th></tr></thead><tbody>{check.data.snapshot.fields.map((field, index) => <tr key={`${field.field}-${index}`}><th scope="row">{field.label}</th><td><ReportAnswer field={field}/></td><td>{field.unit ?? 'Not specified'}</td><td>{field.period ?? 'Standing detail / not supplied'}</td></tr>)}</tbody></table></div>}
+        <RetainedCzechJournals journals={check.data.snapshot?.journals} operations={check.data.snapshot?.operations} />
         <div className="actions">{check.data.status === 'draft' && check.data.can_approve && reviewer && <Button loading={busy} onClick={() => void approve()}>Approve this response</Button>}<Link className="button button-secondary" to={`/app/reports/${check.id}`}>{check.data.status === 'issued' ? 'Download & record response receipt' : 'Open full response & evidence'}</Link>{check.data.status === 'issued' && <Link className="button button-primary" to={`/app/connections?farm_id=${data.farm_id}&report_id=${check.id}`}>Continue to official route</Link>}</div>
         {check.data.status === 'issued' && <Notice>Approved locally. Complete the authority’s own filing steps, then record its actual reference or receipt.</Notice>}
       </div>}

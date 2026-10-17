@@ -56,6 +56,80 @@ def source_cells(field):
     return [(key, columns.get(key, {}).get("label", "Additional source column"), value[key], columns.get(key, {}).get("unit")) for key in keys]
 
 
+def journal_cells(journal, entry):
+    """Original supplied numbers and units under the retained column definitions."""
+    values = entry["values"]
+    originals = entry.get("original_numbers", (entry.get("data", {}).get("cz_ppp") or {}).get("original_numbers", {}))
+    for column in journal["columns"]:
+        key = column["key"]
+        value = originals[key] if key in originals else values.get(key)
+        unit = values.get(column["unit_field"]) if column.get("unit_field") else column.get("unit")
+        yield key, column["label"], value, unit
+
+
+def journal_value(value):
+    if isinstance(value, dict) and value.get("status") == "pending":
+        return "Pending — follow-up not complete"
+    if isinstance(value, dict) and value.get("status") == "not_applicable":
+        return "Not applicable — explicitly recorded"
+    if isinstance(value, dict) and value.get("status") == "recorded":
+        return "Recorded: " + readable(value.get("date", value.get("value")))
+    return readable(value)
+
+
+def _pt_journal(journal):
+    return journal.get("schema_id") == "pt-ppp-surface-v1"
+
+
+def _pt_csv_rows(journal):
+    """Document context is separate from the thirteen retained event cells."""
+    source = journal["source"]
+    yield ["Manual preparation only", journal["capability_notice"]]
+    yield ["Retained source", literal(source)]
+    yield ["Application selection year (not a source field)", journal["reporting_year"]]
+    yield ["Cell encoding", "Literal supplied text. The cell-state map distinguishes unavailable null from supplied empty text and lists formula-safe protective apostrophes. The retained JSON contains unchanged original values."]
+    identity = journal.get("holder", {}).get("value")
+    observations = journal.get("observations_text")
+    yield ["Document text state", literal({
+        "identity": "null" if identity is None else "empty" if identity == "" else "supplied",
+        "identity_protected": identity is not None and _pt_csv_dangerous(identity),
+        "observations": "null" if observations is None else "empty" if observations == "" else "supplied",
+        "observations_protected": observations is not None and _pt_csv_dangerous(observations),
+    })]
+    entries = journal["entries"]
+    for start in range(0, len(entries), 16):
+        yield []
+        yield ["16-entry block", start // 16 + 1]
+        yield ["Nome do produtor/empresa ou entidade autorizada:", identity]
+        yield ["Retained column definitions", literal(journal["columns"])]
+        for entry in entries[start:start + 16]:
+            values = entry["values"]
+            states = {"null_columns": [], "empty_columns": [], "protected_columns": []}
+            for column in journal["columns"]:
+                key = column["key"]
+                value = values.get(key)
+                if value is None:
+                    states["null_columns"].append(key)
+                elif value == "":
+                    states["empty_columns"].append(key)
+                elif _pt_csv_dangerous(value):
+                    states["protected_columns"].append(key)
+            yield ["Selected row context", entry["entry_id"], entry["actual_date"], entry["source_fact_id"], entry["source_fact_revision"]]
+            yield ["Row cell-state map", entry["entry_id"], literal(states)]
+        yield [column["label"] for column in journal["columns"]]
+        for entry in entries[start:start + 16]:
+            yield [entry["values"].get(column["key"]) for column in journal["columns"]]
+    yield []
+    yield ["Obs. — whole document", observations]
+    if journal.get("excluded_entries"):
+        yield ["Source rows not selected for this document", literal(journal["excluded_entries"])]
+
+
+def _pt_csv_dangerous(value):
+    text = str(value)
+    return text.lstrip().startswith(("=", "+", "-", "@")) or text.startswith(("\t", "\r", "\n"))
+
+
 def export_rows(snapshot):
     rows = [["field", "label", "value_json", "unit_json", "period_json", "temporal_basis", "fact_id", "fact_revision", "availability"]]
     for field in snapshot.get("fields", []):
@@ -75,12 +149,39 @@ def export_rows(snapshot):
         for key in ("title", "type", "date", "quantity", "parcel", "parcel_id", "physical_group_label", "crop", "product", "operator", "hours"):
             if key in data:
                 rows.append([f"activity.{key}", f"{data.get('title', 'Farm activity')} — {key.replace('_', ' ')}", literal(data[key]), literal(data.get("unit") if key == "quantity" else None), literal(data.get("period", data.get("date"))), data.get("temporal_basis", "calendar_date" if data.get("date") else ""), operation["id"], operation["revision"], "recorded"])
+    for journal in snapshot.get("journals", []):
+        prefix = "journal." + journal["schema_id"]
+        if _pt_journal(journal):
+            for key in ("source", "columns", "capability_notice", "holder", "observations_text", "excluded_entries"):
+                rows.append([f"{prefix}.{key}", f"{journal['title']} — {key}", literal(journal.get(key)), literal(None), literal(journal["reporting_year"]), "app_selection_year", "", "", "retained_context"])
+            for entry in journal["entries"]:
+                entry_prefix = f"{prefix}.{entry['entry_id']}"
+                rows.append([entry_prefix, "Retained manually selected row and actual-date confirmation", literal(entry), literal(None), literal(entry["actual_date"]), "calendar_date", entry["source_fact_id"], entry["source_fact_revision"], "recorded"])
+                for column in journal["columns"]:
+                    key = column["key"]
+                    rows.append([f"{entry_prefix}.{key}", column["label"], literal(entry["values"].get(key)), literal(column.get("unit")), literal(entry["actual_date"]), "calendar_date", entry["source_fact_id"], entry["source_fact_revision"], "recorded"])
+            continue
+        for key in ("source", "columns", "capability_notice", "holder"):
+            rows.append([f"{prefix}.{key}", f"{journal['title']} — {key}", literal(journal.get(key)), literal(None), literal(journal["reporting_year"]), "campaign_year", "", "", "retained_context"])
+        for entry in journal["entries"]:
+            entry_prefix = f"{prefix}.{entry['operation_id']}"
+            rows.append([entry_prefix, "Retained application and source context", literal(entry), literal(None), literal(entry["date"]), "calendar_date", entry["operation_id"], entry["operation_revision"], "recorded"])
+            for key, label, value, unit in journal_cells(journal, entry):
+                rows.append([f"{entry_prefix}.{key}", f"{label} ({key})", literal(value), literal(unit), literal(entry["date"]), "calendar_date", entry["operation_id"], entry["operation_revision"], "pending" if isinstance(value, dict) and value.get("status") == "pending" else "recorded"])
     return rows
 
 
 def csv_bytes(snapshot):
     output = io.StringIO(newline="")
     writer = csv.writer(output, lineterminator="\r\n")
+    pt_journals = [journal for journal in snapshot.get("journals", []) if _pt_journal(journal)]
+    if pt_journals:
+        for journal in pt_journals:
+            for row in _pt_csv_rows(journal):
+                # Guard context/header values too, rather than trusting a
+                # retained source label. The cell-state map records protection.
+                writer.writerow(["'" + str(value) if _pt_csv_dangerous(value) else value for value in row])
+        return output.getvalue().encode("utf-8-sig")
     # Quote syntax alone does not prevent a spreadsheet interpreting a formula.
     for row in export_rows(snapshot):
         safe = []
@@ -156,7 +257,7 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 
     output = io.BytesIO()
     font = _unicode_font()
@@ -184,6 +285,10 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
     evidence_numbers = {document["id"]: index for index, document in enumerate(snapshot.get("evidence", []), 1)}
     groups = {}
     for field in snapshot.get("fields", []):
+        if field.get("journal_schema") == "pt-ppp-surface-v1":
+            # These reviewed cells appear under the retained PT definitions
+            # below, including document observations exactly once.
+            continue
         groups.setdefault(str(field.get("group_label") or "Farm facts"), []).append(field)
 
     def table(rows, widths):
@@ -220,10 +325,11 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
                 # authority codes are printed as literal source text.
                 rows.append([p(f"{label}\n{key}"), p("Empty source cell" if value == "" else value), p(unit or "Not specified", small)])
             story.append(table(rows, [230, 200, 83]))
-    if snapshot.get("operations"):
+    ordinary_operations = [operation for operation in snapshot.get("operations", []) if not operation.get("journal_entry")]
+    if ordinary_operations:
         story.append(p("Selected farm activities", heading))
         rows = [[p("Activity and date"), p("Recorded work"), p("Field / crop")]]
-        for operation in snapshot["operations"]:
+        for operation in ordinary_operations:
             data = operation["data"]
             detail = []
             if "quantity" in data:
@@ -237,6 +343,64 @@ def pdf_bytes(report_id, snapshot, checksum, issued, approval=None):
             context = "\n".join(str(item) for item in (parcel, data.get("crop")) if item not in (None, "")) or "Whole farm"
             rows.append([p(f"{data.get('title') or str(data.get('type', 'Farm activity')).replace('_', ' ')}\n{data.get('date') or data.get('period') or 'Date not recorded'}"), p("\n".join(detail) or "Activity recorded"), p(context, small)])
         story.append(table(rows, [165, 220, 128]))
+    for journal in snapshot.get("journals", []):
+        if _pt_journal(journal):
+            def pt_literal(value, style=normal):
+                # Visible JSON literals distinguish null, blank, zero and raw
+                # whitespace. Single spaces remain word-wrap opportunities;
+                # repeated spaces keep their visible width without collapsing.
+                text = re.sub(r" {2,}", lambda match: " " + "&#160;" * (len(match.group()) - 1), escape(literal(value)))
+                return Paragraph(text, style)
+
+            source = journal["source"]
+            entries = journal["entries"]
+            for start in range(0, len(entries), 16):
+                if start:
+                    story.append(PageBreak())
+                block = start // 16 + 1
+                story.extend([p(f"{journal['title']} — 16-entry block {block}", heading), p(journal["capability_notice"])])
+                story.append(p(" · ".join(str(source[key]) for key in ("title", "edition") if source.get(key)), small))
+                if source.get("url"):
+                    story.append(p(source["url"], small))
+                if source.get("sha256"):
+                    story.append(p("Retained source SHA-256: " + source["sha256"], small))
+                story.extend([p("Nome do produtor/empresa ou entidade autorizada:", heading), pt_literal(journal.get("holder", {}).get("value")), p("Literal answers below use JSON text: null is unavailable, \"\" is blank, and quoted strings retain the supplied text. The selection year is app metadata, not a printed source field.", small)])
+                for index, entry in enumerate(entries[start:start + 16], start + 1):
+                    story.extend([p(f"Selected row {index} · separately confirmed actual date {entry['actual_date']}", heading), p(f"Source row reference {entry['entry_id']} · source fact revision {entry['source_fact_revision']}", small)])
+                    rows = [[p(f"Retained source column\nRow {index} · {entry['actual_date']}"), p("Literal supplied answer"), p("Printed unit")]]
+                    for column in journal["columns"]:
+                        rows.append([p(column["label"]), pt_literal(entry["values"].get(column["key"])), p(readable(column.get("unit")) if column.get("unit") is not None else "Not specified", small)])
+                    story.append(table(rows, [230, 200, 83]))
+                    for issue in entry.get("issues", []):
+                        story.append(p(issue["message"], small))
+            story.extend([p("Obs. — whole document", heading), pt_literal(journal.get("observations_text"))])
+            if journal.get("excluded_entries"):
+                story.append(p("Source rows not selected for this document", heading))
+                for excluded in journal["excluded_entries"]:
+                    story.append(p(readable(excluded), small))
+            for issue in journal.get("issues", []):
+                story.append(p(issue["message"], small))
+            continue
+        story.extend([p(journal["title"], heading), p(journal["capability_notice"])])
+        source = journal["source"]
+        story.append(p(" · ".join(str(source[key]) for key in ("title", "edition") if source.get(key)), small))
+        if source.get("url"):
+            story.append(p(source["url"], small))
+        if source.get("sha256"):
+            story.append(p("Retained source SHA-256: " + source["sha256"], small))
+        holder = journal.get("holder")
+        if holder:
+            story.extend([p("Recorded holder", heading), p(readable(holder["value"])), p(f"Holder source fact {holder['fact_id']} · revision {holder['fact_revision']}", small)])
+        for entry in journal["entries"]:
+            story.extend([p(f"Application {entry['operation_id']} · {entry['date']}", heading), p(f"Retained operation revision {entry['operation_revision']}", small)])
+            rows = [[p("Record column"), p("Retained original answer"), p("Supplied unit")]]
+            for key, label, value, unit in journal_cells(journal, entry):
+                rows.append([p(f"{label}\n{key}"), p(journal_value(value)), p(unit if unit not in (None, "") else "Not supplied", small)])
+            story.append(table(rows, [230, 200, 83]))
+            for issue in entry.get("issues", []):
+                story.append(p(issue["message"], small))
+        for issue in journal.get("issues", []):
+            story.append(p(issue["message"], small))
     story.append(p("Selected supporting documents", heading))
     for number, document in enumerate(snapshot.get("evidence", []), 1):
         story.append(p(f"{number}. {document.get('name') or 'Supporting document'}"))

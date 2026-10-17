@@ -16,10 +16,12 @@ type Proposal = {
 type Credential = { id: string; revision: number; data: { name: string; farm_ids: string[]; permissions: string[]; expires_at: string; revoked_at: string | null } };
 type FarmChoice = { id: string; data: { name?: string } };
 const names = new Set([
-  'list_tasks', 'find_records', 'check_request', 'preview_request', 'propose_capture', 'export_approved',
+  'list_tasks', 'find_records', 'check_request', 'preview_request', 'preview_journal', 'propose_capture', 'export_approved',
   'farm_overview', 'read_document', 'missing_answers', 'animal_events', 'list_fields', 'field_change_diff',
   'check_capture', 'check_compliance', 'propose_checklist', 'report_dependencies', 'list_deadlines',
   'regulatory_changes', 'adviser_help', 'propose_request', 'propose_field_change',
+  'list_cases', 'read_case', 'check_case', 'propose_case_draft',
+  'read_lpis_guide',
 ]);
 const identifier = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -178,13 +180,18 @@ export function mountWebMCP(): () => void {
       const binding = document.createElement('p');
       binding.textContent = `Proposal revision ${proposal.revision} · SHA-256 ${proposal.checksum}`;
       const saleCapture = proposal.action === 'capture_proposed_record' && isObject(proposal.payload) && proposal.payload.kind === 'sales';
+      const portugueseCapture = proposal.action === 'capture_proposed_record' && isObject(proposal.payload)
+        && proposal.payload.kind === 'facts' && isObject(proposal.payload.data) && proposal.payload.data.key === 'pt.ppp.surface_journal';
       const actionDescriptions: Record<string, string> = {
         create_report_draft: 'This creates only the draft shown below. It does not approve, issue, send or file a report.',
         create_request_draft: 'Review the letter source, recipient, exact questions, reporting period and nullable deadline. This creates only a draft request; nothing is answered, confirmed, sent or filed.',
         create_checklist_drafts: 'Review the selected source-backed obligations and evidence below. This creates incomplete checklists and open tasks only; it does not establish applicability, legal compliance or sustainability certification.',
         create_field_change_draft: 'Review the field comparison, supplied reference and overlap warnings below. This saves a field-change proposal only; it does not change the saved field outline, approve overlaps or alter official LPIS.',
+        create_case_draft: 'Review this field, correction or inspection case, its year, original reference and explicitly pinned records. This saves a private draft case only. It does not review the case, change fields, send anything, record a receipt or mark an authority outcome.',
       };
-      status.textContent = actionDescriptions[proposal.action] ?? (saleCapture
+      status.textContent = actionDescriptions[proposal.action] ?? (portugueseCapture
+        ? 'Review these literal Portuguese journal values. Saving keeps a proposed source fact only, with every actual date unconfirmed. Open the journal afterward to check dates and separately confirm the source before selecting report rows. Nothing is issued or sent.'
+        : saleCapture
         ? 'Check the sale’s buyer, actual date, amount and currency below. This saves only a proposed sale; evidence remains unconfirmed and nothing is sent or filed.'
         : 'Check the values, sources and warnings below. This saves only a proposed record; evidence remains unconfirmed and tasks remain open.');
       const approve = document.createElement('button');
@@ -192,8 +199,9 @@ export function mountWebMCP(): () => void {
       const actionLabels: Record<string, string> = {
         create_report_draft: 'Create this draft report', create_request_draft: 'Create this draft request',
         create_checklist_drafts: 'Create these incomplete checklists', create_field_change_draft: 'Save this field-change proposal',
+        create_case_draft: 'Save this draft case',
       };
-      approve.textContent = actionLabels[proposal.action] ?? 'Save this proposed record';
+      approve.textContent = actionLabels[proposal.action] ?? (portugueseCapture ? 'Save this Portuguese journal proposal' : 'Save this proposed record');
       const reject = document.createElement('button');
       reject.type = 'button'; reject.textContent = 'Reject proposal';
       const actionable = proposal.status === 'pending' && Date.parse(proposal.expires_at) > Date.now();
@@ -241,10 +249,12 @@ export function mountWebMCP(): () => void {
           status.textContent = result.status === 'consumed' ? 'Saved as a draft or proposal after your review. No evidence was confirmed and nothing was issued, sent or filed.' : 'Proposal rejected. No farm record was created.';
           if (result.result) {
             const link = document.createElement('a');
-            link.textContent = result.result.kind === 'reports' ? 'Open draft report' : result.result.kind === 'requests' ? 'Open draft request' : 'Open farm records';
+            link.textContent = portugueseCapture ? 'Open the Portuguese journal' : result.result.kind === 'reports' ? 'Open draft report' : result.result.kind === 'requests' ? 'Open draft request' : result.result.kind === 'admin_cases' ? 'Open draft case' : 'Open farm records';
             link.href = result.result.view_url?.startsWith('/app/') ? result.result.view_url
+              : portugueseCapture ? `/app/record-work?farm_id=${proposal.farm_id}#portuguese-journal`
               : result.result.kind === 'reports' && result.result.id ? `/app/reports/${result.result.id}`
-              : result.result.kind === 'requests' && result.result.id ? `/app/paperwork/${result.result.id}` : `/app/fields/${proposal.farm_id}`;
+              : result.result.kind === 'requests' && result.result.id ? `/app/paperwork/${result.result.id}`
+              : result.result.kind === 'admin_cases' && result.result.id ? `/app/cases/${result.result.id}` : `/app/fields/${proposal.farm_id}`;
             dialog.append(link);
           }
           window.dispatchEvent(new CustomEvent('assistant-proposal-reviewed', { detail: { approvalId, status: result.status } }));

@@ -345,6 +345,7 @@ export function DocumentDetailPage() {
   return <>
     <Link className="back-link" to="/app/documents">Back to documents</Link>
     <PageHeader title={title(document)} description="Read the original, check useful details, and choose where to keep them." />
+    {document.data.farm_id && <div className="actions"><Link to={`/app/cases/new?${new URLSearchParams({ farm_id: String(document.data.farm_id), job_type: 'inspection', reference_kind: 'documents', reference_id: document.id, reference_revision: String(document.revision), reference_role: 'notice' })}`}>Prepare an inspection from this document</Link><Link to={`/app/cases/new?${new URLSearchParams({ farm_id: String(document.data.farm_id), job_type: 'correction', reference_kind: 'documents', reference_id: document.id, reference_revision: String(document.revision), reference_role: 'notice' })}`}>Work through a correction from this document</Link></div>}
     {!canWrite && <Notice>You can read this document. Ask the farm owner for permission to save or review new details.</Notice>}
     {error && <Notice kind="error">{error}{error.toLowerCase().includes('changed') && <p>Your entries are still here. <Button variant="secondary" disabled={!!busy} onClick={() => void load()}>Load the latest saved document</Button></p>}</Notice>}
     {notice && <Notice>{notice}{requestId && <> <Link to={`/app/paperwork/${requestId}`}>Open request</Link></>}</Notice>}

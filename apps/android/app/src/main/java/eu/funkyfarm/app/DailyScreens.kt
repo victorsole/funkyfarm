@@ -35,6 +35,10 @@ private val workTypes = listOf(
 @Composable internal fun RecordWorkHome(model: FarmModel, capture: (String) -> Unit, open: (Pair<String, String>) -> Unit) {
     Text("What happened on the farm?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     Text("Start with the work you did. Check the date, amount and unit before saving it for review.")
+    if (model.records["farms"].orEmpty().any { it.data().optString("country") == "CZ" }) OutlinedButton(onClick = { model.czechJournal = obj() }, modifier = Modifier.fillMaxWidth()) { Text("Czech crop-protection journal") }
+    var portugueseJournal by remember { mutableStateOf(false) }
+    if (model.records["farms"].orEmpty().any { it.data().text("country") == "PT" }) OutlinedButton(onClick = { portugueseJournal = true }, modifier = Modifier.fillMaxWidth()) { Text("Portuguese surface-treatment record") }
+    if (portugueseJournal) PortugueseJournal(model) { portugueseJournal = false }
     workTypes.filterNot { it.first.startsWith("animal_") }.forEach { type -> OutlinedButton(onClick = { capture(type.first) }, modifier = Modifier.fillMaxWidth()) { Text(type.second) } }
     var animals by remember { mutableStateOf(false) }
     TextButton(onClick = { animals = !animals }) { Text(if (animals) "Hide animal records" else "Record something about animals") }
@@ -85,23 +89,26 @@ private val workTypes = listOf(
     }
 }
 
-@Composable internal fun GuidedCapture(model: FarmModel, type: String, record: JSONObject? = null, close: () -> Unit) {
+@Composable internal fun GuidedCapture(model: FarmModel, type: String, record: JSONObject? = null, initialFarmId: String? = null, draftId: String? = null, correction: Boolean = false, close: () -> Unit) {
     val kind = when (type) { "purchase" -> "purchases"; "sale" -> "sales"; else -> "operations" }
     val financial = kind in listOf("purchases", "sales")
-    val key = "guided-capture:$type" + (record?.optString("id")?.let { ":edit:$it" } ?: "")
+    val key = "guided-capture:$type" + (record?.optString("id")?.let { if (correction) ":correction:$it" else ":edit:$it" } ?: draftId?.let { ":journal:$it" }.orEmpty())
     val firstFarm = model.records["farms"].orEmpty().singleOrNull()
-    val initial = if (record != null) JSONObject(record.data().toString()).put("expected_revision", record.getInt("revision")) else obj("farm_id" to firstFarm?.optString("id").orEmpty(), "title" to workTypes.find { it.first == type }?.second.orEmpty(), "date" to LocalDate.now().toString(), "unit" to "", "currency" to "EUR", "credit" to false)
+    val initial = restoreCzechOriginals(if (record != null) JSONObject(record.data().toString()).put("expected_revision", record.getInt("revision")) else obj("farm_id" to (initialFarmId ?: firstFarm?.optString("id").orEmpty()), "title" to workTypes.find { it.first == type }?.second.orEmpty(), "date" to if (draftId == null) LocalDate.now().toString() else "", "unit" to "", "currency" to "EUR", "credit" to false))
+    if (type == "pesticide_application" && (draftId != null || record?.has("journal_issues") == true) && !initial.has("cz_ppp")) initial.put("cz_ppp", JSONObject())
     var draft by remember(key) { mutableStateOf(model.draft(key, initial)) }
     var acknowledged by remember { mutableStateOf<Set<String>>(emptySet()) }
     var error by remember { mutableStateOf("") }
     fun update(name: String, value: Any) {
         draft = JSONObject(draft.toString()).apply {
-            if (name == "farm_id" && opt("farm_id") != value) { put("parcel_id", JSONObject.NULL); remove("parcel"); remove("field_id"); remove("group_id") }
+            if (name == "farm_id" && opt("farm_id") != value) { put("parcel_id", JSONObject.NULL); remove("parcel"); remove("field_id"); remove("group_id"); remove("cz_ppp"); remove("_cz_sown_area"); put("document_id", JSONObject.NULL) }
+            if (name == "cz_ppp" && (value as? JSONObject)?.text("location_kind") == "object") remove("_cz_sown_area")
             put(name, value)
         }
         model.saveDraft(key, draft); model.clearCheck(key); acknowledged = emptySet()
     }
     fun body(): JSONObject {
+        require(record == null || correction || record.data().text("review_status") == "proposed") { "Only an unconfirmed proposal can be edited. Open the current confirmed entry and propose a separate correction." }
         require(draft.optString("farm_id").isNotBlank()) { "Choose your farm." }; LocalDate.parse(draft.optString("date"))
         val data = obj("farm_id" to draft.getString("farm_id"), "title" to draft.optString("title"), "date" to draft.optString("date"), "temporal_basis" to "calendar_date", "period" to draft.optString("date"), "notes" to draft.optString("notes"))
         require(data.optString("title").isNotBlank()) { "Give this record a short name." }
@@ -112,12 +119,24 @@ private val workTypes = listOf(
         val referenceFields = if (financial) listOf("document_id", "invoice_number", if (kind == "sales") "buyer" else "supplier") else listOf("parcel_id", "document_id", "product", "operator")
         referenceFields.forEach { name -> if (draft.optString(name).isNotBlank() && draft.opt(name) != JSONObject.NULL) data.put(name, draft.getString(name)) else if (record != null && draft.has(name)) data.put(name, if (name in listOf("document_id", "parcel_id") || draft.opt(name) == JSONObject.NULL) JSONObject.NULL else "") }
         if (financial) data.put("credit", draft.optBoolean("credit"))
-        if (type == "pesticide_application") appendTreatmentDetails(data, draft)
-        return obj("kind" to kind, "data" to data).apply { if (record != null) put("record_id", record.getString("id")).put("expected_revision", draft.getInt("expected_revision")) }
+        if (type == "pesticide_application") {
+            appendTreatmentDetails(data, draft)
+            if (draft.has("cz_ppp") || model.records["farms"].orEmpty().any { it.optString("id") == draft.optString("farm_id") && it.data().optString("country") == "CZ" }) appendCzechJournal(data, draft)
+        }
+        draft.optJSONArray("sources")?.let { data.put("sources", JSONArray(it.toString())) }
+        if (correction) {
+            require(record != null && draft.text("_correction_note").isNotBlank()) { "Explain the correction before checking it." }
+            data.put("supersedes_id", record!!.getString("id")).put("review_status", "proposed")
+            val sources = data.optJSONArray("sources") ?: JSONArray()
+            sources.put(obj("kind" to "correction", "record_kind" to "operations", "record_id" to record.getString("id"), "revision" to record.getInt("revision"), "note" to draft.text("_correction_note")))
+            data.put("sources", sources)
+        }
+        return obj("kind" to kind, "data" to data).apply { if (record != null && !correction) put("record_id", record.getString("id")).put("expected_revision", draft.getInt("expected_revision")) }
     }
     Sheet(workTypes.find { it.first == type }?.second ?: "Record farm work", close) {
-        Choice("Which farm?", draft.optString("farm_id"), model.records["farms"].orEmpty().map { it.getString("id") to it.title() }) { update("farm_id", it) }
-        if (record != null) Text("This saved edit keeps revision ${draft.getInt("expected_revision")}. The service checks it again before changing the proposal.", style = MaterialTheme.typography.bodySmall)
+        Choice("Which farm?", draft.optString("farm_id"), model.records["farms"].orEmpty().map { it.getString("id") to it.title() }) { if (!correction) update("farm_id", it) }
+        if (record != null) Text(if (correction) "This creates a separate proposed successor to application revision ${record.getInt("revision")}. The confirmed original remains active until a human separately confirms the correction." else "This saved edit keeps revision ${draft.getInt("expected_revision")}. The service checks it again before changing the proposal.", style = MaterialTheme.typography.bodySmall)
+        if (correction) OutlinedTextField(draft.text("_correction_note"), { update("_correction_note", it) }, label = { Text("Why is this application being corrected? · required") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(draft.optString("date"), { update("date", it) }, label = { Text(if (kind == "sales") "Actual sale date · YYYY-MM-DD" else "When did it happen? · YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(draft.optString("title"), { update("title", it) }, label = { Text("A short name for this record") }, modifier = Modifier.fillMaxWidth())
         if (kind == "operations") {
@@ -149,6 +168,7 @@ private val workTypes = listOf(
             if (type in listOf("fertiliser_application", "pesticide_application", "animal_treatment")) OutlinedTextField(draft.optString("product"), { update("product", it) }, label = { Text("Product as printed on its label") }, modifier = Modifier.fillMaxWidth())
             if (type == "work") OutlinedTextField(draft.optString("hours"), { update("hours", it) }, label = { Text("Time spent · hours") }, modifier = Modifier.fillMaxWidth())
             if (type == "pesticide_application") CropTreatmentDetails(draft, ::update)
+            if (type == "pesticide_application" && (draft.has("cz_ppp") || model.records["farms"].orEmpty().any { it.optString("id") == draft.optString("farm_id") && it.data().optString("country") == "CZ" })) CzechJournalDetails(draft, ::update)
         }
         Choice("Supporting document · optional", draft.optString("document_id"), listOf("" to "No document selected") + model.records["documents"].orEmpty().map { it.getString("id") to it.title() }) { update("document_id", it) }
         if (financial) Text("Choose the document that supports this purchase or sale. Its contents do not determine the transaction direction or fill in the buyer, date or amount.", style = MaterialTheme.typography.bodySmall)

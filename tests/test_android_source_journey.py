@@ -49,7 +49,7 @@ class AppUI:
         self.hierarchy_read_events = []
 
     def command(self, *arguments, timeout=40):
-        result = subprocess.run([self.adb, "-s", self.serial, *arguments], capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run([self.adb, "-s", self.serial, *arguments], capture_output=True, text=True, encoding="utf-8", timeout=timeout)
         self.command_metadata = {"exit_code": result.returncode, "stdout_bytes": len(result.stdout.encode("utf-8")), "stderr_bytes": len(result.stderr.encode("utf-8"))}
         assert result.returncode == 0, f"ADB operation {arguments[0]} failed (output intentionally withheld)."
         return result.stdout
@@ -90,7 +90,8 @@ class AppUI:
             time.sleep(0.25)
         tree = ET.fromstring(output[start:end + len("</hierarchy>")])
         system = {"com.android.systemui", "com.android.inputmethod.latin", "com.google.android.inputmethod.latin"}
-        assert all(node.get("package", "") in allowed | system | {""} for node in tree.iter("node")), "Unexpected application in accessibility hierarchy."
+        unexpected = {node.get("package", "") for node in tree.iter("node")} - allowed - system - {""}
+        assert not unexpected, "Unexpected application in accessibility hierarchy (package metadata only): " + ", ".join(sorted(unexpected))
         self.last_guarded_tree = tree
         return tree
 
@@ -246,9 +247,20 @@ class AppUI:
             self.command("shell", "input", "keyevent", *(["67"] * length))
         eventually(lambda: self.locate(label, kind="edit", scroll=False), lambda node: node.get("text", "") == "", "Native input was not cleared: " + label)
         self.command("shell", "input", "text", shlex.quote(value.replace(" ", "%s")))
-        eventually(lambda: self.locate(label, kind="edit", scroll=False),
-                   lambda node: len(node.get("text", "")) == len(value) if node.get("password") == "true" else node.get("text", "") == value,
-                   "Native input did not retain the intended value: " + label)
+        input_metadata = dict(self.command_metadata)
+        try:
+            eventually(lambda: self.locate(label, kind="edit", scroll=False),
+                       lambda node: len(node.get("text", "")) == len(value) if node.get("password") == "true" else node.get("text", "") == value,
+                       "Native input did not retain the intended value: " + label)
+        except AssertionError:
+            node = self.locate(label, kind="edit", scroll=False)
+            observed = node.get("text", "")
+            shown = "[redacted]" if node.get("password") == "true" or any(secret in observed for secret in self.redactions if secret) else observed[:300]
+            path = self.failure_artifact(label)
+            raise AssertionError("Native input mismatch: " + json.dumps({"label": label, "expected_length": len(value),
+                "observed_length": len(observed), "observed": shown, "focused": node.get("focused"),
+                "enabled": node.get("enabled"), "bounds": node.get("bounds"), "input_command": input_metadata,
+                "artifact": str(path)}, ensure_ascii=False)) from None
         self.dismiss_keyboard()
 
 

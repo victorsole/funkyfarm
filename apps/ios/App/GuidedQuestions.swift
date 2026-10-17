@@ -12,6 +12,8 @@ struct GuidedRequestView: View {
     @State private var total = 0
     @State private var blocked: [JSONValue] = []
     @State private var sourceTables: [[String: JSONValue]] = []
+    @State private var journals: [[String: JSONValue]] = []
+    @State private var loadAvailable = false
     @State private var text = ""
     @State private var choice: JSONValue = .null
     @State private var unknown = false
@@ -26,6 +28,7 @@ struct GuidedRequestView: View {
     private var question: [String: JSONValue]? { questions.indices.contains(index) ? questions[index] : nil }
     private var key: String { question?["key"]?.text ?? "" }
     private var questionID: String { question?["id"]?.text ?? "" }
+    private var holderCandidates: [RecordItem] { ((question?["proposals"]?.array ?? []) + (question?["confirmed"]?.array ?? [])).compactMap(recordValue) }
     private var physicalLabel: String { question?["physical_label"]?.text.suppliedValue ?? "" }
     private var formKey: String { "answer:" + requestID + ":question:" + questionID }
     private var suppliedPeriod: String? {
@@ -40,7 +43,7 @@ struct GuidedRequestView: View {
         let trimmed = entered.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
-    private var canCheck: Bool { !questionID.isEmpty && inputValue != nil && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (question?["temporal_basis"]?.text != "calendar_date" || answerPeriod != nil) }
+    private var canCheck: Bool { question?["value_type"] != .string("object") && !questionID.isEmpty && inputValue != nil && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (question?["temporal_basis"]?.text != "calendar_date" || answerPeriod != nil) }
     private var inputValue: JSONValue? {
         guard !unknown else { return .null }
         switch question?["value_type"]?.text {
@@ -64,11 +67,23 @@ struct GuidedRequestView: View {
         List {
             Section {
                 Text(request?.title ?? "Request questions").font(.headline)
-                Text("\(completed) of \(total) required answers confirmed").font(.subheadline).foregroundStyle(.secondary)
-                if total > 0 { ProgressView(value: Double(completed), total: Double(total)).accessibilityLabel("Confirmed answers").accessibilityValue("\(completed) of \(total)") }
+                if loadAvailable {
+                    Text("\(completed) of \(total) required answers confirmed").font(.subheadline).foregroundStyle(.secondary)
+                    if total > 0 { ProgressView(value: Double(completed), total: Double(total)).accessibilityLabel("Confirmed answers").accessibilityValue("\(completed) of \(total)") }
+                } else { Notice("Current questions and journal counts have not loaded. No completion state is inferred.", warning: true) }
                 Text("Each answer starts as a proposal. Confirming its source is a separate review, and unresolved conflicts remain visible.").font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(Array(blocked.enumerated()), id: \.offset) { _, reason in Section { Notice(reason.object["message"]?.text ?? reason.text, warning: true) } }
+            ForEach(Array(journals.enumerated()), id: \.offset) { _, journal in
+                Section(journal["title"]?.text ?? "Repeated application journal") {
+                    ForEach(["total", "confirmed", "proposed", "incomplete", "pending"], id: \.self) { key in if let count = journal["counts"]?.object[key] { LabeledContent("Loaded service count: " + key, value: count.text) } }
+                    if let farmID = request?.data["farm_id"]?.text, journal["schema_id"] == .string(CzechJournalData.schema) {
+                        NavigationLink("Add, complete, review and select journal applications") { CzechJournalView(initialFarmID: farmID, requestID: requestID, initialYear: SourceText.year(request?.data["reporting_year"]).flatMap { Int($0) }, initialDefinition: journal) }
+                    }
+                    if let source = journal["source"] { DisclosureGroup("Official record source") { SourceReferences(value: source) } }
+                    Notice(journal["notice"]?.text ?? "Each application is a separate operation, not a scalar farm answer. Confirm proposals before selecting them for a journal.")
+                }
+            }
             if !sourceTables.isEmpty {
                 Section("Source tables needed for this request") {
                     ForEach(Array(sourceTables.enumerated()), id: \.offset) { _, table in
@@ -93,6 +108,7 @@ struct GuidedRequestView: View {
                     if let unit = question["unit"], unit != .null { LabeledContent("Required unit", value: unit.text) }
                     if let suppliedPeriod { LabeledContent(question["temporal_basis"]?.text == "calendar_date" ? "Recorded event date" : "Reporting period", value: suppliedPeriod) }
                     if questionID.isEmpty { Notice("This question has no context identifier. Reload it before checking or saving an answer.", warning: true) }
+                    ForEach(Array((question["issues"]?.array ?? []).enumerated()), id: \.offset) { _, issue in Notice(issue.object["message"]?.text ?? "Review the required structured identity information.", warning: true) }
                     if let proposals = question["proposals"]?.array, !proposals.isEmpty {
                         Text("Proposed answers already exist. Review them before adding another.").font(.callout)
                         ForEach(Array(proposals.enumerated()), id: \.offset) { _, value in
@@ -100,10 +116,20 @@ struct GuidedRequestView: View {
                         }
                     }
                     if let confirmed = question["confirmed"]?.array, !confirmed.isEmpty {
-                        Notice("The reviewed evidence disagrees. Compare the source revisions before proposing a correction.", warning: true)
+                        Notice(question["state"] == .string("conflict") ? "The reviewed evidence disagrees. Compare the source revisions before proposing a correction." : "Review the existing confirmed source record and any missing details before proposing a correction.", warning: true)
                         ForEach(Array(confirmed.enumerated()), id: \.offset) { _, value in if let record = recordValue(value) { NavigationLink { DetailView(collection: "facts", id: record.id) } label: { RecordRow(item: record) } } }
                     }
                 }.id(questionID)
+                if question["capture_kind"] == .string("journal_holder") || (question["value_type"] == .string("object") && key == CzechJournalData.holderKey) {
+                    Section("Structured holder answer") {
+                        if let farmID = request?.data["farm_id"]?.text {
+                            if holderCandidates.count == 1, let candidate = holderCandidates.first { NavigationLink(candidate.state == "confirmed" ? "Propose a structured holder correction" : "Complete the structured holder proposal") { CzechHolderEditor(farmID: farmID, existing: candidate) } }
+                            else if holderCandidates.isEmpty { NavigationLink("Record holder type, name, address and supplied identity") { CzechHolderEditor(farmID: farmID) } }
+                            else { Notice("Several holder records need review. Open the individual facts above and resolve their identities; the app does not choose one or add another automatically.", warning: true) }
+                        }
+                        Notice("This is structured identity information, not a typed summary. Save its proposal, then open its separate fact review before preparing the journal.")
+                    }
+                } else {
                 Section("Your answer") {
                     Toggle("I cannot establish this value yet", isOn: $unknown)
                     if !unknown {
@@ -140,6 +166,7 @@ struct GuidedRequestView: View {
                         Notice(store.disk.queue.contains { $0.id == savedDraft } ? "The answer is saved in this account's device outbox." : "The service acknowledged the proposed answer. Refresh the question to open its fact review.")
                     }
                 }
+                }
                 Section {
                     HStack {
                         Button("Previous question") { move(-1) }.disabled(index == 0 || working)
@@ -150,7 +177,7 @@ struct GuidedRequestView: View {
                 }
             } else if !working {
                 Section {
-                    Notice(!sourceTables.isEmpty ? "Review the original source tables above. Confirmed source rows are separate from ordinary questions, and report prerequisites still apply." : questions.isEmpty && blocked.isEmpty ? "The service has no unresolved questions for this request. Review its report prerequisites before approval." : "Questions are not available until the listed prerequisites are resolved.")
+                    Notice(!loadAvailable ? "The current questions or journal ledger are unavailable. Retry loading them; an error is not an empty or completed journal." : !journals.isEmpty ? "Complete and review the repeated applications and structured holder above. Journal counts are not a completed annual obligation or authority acceptance." : !sourceTables.isEmpty ? "Review the original source tables above. Confirmed source rows are separate from ordinary questions, and report prerequisites still apply." : questions.isEmpty && blocked.isEmpty ? "The service has no unresolved questions for this request. Review its report prerequisites before approval." : "Questions are not available until the listed prerequisites are resolved.", warning: !loadAvailable)
                     NavigationLink("Return to request details") { DetailView(collection: "requests", id: requestID) }
                 }
             }
@@ -160,7 +187,7 @@ struct GuidedRequestView: View {
             .task { await load() }
             .onChange(of: rawAnswer) { value in
                 check = nil; acknowledged = []; savedDraft = nil
-                guard !questionID.isEmpty else { return }
+                guard !questionID.isEmpty, question?["value_type"] != .string("object") else { return }
                 do { try store.saveForm(formKey, value: value) } catch { problem = "The device could not keep the unfinished answer: \(error.localizedDescription)" }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: questionID)
@@ -169,6 +196,7 @@ struct GuidedRequestView: View {
     private func load() async {
         working = true; problem = nil; defer { working = false }
         let selectedQuestionID = questionID
+        loadAvailable = false; journals = []
         do {
             let value = try await store.scopedValue("/workflow/questions?request_id=\(requestID)").object
             if let requestValue = value["request"] { request = recordValue(requestValue) }
@@ -177,6 +205,8 @@ struct GuidedRequestView: View {
             if case .number(let number)? = value["total_count"] { total = Int(number) }
             blocked = value["blocked_reasons"]?.array ?? []
             sourceTables = value["source_tables"]?.array.map(\.object) ?? []
+            journals = value["journals"]?.array.map(\.object) ?? []
+            loadAvailable = true
             if let savedID = deviceDraft?.payload["question_id"]?.text, let savedIndex = questions.firstIndex(where: { $0["id"]?.text == savedID }) { index = savedIndex }
             else if !selectedQuestionID.isEmpty, let same = questions.firstIndex(where: { $0["id"]?.text == selectedQuestionID }) { index = same }
             else if deviceDraft?.payload["question_id"] == nil, let savedKey = deviceDraft?.payload["key"]?.text {
@@ -189,7 +219,7 @@ struct GuidedRequestView: View {
             }
             resetInput()
             fillSavedAnswer()
-        } catch { problem = error.localizedDescription }
+        } catch { questions = []; sourceTables = []; journals = []; blocked = []; problem = SourceText.error(error) }
     }
     private func fillSavedAnswer() {
         check = nil; acknowledged = []

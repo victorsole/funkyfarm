@@ -6,6 +6,7 @@ final class ProtectedFileTransfer: NSObject, URLSessionDataDelegate {
     static let reservedFreeBytes: Int64 = 64 * 1024 * 1024
     private let destination: URL
     private let request: URLRequest
+    private let expectedContentType: String?
     private let lock = NSLock()
     private var handle: FileHandle?
     private var session: URLSession?
@@ -16,11 +17,12 @@ final class ProtectedFileTransfer: NSObject, URLSessionDataDelegate {
     private var expected: Int64?
     private let budget: Int64
 
-    init(request: URLRequest, destination: URL) throws {
-        self.request = request; self.destination = destination
+    init(request: URLRequest, destination: URL, maximumBytes: Int64 = ProtectedFileTransfer.maximumBytes, expectedContentType: String? = nil) throws {
+        self.request = request; self.destination = destination; self.expectedContentType = expectedContentType
+        guard maximumBytes > 0, maximumBytes <= Self.maximumBytes else { throw ServiceError(status: 0, message: "The private download limit is invalid. No export was started.") }
         let free = try Self.freeBytes(destination.deletingLastPathComponent())
         guard free > Self.reservedFreeBytes else { throw ServiceError(status: 0, message: "Free some device storage before exporting. The app keeps a 64 MiB free-space reserve.") }
-        budget = min(Self.maximumBytes, free - Self.reservedFreeBytes)
+        budget = min(maximumBytes, free - Self.reservedFreeBytes)
         super.init()
         guard FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.protectionKey: FileProtectionType.complete]) else { throw ServiceError(status: 0, message: "The protected export file could not be created.") }
         do { handle = try FileHandle(forWritingTo: destination); var file = destination; var resource = URLResourceValues(); resource.isExcludedFromBackup = true; try file.setResourceValues(resource) }
@@ -53,9 +55,15 @@ final class ProtectedFileTransfer: NSObject, URLSessionDataDelegate {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             completionHandler(.cancel); finish(ServiceError(status: status, message: "The authorized file download failed (\(status)). No export is available to share.")); return
         }
+        if let expectedContentType, response.mimeType?.lowercased() != expectedContentType.lowercased() {
+            completionHandler(.cancel); finish(ServiceError(status: 0, message: "The service did not return the expected file type. No partial or substituted file will be shared.")); return
+        }
+        if expectedContentType == "application/zip", response.expectedContentLength <= 0 || response.value(forHTTPHeaderField: "Content-Encoding") != nil {
+            completionHandler(.cancel); finish(ServiceError(status: 0, message: "The prepared folder did not supply an exact unencoded file length. No incomplete or substituted archive will be shared.")); return
+        }
         lock.lock()
         guard !finished else { lock.unlock(); completionHandler(.cancel); return }
-        guard response.expectedContentLength <= budget else { lock.unlock(); completionHandler(.cancel); finish(ServiceError(status: 0, message: "This export exceeds the available private download budget (up to 512 MiB). No partial file will be shared.")); return }
+        guard response.expectedContentLength <= budget else { lock.unlock(); completionHandler(.cancel); finish(ServiceError(status: 0, message: "This export exceeds its available private download budget. No partial file will be shared.")); return }
         if response.expectedContentLength >= 0, response.value(forHTTPHeaderField: "Content-Encoding") == nil || response.value(forHTTPHeaderField: "Content-Encoding") == "identity" { expected = response.expectedContentLength }
         lock.unlock(); completionHandler(.allow)
     }

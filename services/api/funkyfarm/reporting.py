@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field
 
 from .db import fetch_record, idempotent, insert_record, json_safe, transaction, update_record
 from .security import Session, require_roles, require_session
-from .models import ApiError
+from .models import ApiError, StrictModel
+from . import manual_journal
 from .records import matches_reporting_period, physical_identity as _physical_identity
 from .reconciliation import selected_fact_ids, reconciliation_for_farm
 from .report_render import csv_bytes, literal, pdf_bytes, readable, xlsx_bytes
@@ -91,7 +92,7 @@ def _get(conn, kind, record_id):
 
 def _records(conn, kind, farm_id=None):
     params = [kind]
-    where = "kind = %s"
+    where = "kind = %s AND deleted_at IS NULL"
     if farm_id is not None:
         where += " AND data->>'farm_id' = %s"
         params.append(str(farm_id))
@@ -200,7 +201,7 @@ def _source_refs(data, selected, record_kinds=None):
         if document_id is not None and str(document_id) not in selected:
             continue
         # A report carries source locations, never file paths, access URLs or raw documents.
-        allowed = ("document_id", "record_id", "record_kind", "source_id", "source_kind", "file_name", "row", "row_number", "sheet", "column", "page", "line_start", "line_end", "quote", "location", "source_key", "adapter", "revision", "origin", "import_id", "row_id", "source_name", "sha256", "grain", "adapter_profile", "decimal_separator", "source_year")
+        allowed = ("document_id", "document_revision", "record_id", "record_kind", "source_id", "source_kind", "file_name", "row", "row_number", "sheet", "column", "page", "line_start", "line_end", "quote", "location", "source_key", "adapter", "revision", "origin", "import_id", "row_id", "source_name", "sha256", "grain", "adapter_profile", "decimal_separator", "source_year")
         retained = {key: deepcopy(value[key]) for key in allowed if key in value and (key != "quote" or document_id is not None)}
         if record_kind:
             retained["record_kind"] = record_kind
@@ -208,6 +209,31 @@ def _source_refs(data, selected, record_kinds=None):
             retained["document_id"] = str(document_id)
         result.append(retained)
     return result
+
+
+def _current_operation(records, operation_id):
+    """Follow explicit confirmed corrections only, never a field/date match."""
+    by_id = {str(record["id"]): record for record in records}
+    current, seen = str(operation_id), set()
+    while current in by_id:
+        if current in seen:
+            return by_id[current], True
+        seen.add(current)
+        successors = [record for record in records if record["data"].get("review_status") == "confirmed"
+                      and str(record["data"].get("supersedes_id")) == current]
+        if not successors:
+            return by_id[current], False
+        if len(successors) != 1:
+            return by_id[current], True
+        current = str(successors[0]["id"])
+    return None, False
+
+
+class ManualJournalSelection(StrictModel):
+    source_fact_id: UUID
+    source_fact_revision: int = Field(ge=1, strict=True)
+    entry_ids: list[UUID] = Field(min_length=1, max_length=256)
+    acknowledged_unresolved: bool = Field(strict=True)
 
 
 class CreateReport(BaseModel):
@@ -218,6 +244,7 @@ class CreateReport(BaseModel):
     fact_ids: list[UUID] | None = Field(default=None, max_length=5000)
     selected_document_ids: list[UUID] = Field(default_factory=list, max_length=250)
     operation_ids: list[UUID] = Field(default_factory=list, max_length=1000)
+    manual_journal_selection: ManualJournalSelection | None = None
 
 
 class ApproveReport(BaseModel):
@@ -230,6 +257,7 @@ class ReissueReport(ApproveReport):
     fact_ids: list[UUID] | None = Field(default=None, max_length=5000)
     selected_document_ids: list[UUID] | None = Field(default=None, max_length=250)
     operation_ids: list[UUID] | None = Field(default=None, max_length=1000)
+    manual_journal_selection: ManualJournalSelection | None = None
 
 
 class ReceiptInput(ApproveReport):
@@ -264,6 +292,13 @@ def _prepare(conn, body, actor, correction_of=None):
         if request_data.get("pack_id") not in (None, "", body.pack_id):
             fail("request_pack", "Use the reporting pack selected for this request.")
     specs = _field_specs(pack)
+    journal_pack = pack.get("journal_schema") == "cz-ppp-journal-v1"
+    manual_pack = pack.get("journal_schema") == manual_journal.SCHEMA_ID
+    manual_selection = body.manual_journal_selection
+    if manual_selection is not None and not manual_pack:
+        fail("pt_journal_pack", "Use the Portuguese literal-journal preparation pack for this selection.")
+    if manual_pack and (manual_selection is None or body.fact_ids is None or body.operation_ids):
+        fail("pt_journal_selection_required", "Explicitly select the source journal fact and its dated rows. This manual preparation does not select work records.")
     farm_facts = _records(conn, "facts", body.farm_id)
     excluded = selected_fact_ids(conn, str(body.farm_id))["excluded_fact_ids"]
     if body.fact_ids is not None:
@@ -275,36 +310,84 @@ def _prepare(conn, body, actor, correction_of=None):
         selectors = [*specs, *(item for item in requirements if isinstance(item, dict) and item.get("type") != "evidence")]
         facts = [fact for fact in farm_facts if str(fact["id"]) not in excluded and fact["data"].get("review_status") != "rejected" and any(_matches_requirement(fact, selector, body.reporting_year) for selector in selectors)]
     selected = {str(value) for value in body.selected_document_ids}
+    manual = None
+    if manual_pack:
+        sources = [fact for fact in facts if fact["data"].get("key") == manual_journal.FACT_KEY]
+        if len(sources) != 1 or str(sources[0]["id"]) != str(manual_selection.source_fact_id):
+            fail("pt_journal_selection_required", "Select exactly one Portuguese source journal, including its ID in fact_ids.")
+        if str(sources[0]["id"]) in excluded:
+            fail("pt_journal_source_unreviewed", "Select a current source journal that has not been excluded by reconciliation.")
+        manual = manual_journal.build_journal(farm, sources[0], manual_selection.entry_ids, body.reporting_year,
+            source_fact_revision=manual_selection.source_fact_revision, acknowledged_unresolved=manual_selection.acknowledged_unresolved)
     operation_dependencies = {}
     record_dependencies = {}
+    journal_document_dependencies = {}
     operations = []
     selected_operations = {str(value) for value in body.operation_ids}
+    selected_operation_records = [_get(conn, "operations", operation_id) for operation_id in sorted(selected_operations)]
+    selected_operations_by_id = {str(record["id"]): record for record in selected_operation_records}
+    if any(record["data"].get("farm_id") != str(body.farm_id) for record in selected_operation_records):
+        fail("operation_farm", "Select activities belonging to this farm.")
+    if journal_pack:
+        from .ppp_journal import active_entries
+        active_ids = {str(record["id"]) for record in active_entries(_records(conn, "operations", body.farm_id)) if record["data"].get("review_status") == "confirmed"}
+        if selected_operations - active_ids:
+            fail("journal_active_entries_required", "Select confirmed current applications, not an earlier corrected or unreviewed entry.", operation_ids=sorted(selected_operations - active_ids))
     linked_operations = set()
-    for fact in facts:
-        for source in fact["data"].get("sources", []):
-            if not isinstance(source, dict) or not (record_id := _record_uuid(source.get("record_id"))):
+    source_records = [("fact_id", fact) for fact in facts]
+    if journal_pack:
+        source_records.extend(("operation_id", record) for record in selected_operation_records)
+
+    def retain_journal_document(document, source_owner, cited_revision, identity_key):
+        if manual_pack and (document["data"].get("farm_id") != str(body.farm_id) or type(cited_revision) is not int or cited_revision != document["revision"]):
+            fail("pt_journal_source_changed", "Review the exact current same-farm source document before selecting this journal.", 409, document_id=str(document["id"]))
+        if document["data"].get("farm_id") not in (None, "", str(body.farm_id)):
+            fail("source_farm", "A journal input's cited document belongs to a different farm.", **{identity_key: str(source_owner["id"])})
+        retained = journal_document_dependencies.setdefault(str(document["id"]), {
+            "revision": document["revision"], "checksum": digest(document["data"]),
+            "cited_revisions": [], "operation_ids": [], "fact_ids": [],
+        })
+        if cited_revision is not None and cited_revision not in retained["cited_revisions"]:
+            retained["cited_revisions"].append(cited_revision)
+        owner_id = str(source_owner["id"])
+        identities = retained["operation_ids" if identity_key == "operation_id" else "fact_ids"]
+        if owner_id not in identities:
+            identities.append(owner_id)
+
+    for identity_key, source_owner in source_records:
+        for source in source_owner["data"].get("sources", []):
+            if not isinstance(source, dict):
+                continue
+            # Dependency validation is private and independent of attachment
+            # selection. Read the original source before recipient filtering.
+            if (journal_pack or manual_pack) and (document_id := _record_uuid(source.get("document_id"))):
+                document = _get(conn, "documents", document_id)
+                retain_journal_document(document, source_owner, source.get("document_revision"), identity_key)
+            if not (record_id := _record_uuid(source.get("record_id"))):
                 continue
             # The database is authoritative for legacy references without a kind.
             # Do not probe every source UUID as an operation: it may be a reused
             # fact, purchase or another workspace-scoped source record.
             row = conn.execute("SELECT kind FROM records WHERE id = %s", (record_id,)).fetchone()
             if row is None:
-                fail("source_unavailable", "A fact's source record is no longer available. Review its provenance.", 409, fact_id=str(fact["id"]), record_id=record_id)
+                fail("source_unavailable", "A selected answer's source record is no longer available. Review its provenance.", 409, **{identity_key: str(source_owner["id"])}, record_id=record_id)
             actual_kind = row["kind"]
             declared = source.get("record_kind")
             aliases = {"fact": "facts", "purchase": "purchases", "sale": "sales", "operation": "operations", "document": "documents"}
             if declared is not None and aliases.get(str(declared), str(declared)) != actual_kind:
-                fail("source_kind_mismatch", "A fact's source type differs from its stored record. Review its provenance.", 409, fact_id=str(fact["id"]), record_id=record_id)
+                fail("source_kind_mismatch", "A selected answer's source type differs from its stored record. Review its provenance.", 409, **{identity_key: str(source_owner["id"])}, record_id=record_id)
             source_record = fetch_record(conn, actual_kind, record_id)
             source_farm = str(source_record["id"]) if actual_kind == "farms" else source_record["data"].get("farm_id")
             if source_farm not in (None, "", str(body.farm_id)):
-                fail("source_farm", "A fact's source record belongs to a different farm.", fact_id=str(fact["id"]))
+                fail("source_farm", "A selected answer's source record belongs to a different farm.", **{identity_key: str(source_owner["id"])})
+            if (journal_pack or manual_pack) and actual_kind == "documents":
+                retain_journal_document(source_record, source_owner, source.get("document_revision", source.get("revision")), identity_key)
             if actual_kind == "operations":
                 linked_operations.add(record_id)
             else:
                 record_dependencies[record_id] = {"kind": actual_kind, "revision": source_record["revision"], "checksum": digest(source_record["data"])}
     for operation_id in sorted(selected_operations | linked_operations):
-        operation = fetch_record(conn, "operations", operation_id)
+        operation = selected_operations_by_id.get(operation_id) or fetch_record(conn, "operations", operation_id)
         if operation is None:
             if operation_id in selected_operations:
                 fail("operation_not_found", "A selected farm activity is not available.", 404)
@@ -316,6 +399,8 @@ def _prepare(conn, body, actor, correction_of=None):
         operation_dependencies[operation_id] = {"revision": operation["revision"], "checksum": digest(operation["data"])}
         if operation_id in selected_operations:
             public_keys = ("title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "field_id", "crop", "product", "operator", "hours", "period", "temporal_basis", "review_status")
+            if journal_pack:
+                public_keys += ("farm_id", "dose", "dose_unit", "treated_size", "treated_unit", "cz_ppp", "supersedes_id", "sources")
             operations.append({"id": operation_id, "revision": operation["revision"], "data": {key: deepcopy(operation["data"][key]) for key in public_keys if key in operation["data"]}})
     evidence = []
     for document_id in sorted(selected):
@@ -327,9 +412,17 @@ def _prepare(conn, body, actor, correction_of=None):
     snapshot_facts = []
     source_record_kinds = {record_id: state["kind"] for record_id, state in record_dependencies.items()}
     source_record_kinds.update({record_id: "operations" for record_id in operation_dependencies})
+    if journal_pack:
+        for operation in operations:
+            operation["data"]["sources"] = _source_refs(operation["data"], selected, source_record_kinds)
     for fact in facts:
         retained = {"id": str(fact["id"]), "revision": fact["revision"], "data": {key: deepcopy(fact["data"][key]) for key in ("key", "label", "value", "unit", "period", "temporal_basis", "review_status", "sources", "parcel_id", "field_id", "group_id") if key in fact["data"]}}
         retained["data"]["sources"] = _source_refs(fact["data"], selected, source_record_kinds)
+        if manual and str(fact["id"]) == manual["holder"]["fact_id"]:
+            # Recipient snapshots contain only the explicitly selected rows, in
+            # reviewed order. The private dependency hash still binds all input.
+            by_id = {entry["entry_id"]: entry for entry in retained["data"]["value"]["entries"]}
+            retained["data"]["value"]["entries"] = [by_id[identifier] for identifier in manual["selection"]["entry_ids"]]
         snapshot_facts.append(retained)
     fields = []
     if specs:
@@ -370,6 +463,13 @@ def _prepare(conn, body, actor, correction_of=None):
             fields.append({"field": "annex." + data.get("key", "fact"), "label": data.get("label", data.get("key", "Farm detail")), "required": False, "fact_key": data.get("key"), "fact_id": fact["id"], "fact_revision": fact["revision"], "value": deepcopy(data.get("value")), "unit": data.get("unit"), "period": data.get("period"), "temporal_basis": data.get("temporal_basis"), "sources": deepcopy(data.get("sources", [])), "group_label": "Additional selected farm facts", "mapping": "supporting_fact", "physical_group_id": _physical_identity(data)})
             included.add(signature)
     reference_only = pack.get("capability", pack.get("status", pack.get("mapping_status"))) == "reference_only" or pack.get("reference_only") is True
+    if manual:
+        fields = [field for field in fields if field.get("fact_id") != manual["holder"]["fact_id"]]
+        literal_fields = manual_journal.mapped_fields(manual)
+        retained_source = next(fact for fact in snapshot_facts if fact["id"] == manual["holder"]["fact_id"])
+        for field in literal_fields:
+            field["sources"] = deepcopy(retained_source["data"].get("sources", []))
+        fields.extend(literal_fields)
     if reference_only:
         notice = "Reference-only dossier: this pack has no implemented national compliance mapping."
     elif pack.get("capability") == "generic_dossier" or pack.get("country") is None:
@@ -377,6 +477,8 @@ def _prepare(conn, body, actor, correction_of=None):
     else:
         notice = "Prepared country-specific draft. Domain review and authority acceptance are separate from report approval."
     validation_sources = {"farm": {"id": str(farm["id"]), "revision": farm["revision"], "checksum": digest(farm["data"])}, "request": {"id": str(request["id"]), "checksum": digest(_request_context(request["data"]))} if request else None, "facts": {str(fact["id"]): digest(fact["data"]) for fact in facts}, "documents": {item["id"]: item["data_checksum"] for item in evidence}, "operations": operation_dependencies, "records": record_dependencies}
+    if journal_document_dependencies:
+        validation_sources["journal_documents"] = journal_document_dependencies
     for item in evidence:
         del item["data_checksum"]
     all_groups = _farm_groups(farm["data"])
@@ -415,6 +517,29 @@ def _prepare(conn, body, actor, correction_of=None):
         group = next((item for item in physical_groups if str(item.get("id")) == str(group_id)), None)
         field["group_label"] = group_label(group) if group else field.get("group_label") or next((spec.get("section", spec.get("group")) for spec in specs if spec["field"] == field["field"]), None)
     snapshot = {"schema_version": 2, "pack": pack, "farm": {"id": str(farm["id"]), "revision": farm["revision"], "name": farm["data"].get("name", ""), "country": country}, "request": _recipient_request(request), "reporting_year": body.reporting_year, "facts": snapshot_facts, "fields": fields, "operations": operations, "physical_groups": physical_groups, "evidence": evidence, "capability_notice": notice, "created_at": now(), "correction_of": correction_of}
+    if manual:
+        snapshot["journals"] = [manual]
+        snapshot["capability_notice"] = manual["capability_notice"]
+        snapshot["warnings"] = [deepcopy(issue) for issue in manual["issues"] if issue.get("severity") == "warning"]
+        snapshot["warnings"].extend({**deepcopy(issue), "entry_id": entry["entry_id"]}
+            for entry in manual["entries"] for issue in entry["issues"] if issue.get("severity") == "warning")
+    if journal_pack:
+        from .ppp_journal import build_journal
+        holder = next((deepcopy(fact) for fact in facts if fact["data"].get("key") == "cz.ppp.holder"
+                       and fact["data"].get("review_status") == "confirmed"
+                       and fact["data"].get("temporal_basis") == "static" and str(fact["id"]) not in excluded), None)
+        if holder:
+            holder["data"]["sources"] = _source_refs(holder["data"], selected, source_record_kinds)
+        journal = build_journal(farm, holder, operations, body.reporting_year)
+        snapshot["journals"] = [journal]
+        snapshot["capability_notice"] = journal["capability_notice"]
+        snapshot["warnings"] = [deepcopy(issue) for issue in journal.get("issues", []) if issue.get("severity") == "warning"]
+        snapshot["warnings"].extend({**deepcopy(issue), "operation_id": str(entry["operation_id"])}
+                                    for entry in journal["entries"] for issue in entry.get("issues", []) if issue.get("severity") == "warning")
+        context = {key: deepcopy(journal[key]) for key in ("schema_id", "pack_id", "title", "country", "reporting_year", "source", "columns")}
+        for operation in operations:
+            entry = next(item for item in journal["entries"] if str(item["operation_id"]) == operation["id"])
+            operation["journal_entry"] = {**deepcopy(context), "entry": deepcopy(entry)}
     data = {"farm_id": str(body.farm_id), "request_id": str(body.request_id) if body.request_id else None, "pack_id": body.pack_id, "reporting_year": body.reporting_year, "status": "draft", "snapshot": snapshot, "checksum": digest(snapshot), "created_by": str(actor.user_id), "approval": None, "correction_of": correction_of, "filing_status": "not_filed"}
     data["validation_sources"] = validation_sources
     data["blockers"] = _blockers(conn, data)
@@ -435,6 +560,29 @@ def _blockers(conn, data):
         add("snapshot_integrity", "The retained snapshot checksum does not match.")
     if not snapshot["fields"] and not snapshot.get("operations"):
         add("no_facts", "Select at least one farm fact or reviewed activity to prepare this report.")
+    for document_id, retained in validation_sources.get("journal_documents", {}).items():
+        current = conn.execute("SELECT revision,data FROM records WHERE id=%s AND kind='documents' AND deleted_at IS NULL", (document_id,)).fetchone()
+        changed = current is None or current["revision"] != retained["revision"] or digest(current["data"]) != retained["checksum"]
+        wrong_citation = current is None or any(revision != current["revision"] for revision in retained["cited_revisions"])
+        if changed or wrong_citation:
+            for key, identities in (("operation_id", retained["operation_ids"]), ("fact_id", retained["fact_ids"])):
+                for owner_id in identities:
+                    add("stale_journal_source", "A journal input's cited document changed or its retained citation is out of date. Review the original source before approval.", **{key: owner_id}, record_id=document_id, record_kind="documents")
+    for journal in snapshot.get("journals", []):
+        for issue in journal.get("issues", []):
+            if issue.get("severity") == "error":
+                add(issue["code"], issue["message"], **{key: issue[key] for key in ("field", "operation_id", "fact_id") if key in issue})
+        for entry in journal.get("entries", []):
+            for source in entry.get("data", {}).get("sources", []):
+                source_id = _record_uuid(source.get("record_id")) or _record_uuid(source.get("document_id"))
+                cited_revision = source.get("revision", source.get("document_revision"))
+                if source_id and cited_revision is not None:
+                    current_source = conn.execute("SELECT revision FROM records WHERE id=%s AND deleted_at IS NULL", (source_id,)).fetchone()
+                    if current_source is None or current_source["revision"] != cited_revision:
+                        add("stale_journal_source", "A journal entry cites an earlier source revision. Review the current source before preparing this entry.", operation_id=str(entry["operation_id"]), record_id=source_id)
+            for issue in entry.get("issues", []):
+                if issue.get("severity") == "error":
+                    add(issue["code"], issue["message"], operation_id=str(entry["operation_id"]), **({"field": issue["field"]} if issue.get("field") else {}))
     for field in snapshot["fields"]:
         if field.get("required") and (field.get("missing") or field.get("value") is None or field.get("value") == ""):
             add("missing_fact", f"Provide {field['label']} before approval.", field=field["field"])
@@ -467,7 +615,8 @@ def _blockers(conn, data):
             if str(other["id"]) == fact["id"] or str(other["id"]) in excluded or candidate.get("review_status") == "rejected" or candidate.get("superseded_by") or candidate.get("conflict_status") == "resolved":
                 continue
             if candidate.get("key") == fact_data.get("key") and candidate.get("period") == fact_data.get("period") and candidate.get("temporal_basis") == fact_data.get("temporal_basis") and _physical_identity(candidate) == _physical_identity(fact_data):
-                if canonical([candidate.get("value"), candidate.get("unit")]) != canonical([fact_data.get("value"), fact_data.get("unit")]):
+                comparison = current["data"] if current and fact_data.get("key") == manual_journal.FACT_KEY else fact_data
+                if canonical([candidate.get("value"), candidate.get("unit")]) != canonical([comparison.get("value"), comparison.get("unit")]):
                     add("unresolved_conflict", "Another fact gives a different value or unit for the same field and period.", fact_id=fact["id"], conflicting_fact_id=str(other["id"]))
     for field in snapshot["fields"]:
         spec = next((item for item in specs if item["field"] == field["field"] and (_physical_identity(item) is None or _physical_identity(item) == field.get("physical_group_id"))), {})
@@ -492,12 +641,19 @@ def _blockers(conn, data):
         source_checksum = validation_sources.get("documents", {}).get(document["id"], document.get("data_checksum"))
         if current is None or current["revision"] != document["revision"] or digest(current["data"]) != source_checksum:
             add("stale_evidence", "Selected evidence changed. Prepare a fresh draft before approval.", document_id=document["id"])
-    for operation_id, retained in validation_sources.get("operations", {}).items():
+    operation_sources = validation_sources.get("operations", {})
+    farm_operations = _records(conn, "operations", data["farm_id"]) if operation_sources else []
+    for operation_id, retained in operation_sources.items():
         current = fetch_record(conn, "operations", operation_id)
         if current is None or current["revision"] != retained["revision"] or digest(current["data"]) != retained["checksum"]:
             add("stale_operation", "A farm activity used by this report changed. Prepare an amendment from the updated record.", operation_id=operation_id)
         if current and current["data"].get("review_status") != "confirmed":
             add("unreviewed_operation", "Confirm every selected farm activity before approval.", operation_id=operation_id)
+        successor, conflict = _current_operation(farm_operations, operation_id)
+        if conflict:
+            add("operation_correction_conflict", "Resolve the competing or circular confirmed application corrections before approval.", operation_id=operation_id)
+        elif successor and str(successor["id"]) != operation_id:
+            add("operation_superseded", "A separately confirmed correction replaces this application. Prepare a fresh draft from the current entry.", operation_id=operation_id, successor_id=str(successor["id"]))
     for record_id, retained in validation_sources.get("records", {}).items():
         row = conn.execute("SELECT kind, revision, data FROM records WHERE id = %s", (record_id,)).fetchone()
         if row is None or row["kind"] != retained["kind"] or row["revision"] != retained["revision"] or digest(row["data"]) != retained["checksum"]:
@@ -562,7 +718,7 @@ def _blockers(conn, data):
 def _impact(conn, report, blockers=None):
     if report["data"].get("status") != "issued":
         return {"needed": False, "changes": [], "message": "Review this draft before approval."}
-    relevant = {"stale_fact", "stale_operation", "stale_source_record", "unreviewed_source_record", "stale_evidence", "stale_context", "stale_pack", "reconciliation_changed", "unresolved_conflict", "unreviewed_operation"}
+    relevant = {"stale_fact", "stale_operation", "stale_source_record", "unreviewed_source_record", "stale_evidence", "stale_context", "stale_pack", "reconciliation_changed", "unresolved_conflict", "unreviewed_operation", "operation_superseded", "operation_correction_conflict", "stale_journal_source"}
     changes = [deepcopy(item) for item in (blockers if blockers is not None else _blockers(conn, report["data"])) if item["code"] in relevant]
     unique = {}
     for change in changes:
@@ -570,6 +726,7 @@ def _impact(conn, report, blockers=None):
         if identity not in unique or change["code"] in ("stale_fact", "stale_operation"):
             unique[identity] = change
     changes = list(unique.values())
+    farm_operations = _records(conn, "operations", report["data"]["farm_id"]) if any(change.get("operation_id") for change in changes) else []
     for change in changes:
         if change.get("fact_id"):
             prior = next((fact for fact in report["data"]["snapshot"]["facts"] if fact["id"] == change["fact_id"]), None)
@@ -587,12 +744,22 @@ def _impact(conn, report, blockers=None):
                 change["message"] = "A farm detail or its reviewed source changed after this version was prepared."
         if change.get("operation_id"):
             prior = next((operation for operation in report["data"]["snapshot"].get("operations", []) if operation["id"] == change["operation_id"]), None)
-            current = fetch_record(conn, "operations", change["operation_id"])
+            current, correction_conflict = _current_operation(farm_operations, change["operation_id"])
+            if current:
+                change["current_operation_id"] = str(current["id"])
+                change["current_operation_revision"] = current["revision"]
+            if correction_conflict:
+                change["message"] = "Resolve the confirmed correction lineage before preparing an amendment."
             if prior:
                 change["label"] = prior["data"].get("title", "Farm activity")
 
                 def activity_summary(data):
                     parts = [str(data.get("date") or data.get("period") or "Date not recorded")]
+                    if data.get("product"):
+                        parts.append(str(data["product"]))
+                    if data.get("dose") is not None:
+                        raw = (data.get("cz_ppp") or {}).get("original_numbers", {}).get("dose", data["dose"])
+                        parts.append(f"Dose {raw} {data.get('dose_unit') or 'unit not supplied'}")
                     if "quantity" in data:
                         parts.append(readable(data["quantity"]) + (f" {data['unit']}" if data.get("unit") not in (None, "") else ""))
                     if "hours" in data:
@@ -601,6 +768,11 @@ def _impact(conn, report, blockers=None):
 
                 change["previous_text"] = activity_summary(prior["data"])
                 change["current_text"] = activity_summary(current["data"]) if current else "Activity no longer available"
+                if prior.get("journal_entry"):
+                    change["previous"] = {"operation_id": prior["id"], "revision": prior["revision"], "data": deepcopy(prior["data"])}
+                    if current:
+                        public = {key: deepcopy(current["data"][key]) for key in prior["data"] if key in current["data"] and key != "sources"}
+                        change["current"] = {"operation_id": str(current["id"]), "revision": current["revision"], "data": public}
     return {"needed": bool(changes), "changes": changes, "message": "Records used by this issued report have changed. Review the changes and prepare an amendment; the issued version stays intact." if changes else "The records used by this issued version have not changed.", "next_action": "prepare_amendment" if changes else None}
 
 
@@ -665,13 +837,17 @@ def _review_record(conn, report, session):
 
 def _approval_payload(body):
     # Preserve hashes for keys created before this additive optional field.
-    return body.model_dump(mode="json", exclude={"check_fingerprint"} if body.check_fingerprint is None else set())
+    excluded = {"check_fingerprint"} if body.check_fingerprint is None else set()
+    if hasattr(body, "manual_journal_selection") and body.manual_journal_selection is None:
+        excluded.add("manual_journal_selection")
+    return body.model_dump(mode="json", exclude=excluded)
 
 
 @router.post("/reports", status_code=201)
 def create_report(body: CreateReport, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
-        report = idempotent(conn, idempotency_key, "report-create", body.model_dump(mode="json"), lambda: insert_record(conn, "reports", _prepare(conn, body, session)))
+        payload = body.model_dump(mode="json", exclude={"manual_journal_selection"} if body.manual_journal_selection is None else set())
+        report = idempotent(conn, idempotency_key, "report-create", payload, lambda: insert_record(conn, "reports", _prepare(conn, body, session)))
         return compact_record(report) if view == "summary" else report
 
 
@@ -748,6 +924,10 @@ def _farm_lock(conn, session, farm_id):
 
 def _approve_in_transaction(conn, report_id, body, session):
     report = _get(conn, "reports", report_id)
+    access = conn.execute("SELECT record_access(id,kind,data,true) AS allowed FROM records "
+                          "WHERE kind='reports' AND id=%s AND deleted_at IS NULL", (str(report_id),)).fetchone()
+    if not access or not access["allowed"]:
+        fail("role_required", "This farm's report approval requires review permission.", 403)
     # Every fact creator/reviewer and reconciliation resolver uses this farm lock.
     # Acquire it before row locks, matching the correction transaction lock order.
     _farm_lock(conn, session, report["data"]["farm_id"])
@@ -762,6 +942,7 @@ def _approve_in_transaction(conn, report_id, body, session):
     source_ids = {report["data"]["farm_id"], *(fact["id"] for fact in _records(conn, "facts", report["data"]["farm_id"])), *(document["id"] for document in snapshot["evidence"])}
     source_ids.update(report["data"].get("validation_sources", {}).get("operations", {}).keys())
     source_ids.update(report["data"].get("validation_sources", {}).get("records", {}).keys())
+    source_ids.update(report["data"].get("validation_sources", {}).get("journal_documents", {}).keys())
     if report["data"].get("request_id"):
         source_ids.add(report["data"]["request_id"])
     # Protect farm/request/evidence edits that do not participate in the farm lock.
@@ -808,9 +989,32 @@ def reissue_report(report_id: UUID, body: ReissueReport, session: Session = Depe
             if old["revision"] != body.expected_revision:
                 fail("revision_conflict", "The report changed. Refresh before preparing a correction.", 409)
             data = old["data"]
+            manual_pack = data["snapshot"]["pack"].get("journal_schema") == manual_journal.SCHEMA_ID
+            manual_selection = body.manual_journal_selection
+            if manual_pack:
+                if manual_selection is None:
+                    retained = next((journal.get("selection") for journal in data["snapshot"].get("journals", [])
+                                     if journal.get("schema_id") == manual_journal.SCHEMA_ID), None)
+                    if retained is None:
+                        fail("pt_journal_selection_required", "Review and explicitly select the source journal revision and rows again.")
+                    manual_selection = ManualJournalSelection(**retained)
+                elif body.fact_ids is None:
+                    fail("pt_journal_selection_required", "Include the explicitly reviewed source journal in fact_ids when changing the selection.")
             selected = body.selected_document_ids if body.selected_document_ids is not None else [item["id"] for item in data["snapshot"]["evidence"]]
-            operation_ids = body.operation_ids if body.operation_ids is not None else [item["id"] for item in data["snapshot"].get("operations", [])]
+            operation_ids = body.operation_ids
+            if operation_ids is None:
+                farm_operations = _records(conn, "operations", data["farm_id"])
+                operation_ids = []
+                for item in data["snapshot"].get("operations", []):
+                    current, conflict = _current_operation(farm_operations, item["id"])
+                    if conflict:
+                        fail("operation_correction_conflict", "Resolve the application correction lineage before preparing this amendment.", 409, operation_id=item["id"])
+                    operation_ids.append(str(current["id"]) if current else item["id"])
             fact_ids = body.fact_ids
+            if manual_pack and fact_ids is None:
+                # Unlike ordinary scalar answers, a manual row selection must
+                # never silently follow a corrected fact or newer revision.
+                fact_ids = [fact["id"] for fact in data["snapshot"]["facts"]]
             if fact_ids is None:
                 prior_keys = {(fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) for fact in data["snapshot"]["facts"]}
                 selectors = _field_specs(get_pack(data["pack_id"]))
@@ -819,7 +1023,7 @@ def reissue_report(report_id: UUID, body: ReissueReport, session: Session = Depe
                 selectors.extend(item for item in requirements if isinstance(item, dict) and item.get("type") != "evidence")
                 excluded = selected_fact_ids(conn, data["farm_id"])["excluded_fact_ids"]
                 fact_ids = [fact["id"] for fact in _records(conn, "facts", data["farm_id"]) if str(fact["id"]) not in excluded and fact["data"].get("review_status") != "rejected" and _same_period(fact, data["reporting_year"]) and (any(_matches_requirement(fact, selector, data["reporting_year"]) for selector in selectors) or (fact["data"].get("key"), literal(fact["data"].get("period")), fact["data"].get("temporal_basis"), _physical_identity(fact["data"])) in prior_keys)]
-            create = CreateReport(farm_id=data["farm_id"], request_id=data.get("request_id"), pack_id=data["pack_id"], reporting_year=data["reporting_year"], fact_ids=fact_ids, selected_document_ids=selected, operation_ids=operation_ids)
+            create = CreateReport(farm_id=data["farm_id"], request_id=data.get("request_id"), pack_id=data["pack_id"], reporting_year=data["reporting_year"], fact_ids=fact_ids, selected_document_ids=selected, operation_ids=operation_ids, manual_journal_selection=manual_selection)
             return insert_record(conn, "reports", _prepare(conn, create, session, correction_of=str(report_id)))
         report = idempotent(conn, idempotency_key, "report-reissue:" + str(report_id), _approval_payload(body), perform)
         return compact_record(report) if view == "summary" else report
@@ -848,11 +1052,20 @@ def fact_reports(fact_id: UUID, session: Session = Depends(require_session), vie
 def operation_reports(operation_id: UUID, session: Session = Depends(require_session), view: Literal["summary"] | None = None):
     with transaction(session) as conn:
         operation = _get(conn, "operations", operation_id)
+        lineage = {str(operation_id)}
+        current = operation
+        while current["data"].get("supersedes_id") and str(current["data"]["supersedes_id"]) not in lineage:
+            predecessor = str(current["data"]["supersedes_id"])
+            prior = _get(conn, "operations", predecessor)
+            if prior["data"].get("farm_id") != operation["data"].get("farm_id") or prior["data"].get("type") != operation["data"].get("type"):
+                break
+            lineage.add(predecessor)
+            current = prior
         if view == "summary":
             records = _summary_records(conn, "kind='reports' AND deleted_at IS NULL AND data->>'farm_id'=%s "
-                                       "AND (data#>'{validation_sources,operations}') ? %s", (operation["data"].get("farm_id"), str(operation_id)))
+                                       "AND (data#>'{validation_sources,operations}') ?| %s::text[]", (operation["data"].get("farm_id"), sorted(lineage)))
         else:
-            records = [report for report in _records(conn, "reports", operation["data"].get("farm_id")) if str(operation_id) in report["data"].get("validation_sources", {}).get("operations", {})]
+            records = [report for report in _records(conn, "reports", operation["data"].get("farm_id")) if lineage.intersection(report["data"].get("validation_sources", {}).get("operations", {}))]
         return {"items": records, "total": len(records), "limit": len(records), "offset": 0}
 
 

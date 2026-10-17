@@ -16,7 +16,9 @@ targets:
     sources:
       - App
       - Shared/IntakeInbox.swift
-      - path: ../web/public/assets/elephant-logo.png
+      - path: ../web/public/assets/barn.png
+        buildPhase: resources
+      - path: ../web/public/assets/barn-LICENSE.txt
         buildPhase: resources
       - path: ../../locales/interface.json
         buildPhase: resources

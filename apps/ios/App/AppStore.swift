@@ -116,6 +116,28 @@ import UniformTypeIdentifiers
         guard current == generation else { throw CancellationError() }
         return value
     }
+    func rememberCase(_ record: RecordItem) throws {
+        guard record.kind == "admin_cases", record.workspace_id == account?.workspace.id else { throw ServiceError(status: 0, message: "This case does not belong to the current private workspace.") }
+        disk.records["cases"] = Array((records("cases").filter { $0.id != record.id } + [record]).suffix(200)); try persist()
+    }
+    func casePage(farmID: String?, job: String?, offset: Int) async throws -> RecordPage {
+        var url = URLComponents(); url.path = "/cases"; url.queryItems = [URLQueryItem(name: "limit", value: "20"), URLQueryItem(name: "offset", value: String(offset))]
+        if let farmID { url.queryItems?.append(URLQueryItem(name: "farm_id", value: farmID)) }; if let job { url.queryItems?.append(URLQueryItem(name: "job_type", value: job)) }
+        let value = try await scopedValue(url.string ?? "")
+        let page = try JSONDecoder().decode(RecordPage.self, from: JSONEncoder().encode(value))
+        guard value.object["offset"] == .number(Double(offset)), value.object["limit"] == .number(20), page.items.count <= 20, page.total >= offset + page.items.count, !page.items.isEmpty || offset == page.total, page.items.allSatisfy({ $0.kind == "admin_cases" && $0.workspace_id == account?.workspace.id && (farmID == nil || $0.value("farm_id") == farmID) && (job == nil || $0.value("job_type") == job) }) else { throw ServiceError(status: 0, message: "The complete case page did not match this workspace and selected farm.") }
+        // List projections must never replace an exact loaded case used by an open editor.
+        let ids = Set(page.items.map(\.id))
+        disk.records["case_summaries"] = Array((records("case_summaries").filter { !ids.contains($0.id) } + page.items).suffix(200))
+        try persist(); return page
+    }
+    func operationPage(farmID: String, offset: Int) async throws -> RecordPage {
+        let value = try await scopedValue("/operations?farm_id=\(farmID)&limit=20&offset=\(offset)")
+        let page = try JSONDecoder().decode(RecordPage.self, from: JSONEncoder().encode(value))
+        guard value.object["offset"] == .number(Double(offset)), value.object["limit"] == .number(20), page.items.count <= 20, page.total >= offset + page.items.count, !page.items.isEmpty || offset == page.total, page.items.allSatisfy({ $0.workspace_id == account?.workspace.id && $0.value("farm_id") == farmID }) else { throw ServiceError(status: 0, message: "The farm work page did not match this workspace and complete range. It was not saved.") }
+        let ids = Set(page.items.map(\.id)); disk.records["operations"] = records("operations").filter { !ids.contains($0.id) } + page.items
+        try persist(); return page
+    }
     func checkCapture(_ body: [String: JSONValue]) async throws -> CaptureCheck {
         let value = try await scopedValue("/workflow/check", method: "POST", body: body)
         return try JSONDecoder().decode(CaptureCheck.self, from: JSONEncoder().encode(value))
@@ -339,12 +361,12 @@ import UniformTypeIdentifiers
         }
         guard current == generation else { throw CancellationError() }
     }
-    func export(_ path: String, suffix: String) async throws -> ExportFile {
+    func export(_ path: String, suffix: String, maximumBytes: Int64 = ProtectedFileTransfer.maximumBytes, expectedContentType: String? = nil) async throws -> ExportFile {
         guard let api, let storage, sessionVerified else { throw ServiceError(status: 0, message: "Connect to download the authorized file.") }
         guard activeExports.isEmpty else { throw ServiceError(status: 0, message: "Finish or cancel the current file download before starting another.") }
         let current = generation
         let file = ExportFile(url: try storage.exportURL(suffix: suffix))
-        let transfer = try ProtectedFileTransfer(request: api.fileRequest(path), destination: file.url)
+        let transfer = try ProtectedFileTransfer(request: api.fileRequest(path), destination: file.url, maximumBytes: maximumBytes, expectedContentType: expectedContentType)
         activeExports[file.id] = transfer
         do {
             try await transfer.run()
@@ -401,9 +423,9 @@ import UniformTypeIdentifiers
     }
     func handleURL(_ url: URL) {
         guard url.scheme == "funkyfarm", let collection = url.host,
-              ["requests", "documents", "farms", "reports", "operations", "purchases", "sales", "facts", "tasks", "checklists"].contains(collection),
+              ["requests", "documents", "farms", "reports", "operations", "purchases", "sales", "facts", "tasks", "checklists", "cases"].contains(collection),
               let id = url.pathComponents.last, UUID(uuidString: id) != nil else { return }
-        tab = ["requests": 3, "documents": 4, "farms": 2, "reports": 3, "operations": 1, "purchases": 1, "sales": 1, "facts": 3, "tasks": 3, "checklists": 3][collection] ?? 0
+        tab = ["requests": 3, "documents": 4, "farms": 2, "reports": 3, "operations": 1, "purchases": 1, "sales": 1, "facts": 3, "tasks": 3, "checklists": 3, "cases": 3][collection] ?? 0
         route = RecordRoute(collection: collection, id: id)
     }
     private func persist() throws { try storage?.save(disk) }

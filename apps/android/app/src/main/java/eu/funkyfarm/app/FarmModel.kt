@@ -34,6 +34,8 @@ class FarmModel(val context: Context) {
     var detail by mutableStateOf<Pair<String, String>?>(null)
     var administration by mutableStateOf<Pair<String, String?>?>(null)
     var sourceImports by mutableStateOf<JSONObject?>(null)
+    var czechJournal by mutableStateOf<JSONObject?>(null)
+    var cases by mutableStateOf<JSONObject?>(null)
     var item by mutableStateOf<JSONObject?>(null); private set
     var records by mutableStateOf<Map<String, List<JSONObject>>>(emptyMap()); private set
     var totals by mutableStateOf<Map<String, Int>>(emptyMap()); private set
@@ -61,7 +63,7 @@ class FarmModel(val context: Context) {
     fun api() = Api(origin, session?.optString("token").orEmpty(), session?.optJSONObject("workspace")?.optString("id").orEmpty())
     private fun activate(auth: JSONObject, endpoint: String, restoring: Boolean = false) {
         cancelReportExport(); clearReportExports(incompleteOnly = restoring)
-        generation++; origin = endpoint; session = auth; administration = null; sourceImports = null
+        generation++; origin = endpoint; session = auth; administration = null; sourceImports = null; czechJournal = null; cases = null
         vault = PrivateStore(context, auth.getJSONObject("user").getString("id") + ":" + auth.getJSONObject("workspace").getString("id"))
         state = vault!!.json("workspace.json")
         staged = state.optJSONArray("attachments")?.objects().orEmpty()
@@ -97,7 +99,7 @@ class FarmModel(val context: Context) {
     }
     fun logout() {
         cancelReportExport()
-        val client = api(); val old = vault; administration = null; sourceImports = null
+        val client = api(); val old = vault; administration = null; sourceImports = null; czechJournal = null; cases = null
         generation++; session = null; vault = null; state = JSONObject(); records = emptyMap(); totals = emptyMap(); staged = emptyList(); packs = emptyList(); extras = emptyMap(); privateUnavailable = emptySet(); item = null; detail = null; sending.clear(); busy = false; offline = false
         bootstrap.purge(); old?.purge(); intake.purge(); shared = emptyList()
         listOf("exports", "camera").forEach { name -> File(context.cacheDir, name).listFiles()?.forEach { it.delete() } }
@@ -276,6 +278,7 @@ class FarmModel(val context: Context) {
                 message = "Synchronized with your workspace."; refresh(); detail?.let { open(it.first, it.second) }
                 if (job.optString("path") in listOf("/workflow/capture", "/workflow/answer")) response.optJSONObject("record")?.let { saved -> open(saved.getString("kind"), saved.getString("id")) }
                 if (response.optString("kind") == "reports") open("reports", response.getString("id"))
+                if (job.optString("path") == "/cases" && response.optString("kind") == "admin_cases") cases = obj("case_id" to response.getString("id"))
                 if (job.optString("path") == "/workflow/onboard") { detail = null; tab = "Home" }
             } catch (error: Throwable) {
                 if (generation != expected) return@action
@@ -297,6 +300,7 @@ class FarmModel(val context: Context) {
                 path == "/regulatory/preferences" -> client.request("/regulatory/updates?farm_id=${job.getJSONObject("body").getString("farm_id")}").getJSONObject("preferences")
                 path.startsWith("/compliance/farms/") -> client.request(path.substringBefore("/checklist") + "?year=${job.getJSONObject("body").optInt("year", java.time.LocalDate.now().year)}")
                 path == "/workflow/capture" || path == "/workflow/answer" -> error("Check the saved details again in their original form. This action will not be rebased automatically.")
+                path.startsWith("/cases/") -> client.request("/cases/" + path.removePrefix("/cases/").substringBefore('/').substringBefore('?'))
                 path.startsWith("/reports/") -> client.request("/reports/" + path.removePrefix("/reports/").substringBefore('/').substringBefore('?'))
                 path == "/reports" -> error("Reload the report list to compare saved previews. Report creation is not rebased automatically.")
                 else -> client.request(path.substringBefore("/review").substringBefore("/approve").substringBefore("/reply").substringBefore("/close"))
@@ -306,6 +310,7 @@ class FarmModel(val context: Context) {
     }
     fun resolveConflict(job: JSONObject) {
         require(job.getString("method") == "PATCH" && job.has("current"))
+        require(!job.getString("path").startsWith("/cases/")) { "Compare this preparation job and compose a fresh edit. Its saved payload will not be rebased automatically." }
         val body = JSONObject(job.getJSONObject("body").toString()).put("expected_revision", job.getJSONObject("current").getInt("revision"))
         val path = job.getString("path"); discard(job.getString("id")); enqueue(path, body, "PATCH")
     }
@@ -398,5 +403,57 @@ class FarmModel(val context: Context) {
         val expected = generation; val client = api()
         val bytes = withContext(Dispatchers.IO) { client.download("/documents/${record.getString("id")}/file") }
         if (generation == expected) completed(bytes)
+    }
+    fun exportCaseField(path: String, completed: (File, String) -> Unit) {
+        if (exporting) { message = "Finish or cancel the current private download first."; return }
+        try {
+            val uri = java.net.URI(path)
+            require(uri.scheme == null && uri.rawAuthority == null && uri.rawFragment == null)
+            val match = Regex("^/field-proposals/([0-9a-fA-F-]{36})/export$").matchEntire(uri.path) ?: error("This is not a supported field-change download.")
+            UUID.fromString(match.groupValues[1])
+            val arguments = uri.rawQuery.orEmpty().split('&').map { it.split('=', limit = 2) }
+            require(arguments.size == 2 && arguments.all { it.size == 2 } && arguments.map { it[0] }.toSet() in listOf(setOf("format", "expected_revision"), setOf("format", "retained_revision"))) { "A field export needs exactly one current or retained reviewed revision." }
+            val query = arguments.associate { it[0] to it[1] }; val format = query.getValue("format")
+            require(format in listOf("geojson", "correction", "kml") && (query["expected_revision"] ?: query["retained_revision"])?.toIntOrNull()?.let { it > 0 } == true)
+            streamCaseExport(path, "field-change", if (format == "correction") "json" else format, when (format) { "kml" -> "application/vnd.google-earth.kml+xml"; "geojson" -> "application/geo+json"; else -> "application/json" }, REPORT_EXPORT_BUDGET, completed = completed)
+        } catch (error: Throwable) { message = error.message ?: "The revision-bound field export could not be prepared." }
+    }
+    fun exportCasePacket(path: String, caseId: String, completed: (File, String) -> Unit) {
+        if (exporting) { message = "Finish or cancel the current private download first."; return }
+        try {
+            val uri = java.net.URI(path)
+            require(uri.scheme == null && uri.rawAuthority == null && uri.rawFragment == null)
+            val match = Regex("^/cases/([0-9a-fA-F-]{36})/packet$").matchEntire(uri.path) ?: error("This is not a supported prepared-folder download.")
+            require(UUID.fromString(match.groupValues[1]) == UUID.fromString(caseId)) { "This prepared folder belongs to a different job." }
+            val arguments = uri.rawQuery.orEmpty().split('&').map { it.split('=', limit = 2) }
+            require(arguments.size == 2 && arguments.all { it.size == 2 } && arguments.map { it[0] }.toSet() in listOf(setOf("expected_revision", "reference_fingerprint"), setOf("retained_revision", "reference_fingerprint"))) { "A prepared folder needs exactly one reviewed revision and its source fingerprint." }
+            val query = arguments.associate { it[0] to it[1] }
+            require((query["expected_revision"] ?: query["retained_revision"])?.toIntOrNull()?.let { it > 0 } == true && query.getValue("reference_fingerprint").matches(Regex("[0-9a-fA-F]{64}"))) { "The prepared-folder review identity is invalid. Reload this job." }
+            streamCaseExport(path, "prepared-folder", "zip", "application/zip", 128L * 1024 * 1024, expectedMime = "application/zip", completed = completed)
+        } catch (error: Throwable) { message = error.message ?: "The complete prepared folder could not be prepared. No file was shared." }
+    }
+    private fun streamCaseExport(path: String, prefix: String, suffix: String, mime: String, maximumBytes: Long, expectedMime: String? = null, completed: (File, String) -> Unit) {
+        try {
+            require(session != null)
+            val expected = generation; val sourceVersion = serverVersion; val client = api()
+            val directory = File(context.cacheDir, "exports").apply { mkdirs() }; clearReportExports()
+            val budget = minOf(maximumBytes, directory.usableSpace - REPORT_DISK_RESERVE)
+            require(budget > 0) { "Free private storage before downloading; 32 MiB is kept available." }
+            val file = File(directory, "$prefix-${UUID.randomUUID()}.$suffix")
+            val transfer = ReportFileTransfer(File(directory, file.name + ".partial"), budget)
+            reportTransfer = transfer; exporting = true
+            exportJob = scope.launch {
+                var shared = false
+                try {
+                    withContext(Dispatchers.IO) { client.streamReport(path, transfer, expectedMime) }
+                    if (generation != expected || session == null) throw CancellationException()
+                    require(serverVersion == sourceVersion) { "The signed-in source context changed during download. Reload the job before sharing." }
+                    transfer.check(); require(transfer.file.renameTo(file)) { "The complete private file could not be prepared for sharing." }
+                    completed(file, mime); shared = true
+                } catch (error: CancellationException) { /* Sign-out, context disposal or explicit cancellation owns cleanup. */ }
+                catch (error: Throwable) { if (generation == expected && !transfer.cancelled) message = error.message ?: "The complete private download could not finish. No incomplete file was shared." }
+                finally { if (!shared) { transfer.file.delete(); file.delete() }; if (reportTransfer === transfer) { reportTransfer = null; exportJob = null; exporting = false } }
+            }
+        } catch (error: Throwable) { cancelReportExport(); message = error.message ?: "The private file could not be prepared. No file was shared." }
     }
 }

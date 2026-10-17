@@ -149,4 +149,46 @@
     ],
     "checks": []
   }
+  ,{
+    "id": "pt-ppp-surface-journal",
+    "country": "PT",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": null,
+    "version": "dgav-surface-manual-2026-09-14-v1",
+    "title": "Portuguese crop-protection record — literal manual preparation",
+    "journal_schema": "pt-ppp-surface-v1",
+    "capability": "manual_preparation",
+    "mapping_status": "manual_preparation",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "fields": [{"key":"pt.ppp.surface_journal","label":"Literal surface-treatment journal","required":true,"temporal_basis":"static","unit":null,"value_type":"object","capture_kind":"manual_journal"}],
+    "sources": [{"title":"DGAV — Modelo para registo de aplicações de produtos fitofarmacêuticos: Tratamento de superfícies","url":"https://www.dgav.pt/wp-content/uploads/2026/09/Modelo-para-registo-de-aplicacoes-de-PF_tratamentos-superficies.xlsx","page_url":"https://www.dgav.pt/medicamentos/conteudo/produtos-fitofarmaceuticos/uso-sustentavel-dos-produtos-fitofarmaceuticos/","edition":"Metadata modified 2026-09-14; no printed version or reporting year.","sha256":"34ebb9d9d933cab566cf2084a6592ade06aa80821e363b7a428969c9f19dd2f3","sheet":"Tratamento de superfícies","headers":"A4:M4","entry_slots":"A5:M20","identity_cell":"A2","observations_cell":"A21"}],
+    "manual_schema": {
+      "schema_id":"pt-ppp-surface-v1",
+      "fact_key":"pt.ppp.surface_journal",
+      "identity":{"key":"identity_text","label":"Nome do produtor/empresa ou entidade autorizada:","max_chars":1000},
+      "observations":{"key":"observations_text","label":"Obs.","max_chars":8000},
+      "limits":{"max_entries":256,"cell_max_chars":2000,"block_size":16},
+      "notice":"Manual preparation from the named DGAV source. Check missing details and the recipient's requirements. Not an authority submission, legal compliance decision or verified product authorisation. The report year is app selection metadata, not a printed workbook period.",
+      "source":{"title":"DGAV — Modelo para registo de aplicações de produtos fitofarmacêuticos: Tratamento de superfícies","url":"https://www.dgav.pt/wp-content/uploads/2026/09/Modelo-para-registo-de-aplicacoes-de-PF_tratamentos-superficies.xlsx","page_url":"https://www.dgav.pt/medicamentos/conteudo/produtos-fitofarmaceuticos/uso-sustentavel-dos-produtos-fitofarmaceuticos/","edition":"Metadata modified 2026-09-14; no printed version or reporting year.","sha256":"34ebb9d9d933cab566cf2084a6592ade06aa80821e363b7a428969c9f19dd2f3","sheet":"Tratamento de superfícies","headers":"A4:M4","entry_slots":"A5:M20","identity_cell":"A2","observations_cell":"A21"},
+      "columns":[
+        {"column":"A","key":"application_date_time_text","label":"Data (e hora de início, se aplicável)","source_header":"A4","unit":null,"source_required":null,"hint":"Keep literal date/time text. Confirm the actual ISO date separately; never infer it from this cell."},
+        {"column":"B","key":"location_text","label":"Localização ","source_header":"B4","unit":null,"source_required":null,"hint":"Keep the supplied location; do not infer LPIS identifiers or coordinates."},
+        {"column":"C","key":"use_crop_oepp_text","label":"Tipo de utilização/cultura (código OEPP)","source_header":"C4","unit":null,"source_required":null,"hint":"Keep crop/use and OEPP text; the source cell's date formatting does not define a crop date."},
+        {"column":"D","key":"bbch_text","label":"Estado fenológico (BBCH)","source_header":"D4","unit":null,"source_required":null,"hint":"Keep stage text, ranges and leading zeros; no code validity is inferred."},
+        {"column":"E","key":"target_text","label":"Inimigo ","source_header":"E4","unit":null,"source_required":null,"hint":"Keep the actual target or purpose; no product-label inference."},
+        {"column":"F","key":"treated_area_text","label":"Área tratada\n(ha ou m2)","source_header":"F4","unit":["ha","m2"],"source_required":null,"hint":"Preserve the value and explicit original unit; do not assume hectares or convert."},
+        {"column":"G","key":"applicator_number_text","label":"N.º de aplicador","source_header":"G4","unit":null,"source_required":null,"hint":"Identifier text, including leading zeros; never a numeric counter."},
+        {"column":"H","key":"product_name_text","label":"Nome","source_header":"H4","unit":null,"source_required":null,"hint":"Product name, distinct from producer and applicator."},
+        {"column":"I","key":"product_authorisation_text","label":"Número de autorização","source_header":"I4","unit":null,"source_required":null,"hint":"Product-authorisation identifier, not the seller's activity authorisation."},
+        {"column":"J","key":"seller_establishment_text","label":" Estabelecimento de venda ","source_header":"J4","unit":null,"source_required":null,"hint":"Actual selling establishment; do not substitute producer or applicator."},
+        {"column":"K","key":"seller_activity_authorisation_text","label":"N.º de autorização de exercício de atividade","source_header":"K4","unit":null,"source_required":null,"hint":"Seller activity-authorisation identifier; no identifier grammar is inferred."},
+        {"column":"L","key":"quantity_or_dose_text","label":"Quant. de produto aplicado (kg ou L) ou dose (kg ou L/ha ou m²)","source_header":"L4","unit":null,"source_required":null,"hint":"Keep amount/dose and unit/basis text verbatim. No classification, multiplication or conversion."},
+        {"column":"M","key":"mixture_volume_text","label":"Volume de calda  (L)","source_header":"M4","unit":"L","source_required":null,"hint":"Actual spray-mixture volume in printed L; not product quantity, irrigation or water abstraction."}
+      ]
+    },
+    "limitations":["Literal manual preparation only. Legal applicability, mandatory cells, retention, product authorisation and recipient acceptance remain unresolved.","No authority upload, official XML/XLSX conformity, signature or filing is provided.","The source's sixteen slots define derivative display blocks, not a legal record limit. No quantity, dose, area or mixture totals are inferred.","The app-selected year is not printed in the source; only separately confirmed actual dates select rows.","A September 2026 source publication does not establish a 2026 machine-readable record mandate."],
+    "checks":["literal_schema","confirmed_source_revision","explicit_ordered_dated_selection","reviewed_identity","source_document_revision","unresolved_content_acknowledgement"]
+  }
 ]

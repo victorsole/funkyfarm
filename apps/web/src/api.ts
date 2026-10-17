@@ -20,7 +20,7 @@ function endpoint(path: string): string {
   return path.startsWith(`${PREFIX}/`) ? path : `${PREFIX}${path}`;
 }
 
-type MutationOptions = { idempotencyKey?: string };
+type MutationOptions = { idempotencyKey?: string; signal?: AbortSignal };
 
 async function request(path: string, method = 'GET', body?: unknown, options?: MutationOptions): Promise<Response> {
   const headers = new Headers({ Accept: 'application/json' });
@@ -36,9 +36,11 @@ async function request(path: string, method = 'GET', body?: unknown, options?: M
       credentials: 'include',
       cache: 'no-store',
       headers,
+      signal: options?.signal,
       body: body === undefined ? undefined : upload ? body : JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    if (options?.signal?.aborted || error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(0, 'connection_failed', 'We could not reach the farm workspace. Check your connection and try again.');
   }
   if (!response.ok) {
@@ -65,6 +67,7 @@ export const api = {
   patch: <T>(path: string, body: unknown) => json<T>(path, 'PATCH', body),
   upload: <T>(path: string, body: FormData) => json<T>(path, 'POST', body),
   download: async (path: string): Promise<Blob> => (await request(path)).blob(),
+  downloadResponse: (path: string, options?: { signal?: AbortSignal }): Promise<Response> => request(path, 'GET', undefined, options),
 };
 
 export function errorMessage(error: unknown): string {

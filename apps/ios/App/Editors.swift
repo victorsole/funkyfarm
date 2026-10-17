@@ -234,31 +234,67 @@ struct ReportComposer: View {
     @Environment(\.dismiss) private var dismiss
     var request: RecordItem? = nil
     var reissue: RecordItem? = nil
+    var initialFarmID: String? = nil
+    var initialPackID: String? = nil
+    var initialYear: Int? = nil
+    var initialOperationIDs: Set<String> = []
     @State private var farm = ""
     @State private var country = "DE"
     @State private var year = Calendar.current.component(.year, from: Date())
     @State private var pack = ""
     @State private var selectedFacts: Set<String> = []
     @State private var selectedDocuments: Set<String> = []
+    @State private var selectedOperations: Set<String> = []
+    @State private var replaceRetainedOperations = false
+    @State private var preflight: [String: JSONValue]?
+    @State private var checkedSelection: [String: JSONValue]?
+    @State private var initialized = false
+    @State private var selectionFarm = ""
     @State private var submissionKey = UUID()
     @State private var working = false
     @State private var error: String?
     private var availablePacks: [Pack] { store.packs(country: country, year: year) }
+    private var actualRequestID: String? { if let request { return request.id }; guard let id = reissue?.data["request_id"]?.text, UUID(uuidString: id) != nil else { return nil }; return id }
+    private var contextRequest: RecordItem? { request ?? actualRequestID.flatMap { store.record("requests", $0) } }
+    private var journalPack: Bool { pack == CzechJournalData.pack || availablePacks.first(where: { $0.id == pack })?.data["journal_schema"] == .string(CzechJournalData.schema) }
+    private var eligibleOperations: [RecordItem] { store.records("operations").filter { $0.value("farm_id") == farm && $0.state == "confirmed" && CzechJournalData.isActive($0) && CzechJournalData.year($0) == year && (!journalPack || CzechJournalData.isEntry($0)) } }
+    private var sourceRevisions: [String: JSONValue] {
+        var result: [String: JSONValue] = [:]
+        for collection in ["facts", "documents", "operations"] {
+            let selected = collection == "facts" ? selectedFacts : collection == "documents" ? selectedDocuments : selectedOperations
+            for record in store.records(collection) where selected.contains(record.id) { result[collection + ":" + record.id] = .array([.number(Double(record.revision)), .string(record.state)]) }
+        }
+        if let request = contextRequest { result["request"] = .number(Double(store.record("requests", request.id)?.revision ?? request.revision)) }
+        if let farm = store.record("farms", farm) { result["farm"] = .number(Double(farm.revision)) }
+        return result
+    }
+    private var preparation: [String: JSONValue] {
+        var body: [String: JSONValue] = ["farm_id": .string(farm), "pack_id": .string(pack), "reporting_year": .number(Double(year)), "fact_ids": .array(selectedFacts.sorted().map(JSONValue.string)), "selected_document_ids": .array(selectedDocuments.sorted().map(JSONValue.string))]
+        if reissue == nil || journalPack || replaceRetainedOperations { body["operation_ids"] = .array(selectedOperations.sorted().map(JSONValue.string)) }
+        if let actualRequestID { body["request_id"] = .string(actualRequestID) }
+        return body
+    }
     var body: some View {
         Form {
             Section("Prepare a reviewed draft") {
-                FarmPicker(selected: $farm)
-                TextField("Country code", text: $country).textInputAutocapitalization(.characters)
-                Stepper("Reporting year \(String(year))", value: $year, in: 2000...2100)
+                FarmPicker(selected: $farm).disabled(request != nil || reissue != nil)
+                TextField("Country code", text: $country).textInputAutocapitalization(.characters).disabled(request != nil || reissue != nil)
+                Stepper("Reporting year \(String(year))", value: $year, in: 2000...2100).disabled(request != nil || reissue != nil)
                 if reissue == nil {
                     Button("Load available packs") { Task { do { try await store.loadPacks(country: country, year: year) } catch { self.error = error.localizedDescription } } }
                     Picker("Pack", selection: $pack) {
                         Text("Choose pack").tag("")
                         if !pack.isEmpty, !availablePacks.contains(where: { $0.id == pack }) { Text(pack).tag(pack) }
                         ForEach(availablePacks) { Text($0.title).tag($0.id) }
-                    }
+                    }.disabled(request != nil)
                 } else { Notice("This prepares a new draft. The previous issued report stays unchanged.") }
                 if let p = availablePacks.first(where: { $0.id == pack }) { Text(p.capability).font(.callout); DisclosureGroup("Source and version") { JSONFields(data: p.data) } }
+            }
+            if pack == "pt-ppp-surface-journal" {
+                Section("Choose literal Portuguese journal rows") {
+                    NavigationLink("Open the Portuguese journal row selector") { PortugueseJournalView(initialFarmID: farm, reissue: reissue, request: request) }.disabled(farm.isEmpty || !store.sessionVerified)
+                    Notice("Use the journal selector to explicitly check its source revision, actual dates, row order and unknown cells. The generic fact and work selections below do not substitute for that review. No operation or date is inferred.")
+                }
             }
             Section("Choose confirmed facts") {
                 let facts = store.records("facts").filter { $0.value("farm_id") == farm && $0.state == "confirmed" }
@@ -279,21 +315,54 @@ struct ReportComposer: View {
                 ForEach(store.records("documents").filter { $0.value("farm_id") == farm }) { item in Toggle(item.title, isOn: membership(item.id, set: $selectedDocuments)) }
                 Text("Only the selected evidence is requested for this draft. Review the service's snapshot before approval.").font(.footnote).foregroundStyle(.secondary)
             }
-            Section { Button(reissue == nil ? "Prepare draft" : "Prepare reissue") { create() }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || farm.isEmpty || pack.isEmpty); if working { ProgressView("Preparing snapshot…") }; if let error { Notice(error, warning: true) } }
+            Section("Explicitly selected application / work entries") {
+                if journalPack { Notice("Select each confirmed Czech application to retain in this journal. Same field and date do not merge records. Holder identity is a separately selected confirmed fact.") }
+                if reissue != nil, !journalPack {
+                    Toggle("Replace this report's retained work selection", isOn: $replaceRetainedOperations)
+                    if !replaceRetainedOperations { Notice("The service will preserve the issued report's existing work selection. Turn replacement on only to choose a new explicit selection below.") }
+                }
+                ForEach(eligibleOperations) { operation in
+                    VStack(alignment: .leading) {
+                        Toggle(operation.title + " · " + operation.value("date") + " · revision \(operation.revision)", isOn: membership(operation.id, set: $selectedOperations)).disabled(reissue != nil && !journalPack && !replaceRetainedOperations)
+                        NavigationLink("Review this application or work source") { DetailView(collection: "operations", id: operation.id) }
+                    }
+                }
+                Text("\(selectedOperations.count) entries selected. No application, quantity, dose or treated total is inferred from a purchase or an unselected entry.").font(.footnote)
+            }
+            Section("Preparation checks for this selection") {
+                if actualRequestID != nil {
+                    Button("Check these exact selected records") { runPreflight() }.disabled(working || !store.sessionVerified || farm.isEmpty || pack.isEmpty || contextRequest == nil)
+                    if contextRequest == nil { Notice("The existing linked letter has not loaded. Reload this workspace before checking its selected records; the app does not replace or fabricate the letter.", warning: true) }
+                    if let preflight {
+                        LabeledContent("Preparation state", value: preflight["status"]?.text ?? "Unavailable")
+                        ForEach(Array((preflight["issues"]?.array ?? []).enumerated()), id: \.offset) { _, issue in Notice(issue.object["message"]?.text ?? "Review the selected source record.", warning: issue.object["severity"]?.text == "error") }
+                        Notice(preflight["notice"]?.text ?? "Preparation checks do not establish authority acceptance. The draft still requires exact snapshot review and explicit approval.")
+                    }
+                } else { Notice("No letter is linked. Check this journal before approving it. Preparing the selected entries creates a service-checked draft; approval remains a separate decision.") }
+            }
+            Section { Button(journalPack ? "Check selected entries in a journal preview" : reissue == nil ? "Prepare draft" : "Prepare reissue") { create() }.buttonStyle(.borderedProminent).disabled(pack == "pt-ppp-surface-journal" || working || !store.sessionVerified || farm.isEmpty || pack.isEmpty || (journalPack && selectedOperations.isEmpty) || (journalPack && actualRequestID != nil && checkedSelection != preparation)); if working { ProgressView("Preparing snapshot…") }; if let error { Notice(error, warning: true) } }
         }.navigationTitle(reissue == nil ? "Prepare report" : "Reissue report")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() } } }
             .onAppear {
+                guard !initialized else { return }; initialized = true
                 let source = request ?? reissue
-                farm = source?.value("farm_id") ?? (store.records("farms").count == 1 ? store.records("farms")[0].id : "")
-                pack = source?.value("pack_id") ?? ""
+                farm = source?.value("farm_id") ?? initialFarmID ?? (store.records("farms").count == 1 ? store.records("farms")[0].id : "")
+                selectionFarm = farm
+                pack = source?.value("pack_id") ?? initialPackID ?? ""
                 if let source, case .number(let n)? = source.data["reporting_year"] { year = Int(n) }
+                else if let initialYear { year = initialYear }
                 if let request { country = request.value("country") }
+                else { country = store.record("farms", farm)?.value("country") ?? country }
+                selectedOperations = initialOperationIDs
             }
-            .onChange(of: farm) { _ in selectedFacts = []; selectedDocuments = [] }
+            .onChange(of: farm) { next in if selectionFarm != next { selectedFacts = []; selectedDocuments = []; selectedOperations = []; selectionFarm = next }; country = store.record("farms", farm)?.value("country") ?? country }
             .onChange(of: selectedFacts) { _ in submissionKey = UUID() }
             .onChange(of: selectedDocuments) { _ in submissionKey = UUID() }
             .onChange(of: year) { _ in submissionKey = UUID() }
             .onChange(of: pack) { _ in submissionKey = UUID() }
+            .onChange(of: preparation) { _ in submissionKey = UUID(); preflight = nil; checkedSelection = nil }
+            .onChange(of: eligibleOperations) { records in selectedOperations.formIntersection(Set(records.map(\.id))); preflight = nil; checkedSelection = nil }
+            .onChange(of: sourceRevisions) { _ in preflight = nil; checkedSelection = nil }
     }
     private func membership(_ id: String, set: Binding<Set<String>>) -> Binding<Bool> {
         Binding(get: { set.wrappedValue.contains(id) }, set: { selected in if selected { set.wrappedValue.insert(id) } else { set.wrappedValue.remove(id) } })
@@ -308,17 +377,33 @@ struct ReportComposer: View {
         }
     }
     private func create() {
+        guard pack != "pt-ppp-surface-journal" else { error = "Choose the Portuguese journal's exact source revision and ordered dated rows in its dedicated selector."; return }
         working = true; error = nil
         Task {
             do {
-                var body: [String: JSONValue] = ["farm_id": .string(farm), "pack_id": .string(pack), "reporting_year": .number(Double(year)), "fact_ids": .array(selectedFacts.sorted().map(JSONValue.string)), "selected_document_ids": .array(selectedDocuments.sorted().map(JSONValue.string))]
-                if let request { body["request_id"] = .string(request.id) }
+                var body = preparation
                 if let reissue {
+                    let operations = body["operation_ids"]
                     body = ["expected_revision": .number(Double(reissue.revision)), "snapshot_checksum": .string(reissue.value("checksum")), "fact_ids": body["fact_ids"]!, "selected_document_ids": body["selected_document_ids"]!]
+                    if let operations { body["operation_ids"] = operations }
                     try await store.mutate("/reports/\(reissue.id)/reissue", body: body, idempotency: submissionKey.uuidString)
                 } else { try await store.mutate("/reports", body: body, idempotency: submissionKey.uuidString) }
                 dismiss()
             } catch { self.error = error.localizedDescription }
+            working = false
+        }
+    }
+    private func runPreflight() {
+        guard let request = contextRequest else { return }
+        let body = preparation, revisions = sourceRevisions; working = true; error = nil
+        var url = URLComponents(); url.path = "/requests/\(request.id)/checks"
+        url.queryItems = [URLQueryItem(name: "selected_fact_ids", value: selectedFacts.sorted().joined(separator: ",")), URLQueryItem(name: "selected_document_ids", value: selectedDocuments.sorted().joined(separator: ",")), URLQueryItem(name: "selected_operation_ids", value: selectedOperations.sorted().joined(separator: ","))]
+        Task {
+            do {
+                let result = try await store.scopedValue(url.string ?? "").object
+                guard preparation == body, sourceRevisions == revisions, result["request_id"] == .string(request.id), result["request_revision"] == .number(Double(request.revision)), result["scope"]?.object["farm_id"] == .string(farm), result["scope"]?.object["pack_id"] == .string(pack), result["scope"]?.object["reporting_year"] == .number(Double(year)), case .array(let ids)? = result["selection"]?.object["operation_ids"], Set(ids.map(\.text)) == selectedOperations else { throw ServiceError(status: 409, message: "The service checked a different request revision, scope or application selection. Reload the selected records and check again.") }
+                preflight = result; checkedSelection = body
+            } catch { preflight = nil; checkedSelection = nil; error = SourceText.error(error) }
             working = false
         }
     }

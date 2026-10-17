@@ -63,6 +63,10 @@ struct PendingEditView: View {
                     if edit.path == "/workflow/capture" {
                         if edit.reviewContext?["type"] == .string("compliance_profile"), let farmID = edit.payload["data"]?.object["farm_id"]?.text, let question = edit.reviewContext?["question"]?.object {
                             NavigationLink("Review the saved farm profile answer") { ComplianceProfileQuestionView(farmID: farmID, question: question, ruleVersion: edit.reviewContext?["rules_version"]?.text ?? "", deviceDraft: edit) }
+                        } else if edit.reviewContext?["type"] == .string("cz_journal_holder"), let farmID = edit.payload["data"]?.object["farm_id"]?.text {
+                            NavigationLink("Complete structured journal holder") { CzechHolderEditor(farmID: farmID, deviceDraft: edit) }
+                        } else if edit.reviewContext?["type"] == .string("cz_journal_application"), let farmID = edit.payload["data"]?.object["farm_id"]?.text {
+                            NavigationLink("Complete Czech application and its checks") { CzechApplicationEditor(farmID: farmID, deviceDraft: edit) }
                         } else { NavigationLink("Open record and review its checks") { WorkCaptureView(deviceDraft: edit) } }
                     }
                     if edit.path == "/workflow/answer", let requestID = edit.payload["request_id"]?.text {
@@ -133,6 +137,7 @@ struct SettingsView: View {
                 Button("Sign out and erase device drafts", role: .destructive) { signOut = true }.disabled(store.busy || store.syncing)
             }
             Section("About review and privacy") {
+                LogoCredit()
                 NavigationLink("Help and assistant connections") { FarmerHelpView() }
                 Notice("Sources and uncertainty stay visible. Proposed extraction is never automatically confirmed. Reports retain the reviewed snapshot; a later correction creates a separate reissue.")
                 Text("Use the system's text size, VoiceOver and Reduce Motion settings. Camera scans and shared documents require your review before upload.").font(.footnote)

@@ -17,6 +17,9 @@ struct FieldsView: View {
                 if let farm { NavigationLink("Edit farm details") { FarmSetupView(existing: farm) } }
                 if store.records("farms").isEmpty { NavigationLink("Set up my farm") { FarmSetupView() } }
                 if !farmID.isEmpty { NavigationLink { FieldEditor(farmID: farmID, expectedRevision: revision) } label: { Label("Add a field", systemImage: "plus") } }
+                if !farmID.isEmpty { NavigationLink("Preview fields from a GeoJSON or KML file") { FieldFileImportView(farmID: farmID, onProposed: { Task { await load() } }) } }
+                if !farmID.isEmpty { NavigationLink("How do I update the official field register?") { LpisGuideView(farmID: farmID) } }
+                if !farmID.isEmpty { NavigationLink("Check my fields and prepare a change handoff") { CaseEditor(job: .fields, initialFarmID: farmID) } }
                 if !farmID.isEmpty, let url = BrowserHandoff.url(account: store.account, path: "/app/fields/\(farmID)") { Link("Open boundary drawing, split, merge and LPIS tools", destination: url); Text("Advanced boundary work opens the actual web map editor with a separate browser sign-in. This app does not simulate those operations or transfer your bearer credential.").font(.footnote).foregroundStyle(.secondary) }
             }
             SyncBanner()
@@ -197,6 +200,7 @@ struct FieldProposalReview: View {
     var body: some View {
         List {
             Section("Review the whole \(operation) proposal") {
+                NavigationLink("Check and prepare this private field change") { CaseEditor(job: .fields, initialFarmID: farmID, initialReference: CaseReference(source: .fieldChanges, record: proposal, role: "change")) }
                 Text("\(proposedFields.count) proposed fields · \(priorFields.count) prior fields")
                 if retiresParents { Notice("Every prior field shown below will be retired, not deleted, and linked to the proposed replacements.") }
                 else { Notice("Review the previous revision and all proposed information. History remains retained.") }

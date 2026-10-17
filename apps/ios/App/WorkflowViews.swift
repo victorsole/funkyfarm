@@ -7,7 +7,7 @@ struct WorkflowHomeView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 16) { ElephantMark(); VStack(alignment: .leading, spacing: 5) { Text("Your farm, at a glance").font(.title2.bold()); Text(store.account?.workspace.name ?? "").foregroundStyle(.secondary) } }.padding(.vertical, 6)
+                HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading, spacing: 5) { Text("Your farm, at a glance").font(.title2.bold()); Text(store.account?.workspace.name ?? "").foregroundStyle(.secondary) } }.padding(.vertical, 6)
                 if store.records("farms").isEmpty {
                     Notice("Set up your farm to see the requests, records and reporting formats that apply to you.")
                     Button("Set up my farm") { setup = true }.buttonStyle(.borderedProminent)
@@ -19,13 +19,24 @@ struct WorkflowHomeView: View {
             SyncBanner()
             if !store.records("farms").isEmpty {
                 Section("Farm administration") {
+                    NavigationLink("My paperwork cases") { CaseListView() }
                     NavigationLink("What needs attention?") { FarmComplianceView() }
                     NavigationLink("Tasks and checklists") { FarmTaskListView() }
+                    NavigationLink("Questions from my adviser") { AdviserQuestionListView() }
                     NavigationLink("Official-source updates") { RegulatoryUpdatesView() }
                     NavigationLink("Get help") { FarmerHelpView() }
                 }
+                Section("What do you need to do?") { CaseStartLinks() }
             }
             if !home.isEmpty {
+                if let preview = home["task_preview"]?.object {
+                    Section("Recorded unfinished tasks") {
+                        if let count = preview["total"] { LabeledContent("Unfinished tasks in the loaded Home scope", value: count.text) }
+                        if let overdue = preview["overdue_total"] { LabeledContent("Recorded deadlines already passed", value: overdue.text) }
+                        if preview["actions_truncated"] == .bool(true) || preview["deadlines_truncated"] == .bool(true) { Notice("Home shows only a bounded preview. Open the paged task list to reach the remaining tasks and recorded deadlines.") }
+                        if let href = preview["href"] { WorkflowActionLink(action: ["href": href, "title": .string("Open all saved tasks in this scope"), "message": .string("The list includes all recorded task states, with explicit next and previous pages.")]) }
+                    }
+                }
                 Section("Next steps") {
                     let actions = home["next_actions"]?.array ?? []
                     if actions.isEmpty { Text("The service has no next action recorded for this farm.").foregroundStyle(.secondary) }
@@ -73,6 +84,11 @@ struct WorkflowActionLink: View {
         let value = action["farm_id"]?.text ?? routeURL?.queryItems?.first(where: { $0.name == "farm_id" })?.value ?? (components.first == "fields" && components.count > 1 ? components[1] : nil)
         return value.flatMap { store.record("farms", $0) != nil ? $0 : nil }
     }
+    private var requestedTaskFarm: String? {
+        if let query = routeURL?.queryItems?.first(where: { $0.name == "farm_id" }) { let value = query.value ?? ""; return value.isEmpty ? "invalid-empty-farm-filter" : value }
+        if case .string(let id)? = action["farm_id"] { return id.isEmpty ? "invalid-empty-farm-filter" : id }
+        return nil
+    }
     var body: some View {
         NavigationLink { destination } label: {
             VStack(alignment: .leading, spacing: 5) {
@@ -82,7 +98,15 @@ struct WorkflowActionLink: View {
         }
     }
     @ViewBuilder private var destination: some View {
-        if let requestID = action["request_id"]?.text {
+        if components.first == "cases", components.count > 1, UUID(uuidString: components[1]) != nil {
+            CaseDetailView(caseID: components[1])
+        } else if components.first == "cases" {
+            CaseListView(initialFarmID: linkedFarm)
+        } else if components.first == "tasks", components.count > 1, UUID(uuidString: components[1]) != nil {
+            TaskAnswerView(taskID: components[1])
+        } else if components.first == "tasks", components.count == 1 {
+            NativeTaskListView(initialFarmID: requestedTaskFarm).id(requestedTaskFarm ?? "all-task-farms")
+        } else if let requestID = action["request_id"]?.text {
             GuidedRequestView(requestID: requestID)
         } else if components.first == "paperwork", components.count > 1, UUID(uuidString: components[1]) != nil {
             DetailView(collection: "requests", id: components[1])
@@ -124,6 +148,7 @@ struct PaperworkView: View {
     var body: some View {
         List {
             SyncBanner()
+            Section("Start with the job you need") { CaseStartLinks(); NavigationLink("My paperwork cases and recorded history") { CaseListView() }; Notice(CaseTransport.notice) }
             Section {
                 NavigationLink { RequestEditor() } label: { Label("Add a request", systemImage: "envelope.open") }
                 NavigationLink { ReportComposer() } label: { Label("Prepare a report", systemImage: "doc.richtext") }

@@ -48,13 +48,20 @@ class Api(val base: String, private val token: String = "", private val workspac
         return JSONObject(exchange("/documents", "POST", output.toByteArray(), "multipart/form-data; boundary=$boundary", retryId).toString(Charsets.UTF_8))
     }
     fun download(path: String) = exchange(path, "GET", null, "application/json", null, 24 * 1024 * 1024)
-    internal fun streamReport(path: String, transfer: ReportFileTransfer) {
+    internal fun streamReport(path: String, transfer: ReportFileTransfer, expectedMime: String? = null) {
         val connection = connection(path, "GET")
         connection.setRequestProperty("Accept-Encoding", "identity")
+        expectedMime?.let { connection.setRequestProperty("Accept", it) }
         transfer.attach(connection)
         try {
             checkResponse(connection)
+            expectedMime?.let { require(connection.contentType?.substringBefore(';')?.trim()?.equals(it, ignoreCase = true) == true) { "The service did not return the requested file type. No file was shared." } }
             val advertised = connection.contentLengthLong
+            val packet = expectedMime == "application/zip"
+            if (packet) {
+                require(advertised in 1L..(128L * 1024 * 1024)) { "The prepared folder needs a known positive size no larger than 128 MiB. No file was shared." }
+                require(connection.getHeaderField("Content-Encoding")?.trim()?.equals("identity", ignoreCase = true) != false) { "The prepared folder must arrive without content encoding. No file was shared." }
+            }
             require(advertised <= transfer.budget) { "This export exceeds the available private storage budget. Free space or choose a smaller export." }
             transfer.check()
             connection.inputStream.use { input -> transfer.file.outputStream().use { output ->
@@ -64,11 +71,12 @@ class Api(val base: String, private val token: String = "", private val workspac
                     val read = input.read(block); if (read < 0) break
                     count += read
                     require(count <= transfer.budget) { "This export exceeds the private storage budget. Free space or choose a smaller export." }
+                    require(!packet || count <= advertised) { "The prepared folder exceeded its advertised complete size. No file was shared." }
                     require(transfer.file.parentFile!!.usableSpace >= REPORT_DISK_RESERVE) { "Private storage is nearly full. Free space and retry the export." }
                     output.write(block, 0, read)
                 }
                 transfer.check()
-                require(count > 0 && (advertised < 0 || count == advertised)) { "The export ended before the complete file arrived. Retry the download." }
+                require(count > 0 && (if (packet) count == advertised else advertised < 0 || count == advertised)) { "The export ended before the complete file arrived. Retry the download." }
             } }
         } catch (error: Throwable) { transfer.file.delete(); throw error }
         finally { connection.disconnect(); if (transfer.cancelled) transfer.file.delete() }

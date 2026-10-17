@@ -1,7 +1,7 @@
 /* This cache contains public application files only. Farm API responses and
    original documents always go directly to the server. */
-const CACHE = 'funkyfarm-public-shell-v2';
-const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/elephant-logo.png'];
+const CACHE = 'funkyfarm-public-shell-v3';
+const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/barn.svg', '/assets/barn.png', '/assets/barn-LICENSE.txt'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

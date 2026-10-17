@@ -7,6 +7,9 @@ import type { Session } from './types';
 import { useI18n, Text, type Language, type TranslationKey } from './i18n';
 import { HomePage, FarmPage, FarmDetailPage } from './pages/Core';
 import { RequestsPage, RequestDetailPage } from './pages/Requests';
+import { CasesPage, NewCasePage, CaseDetailPage } from './pages/Cases';
+import { CapExamplePage } from './pages/CapExample';
+import { TasksPage, TaskPage } from './pages/Task';
 import { DocumentsPage, DocumentDetailPage } from './pages/Documents';
 import { ReportsPage, ReportDetailPage } from './pages/Reports';
 import { GuidancePage, SettingsPage } from './pages/Support';
@@ -43,7 +46,11 @@ function LanguagePicker() {
 }
 
 function BrandMark({ className = '' }: { className?: string }) {
-  return <img className={className} width="40" height="46" src="/assets/elephant-logo.png" alt="" style={{objectFit: 'contain'}} />;
+  return <img className={className} width="40" height="46" src="/assets/barn.svg" alt="" style={{objectFit: 'contain'}} />;
+}
+
+function LogoCredit() {
+  return <a href="/assets/barn-LICENSE.txt" target="_blank" rel="noreferrer">Barn logo: Delapouite · CC BY 3.0</a>;
 }
 
 function NavIcon({ name }: { name: string }) {
@@ -101,10 +108,11 @@ function Shell() {
   }, [session?.user.id, session?.workspace]);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const caseSection = location.pathname === '/app/cases' || location.pathname.startsWith('/app/cases/');
   useEffect(() => mountWebMCP(), [session?.user.id, session?.workspace.id]);
   useEffect(() => {
-    const page = primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
-      ?? secondary.find(([path]) => location.pathname.startsWith(`/app/${path}`))?.[1] ?? 'Workspace';
+    const page = caseSection ? 'Paperwork' : (primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
+      ?? secondary.find(([path]) => location.pathname.startsWith(`/app/${path}`))?.[1] ?? 'Workspace');
     document.title = `${page} · FunkyFarm`;
     if (location.hash) {
       let fragment = location.hash.slice(1);
@@ -126,7 +134,7 @@ function Shell() {
     <aside className="sidebar">
       <Link to="/app/home" className="brand" aria-label="funkyfarm home"><BrandMark /><span>funky<span className="brand-second">farm<span className="brand-dot">.</span></span></span></Link>
       <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name} · {workspace.role}</option>)}</select> : <strong>{session?.workspace.name}</strong>}</div>
-      <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{t(item.label as TranslationKey)}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
+      <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${t(item.label as TranslationKey)}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{t(item.label as TranslationKey)}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
       <div className="sidebar-bottom"><p className="sidebar-note">A little less paperwork.<br/>More time for the farm.</p><span className="private-label"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="6" width="9" height="7" rx="1"/><path d="M3.5 6V3.5a2.5 2.5 0 0 1 5 0V6"/></svg> Private farm records</span></div>
     </aside>
     <div className="workspace-body">
@@ -152,7 +160,7 @@ function Shell() {
         {logoutError && <Notice kind="error">{logoutError}</Notice>}
         <div className="page-enter" key={location.pathname}><PageBoundary><Outlet /></PageBoundary></div>
       </main>
-      <footer className="workspace-footer"><span>FunkyFarm · The farm folio</span><Link to="/app/help">Help with the paperwork</Link></footer>
+      <footer className="workspace-footer"><span>FunkyFarm · The farm folio</span><LogoCredit/><Link to="/app/help">Help with the paperwork</Link></footer>
     </div>
   </div>;
 }
@@ -195,6 +203,7 @@ function AuthPage() {
         <Button type="submit" loading={busy}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
       </form>
       <p className="auth-switch">{registering ? 'Already have an account?' : 'New to FunkyFarm?'} <Link to={registering ? '/login' : '/register'}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
+      <p className="muted"><small><LogoCredit/></small></p>
     </div></main>
   </div>;
 }
@@ -217,11 +226,17 @@ export default function App() {
     <Route path="/app" element={<Shell/>}>
       <Route index element={<Navigate to="home" replace/>}/>
       <Route path="home" element={<HomePage/>}/>
+      <Route path="examples/cap" element={<CapExamplePage/>}/>
+      <Route path="tasks" element={<TasksPage/>}/>
+      <Route path="tasks/:id" element={<TaskPage/>}/>
       <Route path="record-work" element={<RecordWorkPage/>}/>
       <Route path="fields" element={<FarmPage/>}/>
       <Route path="fields/:id" element={<FarmDetailPage/>}/>
       <Route path="paperwork" element={<RequestsPage/>}/>
       <Route path="paperwork/:id" element={<RequestDetailPage/>}/>
+      <Route path="cases" element={<CasesPage/>}/>
+      <Route path="cases/new" element={<NewCasePage/>}/>
+      <Route path="cases/:id" element={<CaseDetailPage/>}/>
       <Route path="documents" element={<DocumentsPage/>}/>
       <Route path="documents/:id" element={<DocumentDetailPage/>}/>
       <Route path="reports" element={<ReportsPage/>}/>

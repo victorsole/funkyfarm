@@ -78,6 +78,13 @@ private data class ReviewPageError(val section: String, val offset: Int, val mes
 @Composable private fun ReportReviewPages(model: FarmModel, record: JSONObject, share: (File, String) -> Unit, reload: () -> Unit) {
     val data = record.data(); val review = data.getJSONObject("review"); val counts = review.getJSONObject("sections")
     val id = record.getString("id"); val binding = reviewBinding(record)
+    var portugueseCorrection by remember { mutableStateOf(false) }
+    fun prepareCorrection() {
+        if (data.text("pack_id") == CZECH_JOURNAL_PACK) model.czechJournal = obj("farm_id" to data.getString("farm_id"), "year" to data.getInt("reporting_year"), "request_id" to data.text("request_id"), "report_id" to id, "report_revision" to record.getInt("revision"))
+        else if (data.text("pack_id") == "pt-ppp-surface-journal") portugueseCorrection = true
+        else model.enqueue("/reports/$id/reissue", obj("expected_revision" to record.getInt("revision")))
+    }
+    if (portugueseCorrection) PortugueseJournal(model, initialFarmId = data.getString("farm_id"), reissueRecord = record) { portugueseCorrection = false }
     var section by remember { mutableStateOf("fields") }; var offset by remember { mutableStateOf(0) }; var attempt by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf<JSONObject?>(null) }; var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf<List<ReviewPageError>>(emptyList()) }; var invalid by remember { mutableStateOf(false) }
@@ -91,6 +98,10 @@ private data class ReviewPageError(val section: String, val offset: Int, val mes
             val response = model.sourceRequest("/reports/$id/review?section=$section&expected_revision=${review.getInt("report_revision")}&snapshot_checksum=${review.getString("snapshot_checksum")}&check_fingerprint=${review.getString("check_fingerprint")}&offset=$offset&limit=5")
             val items = response.getJSONArray("items")
             require((0 until items.length()).all { items.optJSONObject(it) != null }) { "A complete report item could not be read. Nothing on this page has been counted as reviewed." }
+            if (section == "fields" && data.text("pack_id") == "pt-ppp-surface-journal") items.objects().filter { it.text("manual_journal_role") == "identity" }.forEach { item ->
+                try { checkedPortugueseReportContext(item, data.getInt("reporting_year")) }
+                catch (error: Exception) { throw IllegalArgumentException("The retained journal source, selected order or exclusions could not be read completely. Reload the report review; this page has not been counted as reviewed.", error) }
+            }
             require(response.getString("section") == section && response.getInt("report_revision") == review.getInt("report_revision") && response.getString("snapshot_checksum") == review.getString("snapshot_checksum") && response.getString("check_fingerprint") == review.getString("check_fingerprint")) { "This page belongs to a different report review. Reload the report." }
             require(response.getInt("total") == counts.getInt(section) && response.getInt("offset") == offset && items.length() <= 5 && offset + items.length() <= response.getInt("total")) { "The page range changed. Reload the report review." }
             val expectedNext = offset + items.length()
@@ -154,7 +165,7 @@ private data class ReviewPageError(val section: String, val offset: Int, val mes
             checked = false
         }, enabled = checked && canAcknowledge) { Text("Approve this report") }
         Text("The service checks current sources, permissions and this exact review again before approval.", style = MaterialTheme.typography.bodySmall)
-        if (counts.getInt("blockers") > 0) OutlinedButton(onClick = { model.enqueue("/reports/$id/reissue", obj("expected_revision" to record.getInt("revision"))) }, enabled = !model.busy && !invalid) { Text("Prepare a fresh preview with current evidence") }
+        if (counts.getInt("blockers") > 0) OutlinedButton(onClick = { prepareCorrection() }, enabled = !model.busy && !invalid) { Text("Prepare a fresh preview with current evidence") }
     } else {
         data.optJSONObject("approval")?.let { approval -> approval.keys().asSequence().forEach { LiteralField("Approval · ${it.replace('_', ' ')}", approval.get(it)) } }
         Text("Save or share approved export", style = MaterialTheme.typography.titleLarge)
@@ -168,7 +179,7 @@ private data class ReviewPageError(val section: String, val offset: Int, val mes
         var receipt by remember { mutableStateOf(false) }
         OutlinedButton(onClick = { receipt = true }, enabled = !invalid && !model.busy) { Text("Record a manual response reference") }
         if (receipt) ReceiptEditor(model, record) { receipt = false }
-        OutlinedButton(onClick = { model.enqueue("/reports/$id/reissue", obj("expected_revision" to record.getInt("revision"))) }, enabled = !model.busy && !invalid) { Text("Prepare a separate correction draft") }
+        OutlinedButton(onClick = { prepareCorrection() }, enabled = !model.busy && !invalid) { Text("Prepare a separate correction draft") }
         Text("The issued report stays immutable. A correction needs its own review and approval; a manual reference does not establish acceptance.")
     }
 }
@@ -181,6 +192,7 @@ private fun reportMime(format: String) = when (format) { "pdf" -> "application/p
             "fields" -> {
                 Text("Answer $position · ${item.optString("label", item.optString("field"))}", fontWeight = FontWeight.Bold)
                 (item.opt("group_label") as? String)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                item.optJSONObject("journal_context")?.takeIf { it.text("schema_id") == "pt-ppp-surface-v1" }?.let { RetainedPortugueseReportContext(it, position) }
                 val sourceRow = !item.optBoolean("missing") && item.optJSONObject("row_schema") != null && item.optJSONObject("value") != null
                 if (item.optBoolean("missing")) Text("Missing answer · this still needs attention.", color = MaterialTheme.colorScheme.error)
                 if (sourceRow) SourceRowSummary(item.getJSONObject("value"), item.getJSONObject("row_schema")) else Text("Value preview: ${reportValuePreview(item.opt("value"))}")
@@ -191,7 +203,8 @@ private fun reportMime(format: String) = when (format) { "pdf" -> "application/p
                     if (sourceRow) {
                         SourceRowValues(item.getJSONObject("value"), item.getJSONObject("row_schema"))
                         Text("Column meanings and original units are retained in this report's snapshot.", style = MaterialTheme.typography.bodySmall)
-                    } else LiteralField(if (item.optBoolean("missing")) "Missing answer" else "Complete snapshot value", item.opt("value"))
+                    } else if (item.text("fact_key") == CZECH_HOLDER_KEY && item.optJSONObject("value") != null) CzechHolderValue(item.getJSONObject("value"))
+                    else LiteralField(if (item.optBoolean("missing")) "Missing answer" else "Complete snapshot value", item.opt("value"))
                     listOf("unit", "period", "temporal_basis").forEach { if (item.has(it)) LiteralField(it.replace('_', ' '), item.get(it)) }
                     ReportSourceLinks(model, item.optJSONArray("sources"))
                     (item.opt("fact_id") as? String)?.let { identity -> OutlinedButton(onClick = { model.open("facts", identity) }) { Text("Check source fact · revision ${item.optInt("fact_revision")}") } }
@@ -200,7 +213,13 @@ private fun reportMime(format: String) = when (format) { "pdf" -> "application/p
             "operations" -> {
                 Text("Activity $position · ${item.data().optString("title", "Farm activity")}", fontWeight = FontWeight.Bold)
                 Text("Retained activity revision ${item.optInt("revision")}")
-                item.data().keys().asSequence().filter { it != "sources" }.forEach { LiteralField(it.replace('_', ' '), item.data().get(it)) }
+                item.data().keys().asSequence().filter { it != "sources" && (it != "cz_ppp" || item.optJSONObject("journal_entry") == null) }.forEach { LiteralField(it.replace('_', ' '), item.data().get(it)) }
+                item.optJSONObject("journal_entry")?.let { journal ->
+                    var expanded by remember(position, item.getString("id"), item.optInt("revision")) { mutableStateOf(false) }
+                    Text("Retained Czech journal details are included for this exact application and revision.")
+                    TextButton(onClick = { expanded = !expanded }) { Text("${if (expanded) "Hide" else "Show"} retained journal entry · activity $position") }
+                    if (expanded) RetainedCzechJournal(journal)
+                }
                 if (item.data().has("sources")) ReportSourceLinks(model, item.data().optJSONArray("sources"))
                 OutlinedButton(onClick = { model.open("operations", item.getString("id")) }) { Text("Open current activity for comparison") }
             }

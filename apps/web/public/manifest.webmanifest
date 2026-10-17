@@ -9,7 +9,7 @@
   "background_color": "#f5f2eb",
   "theme_color": "#482b43",
   "icons": [
-    { "src": "/assets/elephant-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "/assets/barn.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ],
   "shortcuts": [
     { "name": "Record work", "url": "/app/record-work" },

@@ -927,7 +927,7 @@
       "languages": [
         "cs"
       ],
-      "checked_date": "2026-10-16",
+      "checked_date": "2026-10-17",
       "reporting_year": 2026,
       "portal": {
         "authority": "State Agricultural Intervention Fund (SZIF) / Ministry of Agriculture",
@@ -986,17 +986,27 @@
           "common_pack_id": "input-evidence",
           "task": "Keep purchases, product use and treatment records with their original units and dates.",
           "availability": "common_workflow",
-          "mapping_status": "reference_only",
+          "mapping_status": "partial_mapping",
           "pack_ids": [
-            "cz-inputs-2026"
+            "cz-inputs-2026",
+            "cz-ppp-journal-2026"
           ],
-          "coverage_limit": "Reference inventory only; no complete official field mapping or authority-compatible submission is implemented. No inputs format has been verified for nationwide 2026 coverage. This gap is not a national reporting form.",
-          "source_editions": [],
+          "coverage_limit": "The crop-protection journal prepares separate application records using the named ÚKZÚZ example. It retains holder identity, original units, location identifiers and pending follow-up. Other input records remain reference-only. Not JUDPOR XML, an accepted authority upload, a product authorization check or complete Czech legal coverage.",
+          "source_editions": [
+            "ÚKZÚZ manual record example published 30 March 2026; DOCX internal revision 11; structural reading, rendered layout unverified"
+          ],
           "farm_type_filter": "not_inferred",
           "country": "CZ",
           "reporting_year": 2026,
           "region_review_required": false,
-          "official_links": []
+          "official_links": [
+            {
+              "url": "https://ukzuz.gov.cz/public/portal/ukzuz/pripravky-na-or/formulare-ke-stazeni/ostatni-formulare/evidence-pripravku-na-ochranu-rostlin",
+              "title": "ÚKZÚZ — Evidence přípravků na ochranu rostlin",
+              "edition": "Record example published 30 March 2026",
+              "sha256": "bae53ed12a7b06029b77ceb9dc216d498933d79d6f0f511404bc04ca3a461403"
+            }
+          ]
         },
         {
           "workflow_id": "inspection",
@@ -5396,13 +5406,15 @@
           "common_pack_id": "input-evidence",
           "task": "Keep purchases, product use and treatment records with their original units and dates.",
           "availability": "common_workflow",
-          "mapping_status": "reference_only",
+          "mapping_status": "manual_preparation",
           "pack_ids": [
-            "pt-inputs-2026-v1"
+            "pt-inputs-2026-v1",
+            "pt-ppp-surface-journal"
           ],
-          "coverage_limit": "This is an inventory entry with no implemented national field mapping. It does not provide a usable country-specific authority format. The applicable national input and application records form, recipient, edition and field requirements remain unverified. The cited source is an authority discovery reference, not a specification for this family. Regional and sector variants, source-effective dates and representative fixtures remain required work; null region is not proof of nationwide applicability. No legal compliance, eligibility, certification, authority acceptance or verified filing transport is claimed.",
+          "coverage_limit": "The separate DGAV surface-treatment journal supports literal manual preparation of its thirteen columns, producer and observations, with separately reviewed actual dates and explicit row selection. The general input-record reference remains unmapped. Legal applicability, mandatory cells, product authorisation, retention and recipient acceptance are unresolved. No official upload, eligibility or compliance certification is provided.",
           "source_editions": [
-            "Updated 2026-07-29; 2026 campaign"
+            "Updated 2026-07-29; 2026 campaign",
+            "DGAV surface-treatment workbook modified 2026-09-14; no printed version or reporting year"
           ],
           "farm_type_filter": "not_inferred",
           "country": "PT",
@@ -5413,6 +5425,11 @@
               "url": "https://www.ifap.pt/portal/pedido-unico-enquadramento",
               "title": "IFAP – Pedido Único 2026: Enquadramento e Calendário",
               "edition": "Updated 2026-07-29; 2026 campaign"
+            },
+            {
+              "url": "https://www.dgav.pt/wp-content/uploads/2026/09/Modelo-para-registo-de-aplicacoes-de-PF_tratamentos-superficies.xlsx",
+              "title": "DGAV surface-treatment record template",
+              "edition": "Metadata modified 2026-09-14; SHA-256 34ebb9d9d933cab566cf2084a6592ade06aa80821e363b7a428969c9f19dd2f3"
             }
           ]
         },

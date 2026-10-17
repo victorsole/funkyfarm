@@ -29,10 +29,19 @@ enum FarmStyle {
     static let ochre = Color(red: 0.93, green: 0.62, blue: 0.25)
 }
 
-struct ElephantMark: View {
+struct BrandMark: View {
     var body: some View {
-        Image("elephant-logo").resizable().scaledToFit()
+        Image("barn").renderingMode(.template).resizable().scaledToFit().foregroundStyle(.primary)
             .frame(width: 70, height: 64).accessibilityHidden(true)
+    }
+}
+
+struct LogoCredit: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Link("Barn logo by Delapouite · Game-icons.net", destination: URL(string: "https://game-icons.net/1x1/delapouite/barn.html")!)
+            Link("CC BY 3.0 · tinted for appearance", destination: URL(string: "https://creativecommons.org/licenses/by/3.0/")!)
+        }.font(.footnote)
     }
 }
 
@@ -50,7 +59,7 @@ struct SignInView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: 16) { ElephantMark(); VStack(alignment: .leading) { Text("funkyfarm").font(.title2.bold()); Text("Your farm. Your evidence.").foregroundStyle(.secondary) } }
+                    HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading) { Text("funkyfarm").font(.title2.bold()); Text("Your farm. Your evidence.").foregroundStyle(.secondary) } }
                     Text("Handle requests with the farm records you already have. Review every new fact and approve each report yourself.")
                 }
                 Section(register ? "Create your private workspace" : "Open your workspace") {
@@ -76,6 +85,7 @@ struct SignInView: View {
                 }.disabled(working)
                 if let problem = problem ?? store.error { Section { Notice(problem, warning: true) } }
                 Section { NavigationLink(labels.text("common.language", fallback: "Language")) { LanguageSettingsView() } }
+                Section { LogoCredit() }
             }.navigationTitle("Welcome")
         }
     }
@@ -108,7 +118,7 @@ struct FarmerTabs: View {
     }
     private var routeTab: Int {
         guard let route = store.route else { return -1 }
-        return ["requests": 3, "documents": 4, "farms": 2, "reports": 3, "operations": 1, "purchases": 1, "sales": 1, "facts": 3, "tasks": 3, "checklists": 3][route.collection] ?? -1
+        return ["requests": 3, "documents": 4, "farms": 2, "reports": 3, "operations": 1, "purchases": 1, "sales": 1, "facts": 3, "tasks": 3, "checklists": 3, "cases": 3][route.collection] ?? -1
     }
 }
 
@@ -153,7 +163,7 @@ struct TodayView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 16) { ElephantMark(); VStack(alignment: .leading, spacing: 5) { Text("A little less paperwork.").font(.title2.bold()); Text(store.account?.workspace.name ?? "Your workspace").foregroundStyle(.secondary) } }.padding(.vertical, 8)
+                HStack(spacing: 16) { BrandMark(); VStack(alignment: .leading, spacing: 5) { Text("A little less paperwork.").font(.title2.bold()); Text(store.account?.workspace.name ?? "Your workspace").foregroundStyle(.secondary) } }.padding(.vertical, 8)
                 Button { capture = true } label: { Label("Add document", systemImage: "doc.badge.plus") }.buttonStyle(.borderedProminent)
             }
             SyncBanner()
@@ -242,20 +252,23 @@ struct DetailView: View {
     @State private var problem: String?
     var body: some View {
         Group {
-            if let item = store.record(collection, id) {
+            if collection == "cases" { CaseDetailView(caseID: id) }
+            else if collection == "tasks" { TaskAnswerView(taskID: id) }
+            else if let item = store.record(collection, id) {
                 if collection == "reports" { ReportDetail(item: item) }
                 else if collection == "documents" { DocumentDetail(item: item) }
+                else if collection == "facts", item.data["key"] == .string("pt.ppp.surface_journal") { PortugueseJournalRecordView(farmID: item.value("farm_id"), factID: item.id) }
                 else if collection == "facts" { FactReview(item: item) }
+                else if collection == "operations", CzechJournalData.isEntry(item) { CzechApplicationDetail(initial: item) }
                 else if ["operations", "purchases", "sales"].contains(collection) { WorkRecordDetail(collection: collection, record: item) }
                 else if collection == "requests" { RequestDetail(item: item) }
-                else if collection == "tasks" { FarmTaskDetailView(initial: item) }
                 else if collection == "checklists" { FarmChecklistView(initial: item) }
                 else { FarmDetail(item: item) }
             } else {
                 List { Notice(problem ?? "Loading this record…"); Button("Try again") { load() } }
                     .navigationTitle("Record")
             }
-        }.task { load() }
+        }.task { if !["cases", "tasks"].contains(collection) { load() } }
             .safeAreaInset(edge: .top) {
                 if !store.sessionVerified {
                     Text("Saved device record · reconnect before review or approval")
@@ -309,6 +322,8 @@ struct RequestDetail: View {
                 Button("Review request details") { edit = true }
                 NavigationLink("Answer missing information") { GuidedRequestView(requestID: item.id) }
                 Button("Prepare report") { report = true }.buttonStyle(.borderedProminent)
+                NavigationLink("Prepare for an inspection from this request") { CaseEditor(job: .inspection, initialFarmID: item.value("farm_id"), initialReference: CaseReference(source: .requests, record: item, role: "notice")) }
+                NavigationLink("Correct a submitted mistake linked to this request") { CaseEditor(job: .correction, initialFarmID: item.value("farm_id"), initialReference: CaseReference(source: .requests, record: item, role: "original")) }
             }
             Section("Requested evidence") {
                 let requirements = item.data["requirements"]?.array ?? []
@@ -320,7 +335,7 @@ struct RequestDetail: View {
             }
             Section { Notice("A draft or a manual reference is preparation evidence. It does not mean an authority has accepted a response."); RecordMetadata(item: item) }
         }.navigationTitle("Request").sheet(isPresented: $edit) { NavigationStack { RequestEditor(existing: item) }.environmentObject(store) }
-            .sheet(isPresented: $report) { NavigationStack { ReportComposer(request: item) }.environmentObject(store) }
+            .sheet(isPresented: $report) { NavigationStack { if item.data["pack_id"] == .string("pt-ppp-surface-journal") { PortugueseJournalView(initialFarmID: item.value("farm_id"), request: item) } else { ReportComposer(request: item) } }.environmentObject(store) }
     }
 }
 
@@ -379,7 +394,8 @@ struct FactReview: View {
         List {
             Section("Review the proposed value") {
                 Text(item.title).font(.title2.bold())
-                if case .object(let value)? = item.data["value"], (item.data["sources"]?.array ?? []).contains(where: { $0.object["kind"] == .string("authority_csv_profile") }) { SourceRowCells(value: value) }
+                if item.value("key") == CzechJournalData.holderKey { CzechHolderValues(value: item.data["value"]?.object ?? [:]) }
+                else if case .object(let value)? = item.data["value"], (item.data["sources"]?.array ?? []).contains(where: { $0.object["kind"] == .string("authority_csv_profile") }) { SourceRowCells(value: value) }
                 else { Text(item.data["value"]?.text ?? "No value supplied").font(.title3).textSelection(.enabled) }
                 LabeledContent("Review state", value: item.state)
                 LabeledContent("Unit", value: item.value("unit"))
@@ -406,6 +422,9 @@ struct FactReview: View {
                     else { Button("Confirm this fact") { confirm = true }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || (item.data["supersedes_id"] != nil && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)) }
                     Button("Reject proposal", role: .destructive) { review("rejected") }.disabled(working || !store.sessionVerified || note.isEmpty)
                 }
+                if item.value("key") == CzechJournalData.holderKey {
+                    NavigationLink(item.state == "confirmed" ? "Propose a structured holder correction" : "Complete structured holder proposal") { CzechHolderEditor(farmID: item.value("farm_id"), existing: item) }.disabled(!["proposed", "confirmed"].contains(item.state) || !store.sessionVerified)
+                } else {
                 Button("Propose a correction") {
                     working = true; error = nil
                     Task {
@@ -417,6 +436,7 @@ struct FactReview: View {
                         working = false
                     }
                 }.disabled(working || !store.sessionVerified || item.state != "confirmed")
+                }
                 if working { ProgressView("Recording your review…") }
                 if let error { Notice(error, warning: true) }
             }

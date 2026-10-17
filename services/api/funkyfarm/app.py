@@ -193,7 +193,7 @@ def create_app():
     for name in ("documents", "reporting", "imports", "collaboration", "guidance", "reconciliation",
                  "workflows", "catalogue", "connections", "fields", "satellite", "assistant_tools",
                  "assistant_mcp", "assistant_credentials", "assistant_oauth", "assistant_chat",
-                 "compliance", "preflight", "regulatory", "iacs_reference"):
+                 "compliance", "preflight", "regulatory", "iacs_reference", "admin_cases", "field_impact", "case_packet", "field_imports", "lpis_guidance", "funding", "cap_example"):
         module = import_module(f".{name}", __package__)
         app.include_router(module.router, prefix="/api/v1")
     app.include_router(records_router, prefix="/api/v1")

@@ -100,6 +100,64 @@
     "checks": []
   },
   {
+    "id": "cz-ppp-journal-2026",
+    "inventory_checked_date": "2026-10-17",
+    "common_pack_id": "input-evidence",
+    "mapping_status": "partial",
+    "authority_ready": false,
+    "applicability_review_required": true,
+    "country": "CZ",
+    "region": null,
+    "workflow_id": "inputs",
+    "reporting_year": 2026,
+    "version": "2026.1",
+    "capability": "sourced_draft_mapping",
+    "title": "Evidence přípravků na ochranu rostlin — ruční deník aplikací",
+    "description": "Prepare distinct, reviewed application records using the national ÚKZÚZ record example published 30 March 2026. This is manual journal preparation, not a government file import or JUDPOR submission.",
+    "journal_schema": "cz-ppp-journal-v1",
+    "journal_entry_type": "pesticide_application",
+    "holder_fact_key": "cz.ppp.holder",
+    "fields": [
+      {
+        "key": "cz.ppp.holder",
+        "label": "Identifikace subjektu a adresa místa podnikání nebo sídla",
+        "official_field": "Identifikace subjektu",
+        "required": true,
+        "unit": null,
+        "temporal_basis": "static",
+        "value_type": "object",
+        "capture_kind": "journal_holder"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://ukzuz.gov.cz/public/portal/ukzuz/pripravky-na-or/formulare-ke-stazeni/ostatni-formulare/evidence-pripravku-na-ochranu-rostlin",
+        "title": "ÚKZÚZ — Evidence přípravků na ochranu rostlin: Příklad formátu vedení záznamů",
+        "edition": "Published 30 March 2026; DOCX internal revision 11; structural reading, pagination unverified",
+        "sha256": "bae53ed12a7b06029b77ceb9dc216d498933d79d6f0f511404bc04ca3a461403"
+      }
+    ],
+    "limitations": [
+      "Partial source-backed manual record preparation. Not an authority upload, JUDPOR XML format, product authorization check or complete legal certification.",
+      "Each actual application is a separate reviewed operation UUID. Same-field, same-day applications are not collapsed into a farm/year answer.",
+      "LPIS, non-LPIS, forest and object identifiers must be supplied explicitly. A private field name or shared workspace permission establishes no official identity or mandate.",
+      "Original numeric text and units are retained. Area/scope uses two-decimal and dose three-decimal precision without silently rounding or converting; total product quantity is optional.",
+      "Efficacy and actual crop end may remain explicitly pending. Pending follow-up is not complete and must never become a fabricated date or ineffective result.",
+      "Sowing and crop-end dates do not apply to trees/forest stands. Source prose requires sown/planted land area, although the forest example table omits that column.",
+      "The example includes historical 2023/2024 values, not current product authorization or real-farm evidence. Original rendered layout and pagination are unverified.",
+      "The source describes distinct electronic transmission duties and XML-only ministry web services. No Annex 5 XML/XSD or authority acceptance contract is implemented here."
+    ],
+    "checks": [
+      "explicit_confirmed_holder_identity",
+      "distinct_confirmed_active_applications",
+      "actual_application_date_and_year",
+      "conditional_original_location_identifiers",
+      "source_decimal_precision_and_original_units",
+      "explicit_pending_follow_up",
+      "immutable_source_bound_journal_snapshot"
+    ]
+  },
+  {
     "id": "cz-sustainability-2026",
     "inventory_checked_date": "2026-10-16",
     "common_pack_id": "sustainability-evidence",

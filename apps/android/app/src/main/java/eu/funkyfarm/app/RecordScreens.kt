@@ -17,14 +17,28 @@ import java.io.File
 
 @Composable internal fun RecordDetail(model: FarmModel, kind: String, record: JSONObject, edit: () -> Unit, share: (ByteArray, String, String) -> Unit, shareExport: (File, String) -> Unit) {
     val data = record.data()
+    if (kind == "facts" && data.text("key") == "pt.ppp.surface_journal") {
+        PortugueseJournal(model, initialFarmId = data.text("farm_id"), initialFactId = record.getString("id")) { model.detail = null }
+        return
+    }
+    val journalApplication = kind == "operations" && (data.optJSONObject("cz_ppp") != null || record.has("journal_issues"))
+    val retiredJournalRecord = journalApplication && record.opt("active") == false || kind == "facts" && data.text("key") == CZECH_HOLDER_KEY && data.opt("superseded_by") is String
     Text(record.title(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
     Text("Revision ${record.optInt("revision")} · ${data.optString("status").ifBlank { data.optString("review_status") }}", style = MaterialTheme.typography.labelLarge)
     TextButton(onClick = { model.open(kind, record.getString("id")) }, enabled = !model.busy) { Text("Refresh this record") }
+    if (kind == "farms") OutlinedButton(onClick = { model.cases = obj("create" to true, "job_type" to "fields", "farm_id" to record.getString("id")) }) { Text("Check these fields as a preparation job") }
+    if (kind in listOf("reports", "requests")) OutlinedButton(onClick = { model.cases = obj("create" to true, "job_type" to if (kind == "reports") "correction" else "inspection", "farm_id" to data.text("farm_id"), "reference" to obj("kind" to kind, "id" to record.getString("id"), "revision" to record.getInt("revision"), "role" to if (kind == "reports") "original" else "notice", "title" to record.title())) }) { Text(if (kind == "reports") "Prepare a correction with this original report" else "Prepare a job from this actual letter") }
     var editingSale by remember(record.optString("id")) { mutableStateOf(false) }
+    var portugueseRequest by remember(record.optString("id"), record.optInt("revision")) { mutableStateOf(false) }
+    if (portugueseRequest) PortugueseJournal(model, initialFarmId = data.text("farm_id"), requestId = record.getString("id")) { portugueseRequest = false }
+    var holderEdit by remember(record.optString("id")) { mutableStateOf<Boolean?>(null) }
+    var applicationCorrection by remember(record.optString("id")) { mutableStateOf(false) }
     if (editingSale) GuidedCapture(model, if (kind == "sales") "sale" else data.optString("type"), record = record) { editingSale = false }
+    holderEdit?.let { correction -> CzechHolderEditor(model, data.getString("farm_id"), record, correction) { holderEdit = null } }
+    if (applicationCorrection) GuidedCapture(model, "pesticide_application", record = record, correction = true) { applicationCorrection = false }
     if (kind == "reports") ReportReview(model, record, shareExport)
     else {
-        if (!(kind in listOf("facts", "operations", "purchases", "sales") && data.optString("review_status") == "confirmed") && kind !in listOf("documents", "checklists")) OutlinedButton(onClick = { if (kind == "sales" || (kind == "operations" && data.optString("type") == "pesticide_application")) editingSale = true else edit() }) { Text("Edit saved information") }
+        if (!retiredJournalRecord && !(kind in listOf("facts", "operations", "purchases", "sales") && data.optString("review_status") == "confirmed") && kind !in listOf("documents", "checklists")) OutlinedButton(onClick = { if (kind == "facts" && data.text("key") == CZECH_HOLDER_KEY) holderEdit = false else if (kind == "sales" || (kind == "operations" && data.optString("type") == "pesticide_application")) editingSale = true else edit() }) { Text("Edit saved information") }
         if (kind == "farms") {
             Text("Farm information", style = MaterialTheme.typography.titleLarge)
             listOf("name", "country", "region", "area_ha", "external_id", "notes").forEach { key -> if (data.has(key)) LiteralField(key.replace('_', ' '), data.opt(key)) }
@@ -41,7 +55,7 @@ import java.io.File
             if (reconcile) Reconciliation(model, record.getString("id")) { reconcile = false }
         } else if (kind == "facts") {
             Text("Check this fact against its source", style = MaterialTheme.typography.titleLarge)
-            if (data.optJSONObject("value") != null && sourceProfileId(record) != null) SourceFactValue(model, record) else LiteralField("Value", data.opt("value"))
+            if (data.text("key") == CZECH_HOLDER_KEY && data.optJSONObject("value") != null) CzechHolderValue(data.getJSONObject("value")) else if (data.optJSONObject("value") != null && sourceProfileId(record) != null) SourceFactValue(model, record) else LiteralField("Value", data.opt("value"))
             listOf("unit", "period", "temporal_basis").forEach { if (data.has(it)) LiteralField(it.replace('_', ' '), data.opt(it)) }
             Sources(data.optJSONArray("sources"))
             if (data.optString("review_status") == "proposed") {
@@ -54,9 +68,9 @@ import java.io.File
                 OutlinedButton(onClick = { model.enqueue("/facts/${record.getString("id")}/review", obj("expected_revision" to record.getInt("revision"), "decision" to "rejected", "note" to reviewNote), draftKey = reviewKey) }, enabled = !model.busy) { Text("Reject proposal") }
             } else {
                 Text("The recorded review is retained with its history. Issued reports keep their original snapshot.")
-                if (data.optString("review_status") == "confirmed") {
+                if (data.optString("review_status") == "confirmed" && !retiredJournalRecord) {
                     var correction by remember { mutableStateOf(false) }
-                    OutlinedButton(onClick = { correction = true }) { Text("Propose a correction") }
+                    OutlinedButton(onClick = { if (data.text("key") == CZECH_HOLDER_KEY) holderEdit = true else correction = true }) { Text("Propose a correction") }
                     if (correction) Editor(model, "facts", record, { correction = false }, correction = true)
                 }
             }
@@ -67,18 +81,32 @@ import java.io.File
         else if (kind == "checklists") ChecklistDetails(model, record)
         else {
             if (kind == "sales") Text("Sale record · supplied figures, no tax calculation", style = MaterialTheme.typography.titleMedium)
-            data.keys().asSequence().filter { it !in listOf("sources", "farm_id", "pack_id") }.forEach { key -> LiteralField(if (kind == "sales" && key == "amount") "Amount received · printed total" else key.replace('_', ' '), data.opt(key)) }
+            if (journalApplication) {
+                CzechJournalValue(data)
+                record.optJSONArray("journal_issues")?.objects()?.forEach { Text(it.text("message"), color = if (it.text("severity") == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) }
+                if (record.opt("active") == false) Text("This is a retained predecessor. It is not a current report-selection entry; open its separately confirmed successor.")
+            } else data.keys().asSequence().filter { it !in listOf("sources", "farm_id", "pack_id") }.forEach { key -> LiteralField(if (kind == "sales" && key == "amount") "Amount received · printed total" else key.replace('_', ' '), data.opt(key)) }
             Sources(data.optJSONArray("sources"))
             if (kind in listOf("operations", "purchases", "sales") && data.optString("review_status") == "proposed") {
                 var checked by remember(record.optString("id"), record.optInt("revision")) { mutableStateOf(false) }
+                val reviewKey = "operation-review:${record.getString("id")}:${record.getInt("revision")}"
+                var reviewNote by remember(reviewKey) { mutableStateOf(model.draft(reviewKey, obj("note" to "")).text("note")) }
+                if (journalApplication) {
+                    OutlinedTextField(reviewNote, { reviewNote = it; model.saveDraft(reviewKey, obj("note" to it)) }, label = { Text(if (data.has("supersedes_id")) "Explain this application correction · required" else "What did you check against the journal source?") }, modifier = Modifier.fillMaxWidth())
+                    Text("Confirmation checks the actual application record, not legal permission or a completed yearly obligation. Missing journal details and pending follow-up remain visible.")
+                }
                 Row { Checkbox(checked, { checked = it }); Text("I checked the actual record, amounts, units, dates and evidence.", Modifier.weight(1f).padding(top = 12.dp)) }
-                Button(onClick = { model.enqueue("/$kind/${record.getString("id")}/review", obj("expected_revision" to record.getInt("revision"), "decision" to "confirmed", "note" to "Reviewed in the Android client")) }, enabled = checked && !model.busy) { Text("Confirm this record") }
+                Button(onClick = { model.enqueue("/$kind/${record.getString("id")}/review", obj("expected_revision" to record.getInt("revision"), "decision" to "confirmed", "note" to reviewNote.ifBlank { "Reviewed in the Android client" }), draftKey = reviewKey) }, enabled = checked && !model.busy && (!data.has("supersedes_id") || reviewNote.isNotBlank())) { Text("Confirm this record") }
                 OutlinedButton(onClick = { model.enqueue("/$kind/${record.getString("id")}/review", obj("expected_revision" to record.getInt("revision"), "decision" to "rejected", "note" to "Rejected in the Android client")) }, enabled = !model.busy) { Text("Reject proposal") }
             }
+            if (journalApplication && data.text("review_status") == "confirmed" && !retiredJournalRecord) OutlinedButton(onClick = { applicationCorrection = true }) { Text("Propose a corrected successor to this application") }
+            (record.opt("confirmed_successor_id") as? String)?.let { successor -> OutlinedButton(onClick = { model.open("operations", successor) }) { Text("Open the separately confirmed replacement application") } }
             if (kind == "requests") {
                 Text("Prepare a reviewed response", style = MaterialTheme.typography.titleLarge)
                 Text("A report reuses confirmed facts. Missing prerequisites and source conflicts remain visible in the preview.")
-                Button(onClick = { model.enqueue("/reports", obj("farm_id" to data.optString("farm_id"), "request_id" to record.getString("id"), "pack_id" to data.optString("pack_id"), "reporting_year" to data.optInt("reporting_year"))) }, enabled = data.optString("farm_id").isNotBlank() && data.optString("pack_id").isNotBlank() && !model.busy) { Text("Prepare report from this request") }
+                if (data.text("pack_id") == CZECH_JOURNAL_PACK) Button(onClick = { model.czechJournal = obj("farm_id" to data.getString("farm_id"), "request_id" to record.getString("id"), "year" to data.getInt("reporting_year")) }) { Text("Select individual applications for this journal report") }
+                else if (data.text("pack_id") == "pt-ppp-surface-journal") Button(onClick = { portugueseRequest = true }) { Text("Select literal Portuguese rows for this actual letter") }
+                else Button(onClick = { model.enqueue("/reports", obj("farm_id" to data.optString("farm_id"), "request_id" to record.getString("id"), "pack_id" to data.optString("pack_id"), "reporting_year" to data.optInt("reporting_year"))) }, enabled = data.optString("farm_id").isNotBlank() && data.optString("pack_id").isNotBlank() && !model.busy) { Text("Prepare report from this request") }
                 model.records["reports"].orEmpty().filter { it.data().optString("request_id") == record.optString("id") }.forEach { report -> OutlinedButton(onClick = { model.open("reports", report.getString("id")) }) { Text("Open report · ${report.data().optString("status")}") } }
                 if (data.optString("status") == "responded") Text("A recorded response is a manual tracking state; it does not establish authority acceptance.")
             }
@@ -248,7 +276,7 @@ private data class InputField(val key: String, val label: String, val required: 
                     "farms" -> setOf("name", "country", "region", "reporting_year", "external_id", "origin", "area_ha", "sites", "parcels", "crops", "people", "reporting_periods", "notes", "address", "coordinates")
                     "facts" -> setOf("farm_id", "key", "label", "value", "unit", "period", "temporal_basis", "sources", "review_status", "supersedes_id", "notes")
                     "requests" -> setOf("farm_id", "title", "recipient", "country", "region", "reporting_year", "deadline", "pack_id", "requirements", "status", "notes", "document_id")
-                    "reports" -> setOf("farm_id", "pack_id", "reporting_year", "request_id", "fact_ids", "selected_document_ids")
+                    "reports" -> setOf("farm_id", "pack_id", "reporting_year", "request_id", "fact_ids", "selected_document_ids", "operation_ids")
                     "operations" -> setOf("farm_id", "title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "crop", "product", "operator", "hours", "note", "notes", "document_id", "external_id", "origin", "period", "temporal_basis", "sources", "review_status")
                     "purchases" -> setOf("farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "supplier", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status")
                     "sales" -> setOf("farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "buyer", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status")
@@ -260,7 +288,8 @@ private data class InputField(val key: String, val label: String, val required: 
                 if (record != null && !correction) body.put("expected_revision", draft.getInt("expected_revision"))
                 val path = if (document != null) "/documents/${document.getString("id")}/request" else "/$kind" + (record?.takeUnless { correction }?.let { "/${it.getString("id")}" } ?: "")
                 if (document != null) body.put("expected_revision", document.getInt("revision"))
-                model.enqueue(path, body, if (record == null || correction) "POST" else "PATCH", key); close()
+                if (kind == "reports" && output.text("pack_id") == CZECH_JOURNAL_PACK) { model.czechJournal = obj("farm_id" to output.getString("farm_id"), "request_id" to output.text("request_id"), "year" to output.getInt("reporting_year")); close() }
+                else { model.enqueue(path, body, if (record == null || correction) "POST" else "PATCH", key); close() }
             }.onFailure { error = it.message ?: "Check your values." }
         }, enabled = !model.busy) { Text(if (kind == "reports") "Prepare report preview" else "Save and send") }
         TextButton(onClick = { model.deleteDraft(key); close() }) { Text("Discard this device draft") }

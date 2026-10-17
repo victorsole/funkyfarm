@@ -64,7 +64,8 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                     if (model.detail != null) {
                         val route = model.detail!!
                         val item = model.item
-                        if (item == null) { Heading("Opening record"); Text("This record is loaded only after workspace authorization."); OutlinedButton(onClick = { model.open(route.first, route.second) }) { Text("Try again") } }
+                        if (route.first == "tasks") TaskDestination(model, route.second)
+                        else if (item == null) { Heading("Opening record"); Text("This record is loaded only after workspace authorization."); OutlinedButton(onClick = { model.open(route.first, route.second) }) { Text("Try again") } }
                         else RecordDetail(model, route.first, item, { editor = route.first to item }, share, shareExport)
                     } else if (model.tab == "Home") {
                         Heading("A little less to keep in your head.")
@@ -77,11 +78,16 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                             OutlinedButton(onClick = { model.tab = "Documents" }) { Text("Add a document") }
                         }
                         OutlinedButton(onClick = model::refresh, enabled = !model.busy) { Text("Refresh workspace") }
+                        CaseStarts(model)
                         val home = model.extras["home"]
+                        home?.optJSONObject("task_preview")?.let { preview ->
+                            Text("${preview.optInt("total")} open tasks · ${preview.optInt("overdue_total")} overdue · ${preview.optInt("due_today_total")} due today. These counts cover this farm, not just the next-step preview.")
+                            OutlinedButton(onClick = { openNativeTaskHref(model, preview.text("href")) }) { Text("See all this farm's tasks and questions") }
+                        }
                         home?.optJSONArray("next_actions")?.objects()?.take(5)?.forEach { action ->
                             val id = action.optString("record_id")
                             Card(onClick = {
-                                when (action.optString("kind")) {
+                                if (!openNativeTaskHref(model, action.text("href"))) when (action.optString("kind")) {
                                     "onboarding" -> onboarding = true
                                     "capture" -> model.tab = "Record work"
                                     "request" -> if (id.isNotBlank()) model.open("requests", id)
@@ -127,6 +133,8 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
                             Text("Letters, deadlines and the answers you have checked, kept together.")
                             Button(onClick = { editor = "requests" to null }) { Text("Add a letter or request") }
                             OutlinedButton(onClick = { reports = true }) { Text("Prepared reports and exports") }
+                            OutlinedButton(onClick = { model.detail = "tasks" to "" }) { Text("Tasks and questions to answer") }
+                            CaseStarts(model)
                             model.records["farms"].orEmpty().forEach { farm -> OutlinedButton(onClick = { questions = farm }) { Text("Check missing answers · ${farm.title()}") } }
                             TextButton(onClick = { support = "connections" }) { Text("Country forms and connections") }
                             AdministrationEntryPoints(model)
@@ -153,6 +161,8 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
         support?.let { section -> SupportHandoff(model, section) { support = null } }
         AdministrationDestination(model)
         model.sourceImports?.let { route -> key(route.toString()) { SourceImportsScreen(model, route) { model.sourceImports = null } } }
+        model.czechJournal?.let { route -> key(route.toString()) { CzechJournalScreen(model, route) { model.czechJournal = null } } }
+        model.cases?.let { route -> key(route.toString()) { CaseDestination(model, route, shareExport) { model.cases = null } } }
         if (reports) Sheet("Reports and exports", { reports = false }) {
             Text("Prepare a report, check the original facts, then approve the exact version you want to export.")
             Button(onClick = { reports = false; editor = "reports" to null }) { Text("Prepare a report") }
@@ -168,6 +178,7 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
             Text("API: ${model.origin}", style = MaterialTheme.typography.bodySmall)
             Text("Drafts and queued files are encrypted with AndroidKeyStore, scoped to this account and workspace. Signing out removes them from this device.")
             Text("The interface uses no automatic motion. Android font scaling, TalkBack labels and system touch targets are supported.")
+            LogoCredit()
             PendingChanges(model)
             TextButton(onClick = { account = false; onboarding = true }) { Text("Farm setup") }
             TextButton(onClick = { account = false; support = "imports" }) { Text("Imports and existing records") }
@@ -187,7 +198,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
 @Composable private fun Login(model: FarmModel) {
     var endpoint by remember { mutableStateOf(model.origin) }; var email by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var register by remember { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize(), color = Paper) { Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(20.dp)); Image(painterResource(R.drawable.elephant_logo), "funkyfarm elephant", Modifier.size(88.dp)); Text("funkyfarm", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Less paperwork. More growing.", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(20.dp)); Image(painterResource(R.drawable.barn_logo), "FunkyFarm barn logo", Modifier.size(88.dp)); Text("funkyfarm", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Less paperwork. More growing.", style = MaterialTheme.typography.titleLarge)
         Text("Your farm records, source documents and reviewed reports in one private workspace.")
         Heading(if (register) "Create your workspace" else "Welcome back")
         if (model.message.isNotBlank()) Notice(model.message)
@@ -201,7 +212,14 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
         var config by remember { mutableStateOf(false) }; TextButton(onClick = { config = !config }) { Text("Local API connection") }
         if (config) { OutlinedTextField(endpoint, { endpoint = it }, label = { Text("API origin") }, modifier = Modifier.fillMaxWidth()); Text("Android emulator: http://10.0.2.2:8139. Physical devices require a reachable HTTPS service or an authorized USB reverse connection.", style = MaterialTheme.typography.bodySmall) }
         if (model.busy) WorkingIndicator()
+        LogoCredit()
     } }
+}
+
+@Composable private fun LogoCredit() {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    TextButton(onClick = { uriHandler.openUri("https://game-icons.net/1x1/delapouite/barn.html") }) { Text("Barn logo by Delapouite · Game-icons.net", style = MaterialTheme.typography.bodySmall) }
+    TextButton(onClick = { uriHandler.openUri("https://creativecommons.org/licenses/by/3.0/") }) { Text("CC BY 3.0 · artwork unchanged", style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable private fun WorkingIndicator() {
@@ -227,6 +245,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
             job.optString("path") == "/workflow/answer" -> "Answer for your paperwork"
             job.optString("path").contains("field-proposals") -> "Field change"
             job.optString("path").contains("/reports") -> "Prepared report or response"
+            job.optString("path").startsWith("/cases") -> "Preparation job or recorded reply"
             job.optString("path").contains("/review") -> "Record review"
             job.optString("path").startsWith("/compliance/") -> "Preparation checklists"
             job.optString("path").startsWith("/regulatory/") -> "In-app update preferences"
@@ -242,7 +261,7 @@ private fun status(record: JSONObject): String = record.data().let { data -> lis
             SelectionContainer { Text("Your pending change\n${job.optJSONObject("body")?.toString(2)}", style = MaterialTheme.typography.bodySmall) }
             job.optJSONObject("current")?.let { current ->
                 SelectionContainer { Text("Latest server record\n${current.toString(2)}", style = MaterialTheme.typography.bodySmall) }
-                if (job.optString("method") == "PATCH") Button(onClick = { model.resolveConflict(job) }) { Text("Use my values against this latest revision") }
+                if (job.optString("method") == "PATCH" && !job.optString("path").startsWith("/cases/")) Button(onClick = { model.resolveConflict(job) }) { Text("Use my values against this latest revision") }
                 else Text("Discard this pending action and review the latest record again before approving or confirming.")
             }
         } else OutlinedButton(onClick = { model.retry(job.getString("id")) }, enabled = !model.busy) { Text("Retry now") }

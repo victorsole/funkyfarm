@@ -73,14 +73,14 @@ def _document_ids(data):
     return result
 
 
-def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None):
+def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None, operation_ids=None):
     """Read current scoped inputs and return actions. Does not persist a draft."""
     request = _get(conn, "requests", request_id)
     data = request["data"]
     farm = _get(conn, "farms", data.get("farm_id"))
     farm_id = str(farm["id"])
     request_id = str(request["id"])
-    request_url = f"/app/requests/{request_id}"
+    request_url = f"/app/paperwork/{request_id}"
     farm_url = f"/app/farm/{farm_id}"
     issues = []
 
@@ -126,7 +126,7 @@ def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None
             add(error.code, error.message, field="pack_id")
     if pack is not None and isinstance(year, int) and not isinstance(year, bool) and 2000 <= year <= 2200:
         try:
-            body = CreateReport(farm_id=farm_id, request_id=request_id, pack_id=data["pack_id"], reporting_year=year, fact_ids=fact_ids, selected_document_ids=document_ids)
+            body = CreateReport(farm_id=farm_id, request_id=request_id, pack_id=data["pack_id"], reporting_year=year, fact_ids=fact_ids, selected_document_ids=document_ids, operation_ids=operation_ids or [])
             prepared = _prepare(conn, body, session)
         except ApiError as error:
             if error.code == "pack_region":
@@ -138,6 +138,9 @@ def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None
             fact_id = (error.details or {}).get("fact_id")
             source = {"title": "Farm answer requiring source review", "fact_id": fact_id} if fact_id else None
             fix_url = farm_url + f"#fact-{fact_id}" if fact_id else farm_url if error.code == "pack_region" and field == "region" else request_url
+            if operation_id := (error.details or {}).get("operation_id"):
+                source = {"title": "Farm application requiring review", "record_id": operation_id, "record_kind": "operations"}
+                fix_url = request_url + f"?journal_operation_id={operation_id}"
             add(error.code, error.message, field=field, fix_url=fix_url, source=source)
         if prepared:
             for blocker in prepared["blockers"]:
@@ -149,11 +152,11 @@ def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None
                 elif blocker.get("fact_id"):
                     source = {"title": "Farm answer and its source", "fact_id": blocker["fact_id"]}
                     fix_url = farm_url + f"#fact-{blocker['fact_id']}"
-                elif blocker.get("record_id"):
-                    source = {"title": "Source farm record", "record_id": blocker["record_id"], "record_kind": blocker.get("record_kind")}
-                    fix_url = farm_url
                 elif blocker.get("operation_id"):
                     source = {"title": "Farm activity", "record_id": blocker["operation_id"], "record_kind": "operations"}
+                    fix_url = request_url + f"?journal_operation_id={blocker['operation_id']}"
+                elif blocker.get("record_id"):
+                    source = {"title": "Source farm record", "record_id": blocker["record_id"], "record_kind": blocker.get("record_kind")}
                     fix_url = farm_url
                 elif blocker["code"] in ("stale_context", "unresolved_conflict", "reconciliation_changed"):
                     fix_url = farm_url
@@ -284,12 +287,18 @@ def check_request(conn, session, request_id, *, fact_ids=None, document_ids=None
         {"id": "applicability", "label": "Review applicable obligations and unresolved adviser questions", "status": "review" if needs_adviser else "pending" if any(issue["field"] == "applicability" for issue in issues) else "complete", "fix_url": f"/app/advisers?farm_id={farm_id}"},
         {"id": "human_approval", "label": "Prepare the response preview and explicitly approve that version", "status": "review", "fix_url": request_url},
     ]
-    return {"request_id": request_id, "request_revision": request["revision"], "status": status, "issues": issues, "steps": steps, "checked_at": now(), "scope": {"farm_id": farm_id, "country": farm["data"].get("country"), "region": farm["data"].get("region"), "reporting_year": year, "pack_id": data.get("pack_id")}, "selection": {"fact_ids": [fact["id"] for fact in selected_facts], "document_ids": document_ids, "documents_origin": "explicit" if explicit_documents else "request_attachments"}, "compliance": {key: compliance.get(key) for key in ("rules_version", "rules_hash", "input_fingerprint", "limits")}, "notice": "Preparation checks only. Ready for review does not establish legal compliance, eligibility, filing or authority acceptance. A report still needs an explicit review and approval; checking attached documents does not share them."}
+    return {"request_id": request_id, "request_revision": request["revision"], "status": status, "issues": issues, "steps": steps, "checked_at": now(),
+        "scope": {"farm_id": farm_id, "country": farm["data"].get("country"), "region": farm["data"].get("region"), "reporting_year": year, "pack_id": data.get("pack_id")},
+        "selection": {"fact_ids": [fact["id"] for fact in selected_facts], "document_ids": document_ids,
+            "operation_ids": list(dict.fromkeys(str(item) for item in (operation_ids or []))), "documents_origin": "explicit" if explicit_documents else "request_attachments"},
+        "compliance": {key: compliance.get(key) for key in ("rules_version", "rules_hash", "input_fingerprint", "limits")},
+        "notice": "Preparation checks only. Ready for review does not establish legal compliance, eligibility, filing or authority acceptance. A report still needs an explicit review and approval; checking attached documents does not share them."}
 
 
 @router.get("/requests/{request_id}/checks")
-def request_checks(request_id: UUID, selected_fact_ids: str | None = Query(default=None, max_length=190000), selected_document_ids: str | None = Query(default=None, max_length=10000), session: Session = Depends(require_session)):
+def request_checks(request_id: UUID, selected_fact_ids: str | None = Query(default=None, max_length=190000), selected_document_ids: str | None = Query(default=None, max_length=10000), selected_operation_ids: str | None = Query(default=None, max_length=38000), session: Session = Depends(require_session)):
     fact_ids = _selection(selected_fact_ids, 5000)
     document_ids = _selection(selected_document_ids, 250)
+    operation_ids = _selection(selected_operation_ids, 1000)
     with transaction(session) as conn:
-        return check_request(conn, session, str(request_id), fact_ids=fact_ids, document_ids=document_ids)
+        return check_request(conn, session, str(request_id), fact_ids=fact_ids, document_ids=document_ids, operation_ids=operation_ids)

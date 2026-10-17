@@ -164,6 +164,7 @@ def check_capture(conn, kind, data, record_id=None, reporting_year=None, *, even
     farm = fetch_record(conn, "farms", str(combined["farm_id"])) if combined.get("farm_id") else None
     if farm:
         normalized["farm_id"] = farm["id"]
+    journal_input = kind == "operations" and combined.get("type") == "pesticide_application" and ("cz_ppp" in combined or farm and farm["data"].get("country") == "CZ")
     for field in ("quantity", "amount", "tax_amount", "tax_rate", "hours", "area_ha", "dose", "treated_size"):
         if field in normalized:
             normalized[field] = _number(normalized[field], field, issues)
@@ -172,7 +173,9 @@ def check_capture(conn, kind, data, record_id=None, reporting_year=None, *, even
         _issue(issues, "invalid_unit", "Enter a unit name, or leave it blank when it is unknown.", "unit", "error")
         unit = None
     if isinstance(unit, str):
-        canonical = UNIT_ALIASES.get(unit.strip(), unit.strip())
+        # A mapped journal retains its supplied unit spelling alongside the
+        # original numeric text; an alias is not an authority unit conversion.
+        canonical = unit if journal_input else UNIT_ALIASES.get(unit.strip(), unit.strip())
         if canonical != unit:
             _issue(issues, "unit_spelling", f"The unit will be saved as {canonical}. Check that this is the unit you meant.", "unit")
             normalized["unit"] = canonical
@@ -277,6 +280,16 @@ def check_capture(conn, kind, data, record_id=None, reporting_year=None, *, even
                 _issue(issues, "zero_sale" if sale else "zero_receipt", "The sale total is zero. Check that the amount has not been left out." if sale else "The receipt total is zero. Check that the amount has not been left out.", "amount")
     try:
         normalized = validate_data(conn, kind, normalized, old["data"] if old else None, record_id=record_id)
+        if journal_input:
+            from .ppp_journal import journal_issues
+            for issue in journal_issues(normalized):
+                # An actual incomplete event may be retained. The report keeps
+                # the original error severity and will not approve it as complete.
+                _issue(issues, issue["code"], issue["message"], issue["field"])
+        if kind == "facts" and normalized.get("key") == "cz.ppp.holder":
+            from .ppp_journal import holder_issues
+            for issue in holder_issues(normalized["value"]):
+                _issue(issues, issue["code"], issue["message"], issue["field"])
     except ApiError as exc:
         if exc.status not in {409, 422}:
             raise
@@ -463,8 +476,16 @@ def _question_items(requirements, facts, request_data, farm_data, excluded, pack
                 and (not requirement.get("unit") or fact["data"].get("unit") == requirement["unit"])]
             confirmed = [fact for fact in matches if fact["data"].get("review_status") == "confirmed" and fact["data"].get("value") is not None]
             proposals = [fact for fact in matches if fact["data"].get("review_status") == "proposed"]
+            holder_issues = []
+            if key == "cz.ppp.holder":
+                from .ppp_journal import holder_issues as check_holder, validate_holder
+                for fact in confirmed:
+                    try:
+                        holder_issues.extend(check_holder(validate_holder(fact["data"]["value"])))
+                    except ApiError as exc:
+                        holder_issues.append({"code": exc.code, "severity": "error", "field": "value", "message": exc.message})
             conflict = len({_digest([fact["data"].get("value"), fact["data"].get("unit")]) for fact in confirmed}) > 1
-            if confirmed and not conflict and not proposals:
+            if confirmed and not conflict and not proposals and not holder_issues:
                 completed += 1
                 continue
             choices = requirement.get("choices", requirement.get("enum", []))
@@ -477,6 +498,8 @@ def _question_items(requirements, facts, request_data, farm_data, excluded, pack
                 value_type = "number"
             elif value_type == "boolean":
                 value_type = "boolean"
+            elif key in {"cz.ppp.holder", "pt.ppp.surface_journal"} and value_type == "object":
+                value_type = "object"
             elif value_type == "date" or requirement.get("format") == "date" or (context_basis == "calendar_date" and (key == "date" or key.endswith("_date"))):
                 value_type = "date"
             else:
@@ -490,12 +513,13 @@ def _question_items(requirements, facts, request_data, farm_data, excluded, pack
                 "label": label, "prompt": f"What is the answer for {label.lower()}{context}?", "required": requirement.get("required", True),
                 "value_type": value_type, "unit": requirement.get("unit"), "temporal_basis": context_basis, "period": context_period,
                 "choices": choices, "proposals": proposals, "confirmed": confirmed,
-                "state": "conflict" if conflict else "proposed" if proposals else "missing",
+                "state": "conflict" if conflict else "proposed" if proposals else "incomplete" if holder_issues else "missing",
+                "capture_kind": requirement.get("capture_kind"), "issues": holder_issues,
                 "source_references": deepcopy(requirement.get("sources", pack.get("sources", []) if pack else []))})
     return questions, completed
 
 
-def _question_context(conn, request_id):
+def _question_context(conn, request_id, *, journal_limit=50, journal_offset=0):
     from .reporting import _matches_requirement, _pack_year_matches, get_pack
     from .reconciliation import selected_fact_ids
     request = fetch_record(conn, "requests", str(request_id))
@@ -524,6 +548,9 @@ def _question_context(conn, request_id):
     facts = _farm_records(conn, farm["id"], ["facts"])
     excluded = selected_fact_ids(conn, farm["id"])["excluded_fact_ids"]
     questions, completed = _question_items(requirements, facts, data, farm["data"], excluded, pack)
+    for question in questions:
+        if question["key"] == "pt.ppp.surface_journal":
+            question["completion_url"] = f"/app/record-work?farm_id={farm['id']}&pt_journal_request={request['id']}#portuguese-journal"
     source_tables = []
     for requirement in requirements:
         if not requirement.get("fact_key_prefix") or not requirement.get("import_profile"):
@@ -534,14 +561,50 @@ def _question_context(conn, request_id):
             "proposed_count": sum(fact["data"].get("review_status") == "proposed" for fact in matching),
             "import_url": f"/app/imports?profile={requirement['import_profile']}&farm_id={farm['id']}",
             "review_url": f"/app/fields/{farm['id']}#facts"})
+    journals = []
+    if pack and pack.get("journal_schema") == "cz-ppp-journal-v1":
+        from .ppp_journal import COLUMNS, HOLDER_KEY, NOTICE, SCHEMA_ID, SOURCE, active_entries, journal_issues
+        ledger = _farm_records(conn, farm["id"], ["operations"])
+        active_ids = {entry["id"] for entry in active_entries(ledger)}
+        entries = []
+        for item in ledger:
+            value = item["data"]
+            if value.get("type") != "pesticide_application" or value.get("review_status") == "rejected":
+                continue
+            try:
+                in_year = date.fromisoformat(value.get("date")).year == data["reporting_year"]
+            except (ValueError, TypeError):
+                in_year = False
+            if not in_year:
+                continue
+            try:
+                issues = journal_issues(value)
+            except ApiError as exc:
+                issues = [{"code": exc.code, "severity": "error", "field": exc.details.get("field"), "message": exc.message}]
+            destination = f"/app/paperwork/{request['id']}?journal_operation_id={item['id']}"
+            entries.append({"operation_id": item["id"], "operation_revision": item["revision"], "title": value.get("title"),
+                "date": value.get("date"), "review_status": value.get("review_status", "proposed"),
+                "supersedes_id": value.get("supersedes_id"), "active": item["id"] in active_ids, "issues": issues,
+                "completion_url": destination, "review_url": destination + "&review=1"})
+        entries.sort(key=lambda entry: (entry["date"], entry["operation_id"]))
+        current = [entry for entry in entries if entry["active"]]
+        journals.append({"schema_id": SCHEMA_ID, "pack_id": pack["id"], "source": deepcopy(SOURCE), "title": pack["title"],
+            "holder_fact_key": HOLDER_KEY, "columns": deepcopy(COLUMNS), "entries": entries[journal_offset:journal_offset + journal_limit],
+            "pagination": {"total": len(entries), "limit": journal_limit, "offset": journal_offset,
+                "next_offset": journal_offset + journal_limit if journal_offset + journal_limit < len(entries) else None},
+            "counts": {"total": len(current), "confirmed": sum(entry["review_status"] == "confirmed" for entry in current),
+                "proposed": sum(entry["review_status"] == "proposed" for entry in current),
+                "incomplete": sum(any(issue["severity"] == "error" for issue in entry["issues"]) for entry in current),
+                "pending": sum(any(issue["code"] in {"cz_ppp_pending_efficacy", "cz_ppp_pending_crop_end"} for issue in entry["issues"]) for entry in current)},
+            "add_url": f"/app/paperwork/{request['id']}?journal_new=1", "holder_url": f"/app/paperwork/{request['id']}#questions", "notice": NOTICE})
     return {"request": request, "questions": questions, "completed_count": completed,
-            "total_count": completed + len(questions), "blocked_reasons": blocked, "source_tables": source_tables}
+            "total_count": completed + len(questions), "blocked_reasons": blocked, "source_tables": source_tables, "journals": journals}
 
 
 @router.get("/questions")
-def guided_questions(request_id: UUID, session: Session = Depends(require_session)):
+def guided_questions(request_id: UUID, journal_limit: int = Query(default=50, ge=1, le=200), journal_offset: int = Query(default=0, ge=0), session: Session = Depends(require_session)):
     with transaction(session) as conn:
-        return _question_context(conn, str(request_id))
+        return _question_context(conn, str(request_id), journal_limit=journal_limit, journal_offset=journal_offset)
 
 
 @router.post("/answer")
@@ -566,6 +629,8 @@ def guided_answer(body: GuidedAnswer, idempotency_key: str | None = Header(defau
             question = candidates[0] if candidates else None
             if question is None:
                 raise ApiError(409, "question_already_answered", "This question is already answered or no longer belongs to the request. Refresh the questions.")
+            if question["key"] == "pt.ppp.surface_journal":
+                raise ApiError(422, "journal_editor_required", "Open the Portuguese journal to review the individual rows and dates.", {"fix_url": question.get("completion_url")})
             if body.parcel_id is not None and body.parcel_id != question["parcel_id"]:
                 raise ApiError(422, "answer_field_scope", "The selected question belongs to another field. Refresh the questions before saving.")
             if question["state"] == "conflict":
@@ -578,6 +643,8 @@ def guided_answer(body: GuidedAnswer, idempotency_key: str | None = Header(defau
                 raise ApiError(422, "answer_boolean", "Answer yes or no for this question.")
             if question["value_type"] == "text" and body.value is not None and not isinstance(body.value, str):
                 raise ApiError(422, "answer_text", "Enter the text requested by this question.")
+            if question["value_type"] == "object" and not isinstance(body.value, dict):
+                raise ApiError(422, "answer_object", "Complete the structured holder details requested by this journal.")
             if question["value_type"] == "date" and body.value is not None:
                 try:
                     date.fromisoformat(body.value)
@@ -770,23 +837,114 @@ def _missing_information(facts, requests, year, farm_data=None):
     return missing
 
 
+def _case_home(conn, farm_id, today):
+    active = "kind='admin_cases' AND deleted_at IS NULL AND data->>'farm_id'=%s AND data->>'status' NOT IN ('accepted_recorded','cancelled')"
+    count = conn.execute(f"SELECT count(*) AS total FROM records WHERE {active}", (farm_id,)).fetchone()["total"]
+    rows = conn.execute(f"SELECT id,data->>'title' AS title,data->>'status' AS status FROM records WHERE {active} "
+        "ORDER BY data->>'deadline' NULLS LAST,updated_at DESC,id LIMIT 5", (farm_id,)).fetchall()
+    messages = {
+        "draft": "Pick up the saved changes, documents and next steps.",
+        "ready_to_send": "Check that nothing changed, then follow the sending instructions. Nothing was sent by Funkyfarm.",
+        "sent": "You recorded sending this. Keep the actual receipt or reply with this work.",
+        "receipt_saved": "A receipt is recorded. Check whether the authority has asked for anything else.",
+        "needs_changes": "A reply needs your attention. Work through the requested changes.",
+    }
+    actions = [{"id": f"case-{row['id']}", "kind": "case", "title": row["title"],
+                "message": messages.get(row["status"], "Continue this saved work."),
+                "href": f"/app/cases/{row['id']}", "priority": "normal", "record_id": str(row["id"])} for row in rows]
+    deadlines_sql = f"""SELECT id AS case_id,data->>'title' AS title,data->>'deadline' AS deadline,NULL::text AS item_id
+        FROM records WHERE {active} AND nullif(data->>'deadline','') IS NOT NULL
+        UNION ALL
+        SELECT r.id AS case_id,i->>'title' AS title,i->>'due_date' AS deadline,i->>'id' AS item_id
+        FROM records r CROSS JOIN LATERAL jsonb_array_elements(coalesce(r.data->'items','[]'::jsonb)) i
+        WHERE r.kind='admin_cases' AND r.deleted_at IS NULL AND r.data->>'farm_id'=%s
+        AND r.data->>'status' NOT IN ('accepted_recorded','cancelled')
+        AND i->>'status' NOT IN ('resolved','cancelled') AND nullif(i->>'due_date','') IS NOT NULL"""
+    upcoming = conn.execute(f"SELECT count(*) AS total FROM ({deadlines_sql}) d WHERE deadline >= %s", (farm_id, farm_id, today)).fetchone()["total"]
+    due = conn.execute(f"SELECT * FROM ({deadlines_sql}) d ORDER BY deadline,case_id,item_id LIMIT 20", (farm_id, farm_id)).fetchall()
+    deadlines = [{"id": f"case-{row['case_id']}:{row['item_id'] or 'deadline'}", "title": row["title"],
+                  "deadline": row["deadline"], "overdue": row["deadline"] < today,
+                  "href": f"/app/cases/{row['case_id']}"} for row in due]
+    urgent = [deadline for deadline in deadlines if deadline["overdue"]]
+    if urgent:
+        actions.insert(0, {"id": urgent[0]["id"], "kind": "case", "title": urgent[0]["title"],
+            "message": f"The recorded deadline was {urgent[0]['deadline']}. Open this work to check the next step.",
+            "href": urgent[0]["href"], "priority": "high"})
+    return {"count": count, "upcoming": upcoming, "actions": actions, "deadlines": deadlines}
+
+
+def _task_home(conn, farm_id, today):
+    # One statement keeps the exact totals and bounded previews in the same
+    # database snapshot. Only task identity/date metadata is materialized.
+    result = conn.execute("""WITH active AS MATERIALIZED (
+        SELECT id,nullif(data->>'due_date','') AS due_date,updated_at
+        FROM records WHERE kind='tasks' AND deleted_at IS NULL AND data->>'farm_id'=%s
+        AND coalesce(data->>'status','open') IN ('open','in_progress')
+    ), counts AS (
+        SELECT count(*) AS total,count(due_date) AS dated_total,
+            count(*) FILTER (WHERE due_date < %s) AS overdue_total,
+            count(*) FILTER (WHERE due_date = %s) AS due_today_total,
+            count(*) FILTER (WHERE due_date >= %s) AS upcoming_total FROM active
+    ) SELECT counts.*,
+        coalesce((SELECT jsonb_agg(to_jsonb(item)) FROM (
+            SELECT r.id,r.data->>'title' AS title,r.data->>'description' AS description,a.due_date
+            FROM (SELECT * FROM active ORDER BY due_date NULLS LAST,updated_at,id LIMIT 5) a
+            JOIN records r ON r.id=a.id ORDER BY a.due_date NULLS LAST,a.updated_at,a.id
+        ) item),'[]'::jsonb) AS action_rows,
+        coalesce((SELECT jsonb_agg(to_jsonb(item)) FROM (
+            SELECT r.id,r.data->>'title' AS title,a.due_date
+            FROM (SELECT * FROM active WHERE due_date IS NOT NULL ORDER BY due_date,id LIMIT 20) a
+            JOIN records r ON r.id=a.id ORDER BY a.due_date,a.id
+        ) item),'[]'::jsonb) AS deadline_rows FROM counts""", (farm_id, today, today, today)).fetchone()
+    actions = []
+    for row in result["action_rows"]:
+        due = row["due_date"]
+        message = row["description"] or "A saved task still needs your attention."
+        if due:
+            message = f"{'The recorded deadline was' if due < today else 'The recorded deadline is'} {due}. {message}"
+        actions.append({"id": f"task-{row['id']}", "kind": "task", "title": row["title"] or "Follow up",
+            "message": message, "record_id": row["id"], "href": f"/app/tasks/{row['id']}",
+            "deadline": due, "overdue": bool(due and due < today),
+            "priority": "high" if due and due <= today else "normal"})
+    deadlines = [{"id": f"task-{row['id']}", "title": row["title"] or "Follow up", "deadline": row["due_date"],
+                  "overdue": row["due_date"] < today, "href": f"/app/tasks/{row['id']}"} for row in result["deadline_rows"]]
+    preview = {key: result[key] for key in ("total", "dated_total", "overdue_total", "due_today_total", "upcoming_total")}
+    preview.update(actions_returned=len(actions), deadlines_returned=len(deadlines),
+        actions_truncated=result["total"] > len(actions), deadlines_truncated=result["dated_total"] > len(deadlines),
+        href=f"/app/tasks?farm_id={farm_id}")
+    return {"actions": actions, "deadlines": deadlines, "preview": preview}
+
+
 def _home(conn, farm_id, year):
     farms = list_records(conn, "farms", 200)["items"]
     farm = fetch_record(conn, "farms", str(farm_id)) if farm_id else (farms[0] if farms else None)
-    summary = {"open_requests": 0, "proposed_facts": 0, "proposed_operations": 0, "proposed_purchases": 0, "proposed_sales": 0, "upcoming_deadlines": 0}
+    summary = {"open_requests": 0, "open_cases": 0, "open_tasks": 0, "dated_tasks": 0, "overdue_tasks": 0,
+        "due_today_tasks": 0, "upcoming_task_deadlines": 0, "proposed_facts": 0, "proposed_operations": 0,
+        "proposed_purchases": 0, "proposed_sales": 0, "upcoming_deadlines": 0}
     if farm is None:
         return {"farm": None, "farms": farms, "summary": summary,
             "next_actions": [{"id": "add-farm", "kind": "onboarding", "title": "Tell us about your farm", "message": "Add your country and farm type so we can show the right next steps.", "href": "/app/farm", "priority": "high"}],
             "missing_information": [{"code": "farm_missing", "label": "Farm details", "message": "Start with a name, country and farm type.", "href": "/app/farm"}],
-            "annual_review": {"year": year, "previous_year": year - 1, "reusable_count": 0, "missing_count": 0}, "deadlines": [], "capture_types": CAPTURE_TYPES}
-    records = _farm_records(conn, farm["id"], ["facts", "requests", "tasks"])
-    by_kind = {kind: [row for row in records if row["kind"] == kind] for kind in ("facts", "requests", "tasks")}
+            "annual_review": {"year": year, "previous_year": year - 1, "reusable_count": 0, "missing_count": 0},
+            "task_preview": {"total": 0, "dated_total": 0, "overdue_total": 0, "due_today_total": 0, "upcoming_total": 0,
+                "actions_returned": 0, "deadlines_returned": 0, "actions_truncated": False, "deadlines_truncated": False, "href": "/app/tasks"},
+            "deadlines": [], "capture_types": CAPTURE_TYPES}
+    records = _farm_records(conn, farm["id"], ["facts", "requests"])
+    by_kind = {kind: [row for row in records if row["kind"] == kind] for kind in ("facts", "requests")}
     active_requests = [row for row in by_kind["requests"] if row["data"].get("status") != "responded"]
     today = date.today().isoformat()
     deadlines = sorted([row for row in active_requests if row["data"].get("deadline")], key=lambda row: row["data"]["deadline"])
     summary["open_requests"] = len(active_requests)
     summary["upcoming_deadlines"] = len([row for row in deadlines if row["data"]["deadline"] >= today])
-    actions = []
+    cases = _case_home(conn, farm["id"], today)
+    summary["open_cases"] = cases["count"]
+    summary["upcoming_deadlines"] += cases["upcoming"]
+    tasks = _task_home(conn, farm["id"], today)
+    for name, count_key in (("open_tasks", "total"), ("dated_tasks", "dated_total"), ("overdue_tasks", "overdue_total"),
+                            ("due_today_tasks", "due_today_total"), ("upcoming_task_deadlines", "upcoming_total")):
+        summary[name] = tasks["preview"][count_key]
+    summary["upcoming_deadlines"] += tasks["preview"]["upcoming_total"]
+    actions = cases["actions"]
     for row in deadlines[:5]:
         overdue = row["data"]["deadline"] < today
         actions.append({"id": f"request-{row['id']}", "kind": "request", "title": row["data"].get("title", "Prepare a response"),
@@ -796,6 +954,13 @@ def _home(conn, farm_id, year):
         count = conn.execute("SELECT count(*) AS total FROM records WHERE kind=%s AND data->>'farm_id'=%s "
             "AND coalesce(data->>'review_status','proposed')='proposed' AND deleted_at IS NULL", (kind, farm["id"])).fetchone()["total"]
         summary[f"proposed_{kind}"] = count
+        if kind == "facts" and farm["data"].get("country") == "PT":
+            journal_count = sum(row["data"].get("key") == "pt.ppp.surface_journal" and row["data"].get("review_status") == "proposed" for row in by_kind["facts"])
+            if journal_count:
+                actions.append({"id": "review-portuguese-journals", "kind": "review", "title": "Check your Portuguese journal",
+                    "message": "Compare the saved rows and sources before confirming them.",
+                    "href": f"/app/record-work?farm_id={farm['id']}#portuguese-journal", "priority": "normal", "count": journal_count})
+                count -= journal_count
         if count:
             actions.append({"id": f"review-{kind}", "kind": "review", "title": f"Check {count} {label}",
                 "message": "These are saved as proposals. Review their values and sources before using them in paperwork.",
@@ -812,20 +977,24 @@ def _home(conn, farm_id, year):
     if not farm["data"].get("farm_type"):
         missing.insert(0, {"code": "farm_type_missing", "label": "Farm type", "message": "Choose the kind of farming you do so the starting questions fit your farm.", "href": f"/app/fields/{farm['id']}"})
         actions.insert(0, {"id": "finish-setup", "kind": "onboarding", "title": "Finish your farm details", "message": "Choose your farm type and check the reporting year.", "href": f"/app/fields/{farm['id']}", "priority": "high"})
-    for task in [row for row in by_kind["tasks"] if row["data"].get("status") not in {"done", "complete", "completed", "cancelled"}][:5]:
-        actions.append({"id": f"task-{task['id']}", "kind": "task", "title": task["data"].get("title", "Follow up"),
-            "message": task["data"].get("description") or "A saved task still needs your attention.", "record_id": task["id"],
-            "href": f"/app/paperwork/{task['data']['request_id']}" if task["data"].get("request_id") else f"/app/documents/{task['data']['document_id']}?task_id={task['id']}" if task["data"].get("document_id") else f"/app/fields/{farm['id']}", "priority": "normal"})
+    # Preserve existing critical case/request/setup actions ahead of urgent
+    # tasks, then show those tasks before ordinary follow-up and review work.
+    actions = ([action for action in actions if action.get("priority") == "high"]
+        + [action for action in tasks["actions"] if action["priority"] == "high"]
+        + [action for action in actions if action.get("priority") != "high"]
+        + [action for action in tasks["actions"] if action["priority"] != "high"])
     annual = _annual_review(conn, farm["id"], year)
     if annual["reusable_count"] or annual["missing_count"]:
         actions.append({"id": "annual-review", "kind": "annual_review", "title": "What changed since last year?", "message": "Reuse standing details and check this year's answers one at a time.",
             "href": f"/app/fields/{farm['id']}#annual-review", "priority": "normal", "count": sum(item["review"] is None and not item["current"] for item in annual["items"])})
     if not actions:
-        actions.append({"id": "record-work", "kind": "capture", "title": "Record today's work", "message": "Save work, purchases, sales or animal events while the details are fresh.", "href": "/app/record-work", "priority": "normal"})
+        actions.append({"id": "record-work", "kind": "capture", "title": "Record today's work", "message": "Save work, purchases, sales or animal events while the details are fresh.", "href": f"/app/record-work?farm_id={farm['id']}", "priority": "normal"})
+    home_deadlines = [{"id": row["id"], "title": row["data"].get("title", "Request"), "deadline": row["data"]["deadline"],
+                      "overdue": row["data"]["deadline"] < today, "href": f"/app/paperwork/{row['id']}"} for row in deadlines]
+    home_deadlines = sorted(home_deadlines + cases["deadlines"] + tasks["deadlines"], key=lambda item: (item["deadline"], item["id"]))
     return {"farm": farm, "farms": farms, "summary": summary, "next_actions": actions, "missing_information": missing,
         "annual_review": {key: annual[key] for key in ("year", "previous_year", "reusable_count", "missing_count")},
-        "deadlines": [{"id": row["id"], "title": row["data"].get("title", "Request"), "deadline": row["data"]["deadline"],
-                       "overdue": row["data"]["deadline"] < today, "href": f"/app/paperwork/{row['id']}"} for row in deadlines], "capture_types": CAPTURE_TYPES}
+        "deadlines": home_deadlines, "task_preview": tasks["preview"], "capture_types": CAPTURE_TYPES}
 
 
 @router.get("/home")

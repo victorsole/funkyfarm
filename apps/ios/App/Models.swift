@@ -45,6 +45,12 @@ struct RecordItem: Codable, Identifiable, Hashable {
     let data: [String: JSONValue]
     let created_at: String
     let updated_at: String
+    let journal_issues: [JSONValue]?
+    let active: Bool?
+    let confirmed_successor_id: String?
+    init(id: String, kind: String, revision: Int, workspace_id: String, data: [String: JSONValue], created_at: String, updated_at: String, journal_issues: [JSONValue]? = nil, active: Bool? = nil, confirmed_successor_id: String? = nil) {
+        self.id = id; self.kind = kind; self.revision = revision; self.workspace_id = workspace_id; self.data = data; self.created_at = created_at; self.updated_at = updated_at; self.journal_issues = journal_issues; self.active = active; self.confirmed_successor_id = confirmed_successor_id
+    }
     func value(_ key: String) -> String { data[key]?.text ?? "" }
     var title: String {
         for key in ["title", "name", "label", "filename", "original_filename", "pack_id"] {

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timezone
 import json
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -18,7 +19,7 @@ FIELDS = {
     "farms": {"name", "country", "region", "reporting_year", "external_id", "origin", "area_ha", "sites", "parcels", "crops", "people", "reporting_periods", "notes", "address", "coordinates", "farm_type", "onboarding"},
     "facts": {"farm_id", "key", "label", "value", "unit", "period", "temporal_basis", "sources", "review_status", "supersedes_id", "notes", "parcel_id", "field_id", "group_id"},
     "requests": {"farm_id", "title", "recipient", "country", "region", "reporting_year", "deadline", "pack_id", "requirements", "status", "notes", "document_id"},
-    "operations": {"farm_id", "title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "field_id", "group_id", "crop", "product", "operator", "hours", "note", "notes", "document_id", "external_id", "origin", "period", "temporal_basis", "sources", "review_status", "treatment_type", "product_authorisation", "dose", "dose_unit", "treated_size", "treated_unit", "treated_location", "start_time", "eppo_code", "bbch_stage", "batch_number", "contractor", "label_time_required", "label_growth_stage_required"},
+    "operations": {"farm_id", "title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "field_id", "group_id", "crop", "product", "operator", "hours", "note", "notes", "document_id", "external_id", "origin", "period", "temporal_basis", "sources", "review_status", "treatment_type", "product_authorisation", "dose", "dose_unit", "treated_size", "treated_unit", "treated_location", "start_time", "eppo_code", "bbch_stage", "batch_number", "contractor", "label_time_required", "label_growth_stage_required", "cz_ppp", "supersedes_id"},
     "purchases": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "supplier", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
     "sales": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "buyer", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
     "tasks": {"farm_id", "title", "description", "due_date", "status", "assignee", "request_id", "document_id", "notes", "checklist_id", "checklist_item_key", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
@@ -49,7 +50,10 @@ def _string(data, key, required=False, maximum=4000):
 def _date(data, key):
     if data.get(key) is not None:
         try:
-            date.fromisoformat(data[key])
+            value = data[key]
+            parsed = date.fromisoformat(value)
+            if not isinstance(value, str) or parsed.isoformat() != value:
+                raise ValueError
         except (ValueError, TypeError):
             _invalid(f"{key} must use YYYY-MM-DD.", field=key)
 
@@ -85,6 +89,33 @@ def _sources(conn, sources, farm_id):
 
 def physical_identity(data):
     return next((data.get(key) for key in ("parcel_id", "field_id", "group_id") if data.get(key) is not None), None)
+
+
+def _pt_journal(conn, data, *, lock=False):
+    """The literal source has no inferred event/field scope or unpinned files."""
+    from .manual_journal import FACT_KEY, validate_value
+    if data.get("key") != FACT_KEY:
+        return
+    farm = fetch_record(conn, "farms", data["farm_id"])
+    if farm["data"].get("country") != "PT" or data.get("temporal_basis") != "static" or data.get("period") is not None or data.get("unit") is not None or physical_identity(data) is not None:
+        raise ApiError(422, "pt_journal_scope", "Keep this Portuguese whole-farm literal journal static, without a unit, period or field identity.")
+    data["value"] = validate_value(data.get("value"))
+    sources = data.get("sources", [])
+    if not isinstance(sources, list) or len(sources) > 100 or any(
+        not isinstance(source, dict) or set(source) != {"document_id", "document_revision"} or not source.get("document_id")
+        for source in sources
+    ):
+        raise ApiError(422, "pt_journal_sources", "Journal sources are optional actual-document selections with document_id and document_revision only. Leave the list empty when no document was selected.")
+    ids = sorted({_uuid(source["document_id"], "document_id") for source in sources if isinstance(source, dict) and source.get("document_id")})
+    if lock and ids:
+        conn.execute("SELECT id FROM records WHERE id=ANY(%s::uuid[]) AND kind='documents' ORDER BY id FOR SHARE", (ids,)).fetchall()
+    for source in sources:
+        document = fetch_record(conn, "documents", source["document_id"])
+        if document["data"].get("farm_id") != data["farm_id"]:
+            raise ApiError(422, "pt_journal_source_farm", "Select source documents explicitly assigned to this same farm.")
+        revision = source.get("document_revision")
+        if type(revision) is not int or revision != document["revision"]:
+            raise ApiError(409, "pt_journal_source_changed", "Review and select the exact current source-document revision.", {"document_id": document["id"]})
 
 
 def matches_reporting_period(data, year, *, basis=None, period=None):
@@ -135,6 +166,62 @@ def _physical_scope(farm_data, data):
     data.pop("group_id", None)
 
 
+def _operation_correction(conn, data, *, record_id=None):
+    """Validate an explicit successor; callers serialize confirmation per farm."""
+    predecessor_id = data.get("supersedes_id")
+    if not predecessor_id:
+        return
+    previous = fetch_record(conn, "operations", predecessor_id)
+    if str(record_id) == previous["id"] or previous["data"].get("farm_id") != data["farm_id"] or previous["data"].get("type") != data.get("type") or previous["data"].get("review_status") != "confirmed":
+        raise ApiError(409, "operation_correction_conflict", "Choose a confirmed application of the same kind on this farm as the original correction source.")
+    successor = conn.execute("SELECT id FROM records WHERE kind='operations' AND deleted_at IS NULL "
+        "AND data->>'farm_id'=%s AND data->>'supersedes_id'=%s AND data->>'review_status'='confirmed' "
+        "AND id<>%s ORDER BY id LIMIT 1", (data["farm_id"], previous["id"], UUID(str(record_id)) if record_id else UUID(int=0))).fetchone()
+    if successor:
+        raise ApiError(409, "operation_correction_conflict", "This application already has a confirmed correction. Reload and correct its current successor instead.", {"successor_id": str(successor["id"])})
+
+
+def _operation_views(conn, items):
+    """Read-only journal metadata for the current bounded page, not saved data."""
+    candidates = [item for item in items if item["data"].get("type") == "pesticide_application"]
+    if not candidates:
+        return items
+    farm_ids = list({UUID(item["data"]["farm_id"]) for item in candidates})
+    farms = conn.execute("SELECT id FROM records WHERE kind='farms' AND id=ANY(%s) "
+        "AND deleted_at IS NULL AND data->>'country'='CZ'", (farm_ids,)).fetchall()
+    authorized = {str(row["id"]) for row in farms}
+    candidates = [item for item in candidates if item["data"]["farm_id"] in authorized]
+    if not candidates:
+        return items
+    by_id = {item["id"]: item for item in candidates}
+    rows = conn.execute("SELECT id,data->>'supersedes_id' AS predecessor,data->>'farm_id' AS farm_id FROM records "
+        "WHERE kind='operations' AND deleted_at IS NULL AND data->>'review_status'='confirmed' "
+        "AND data->>'supersedes_id'=ANY(%s) ORDER BY id LIMIT %s", (list(by_id), len(by_id) + 1)).fetchall()
+    if len(rows) > len(by_id):
+        raise ApiError(409, "operation_correction_conflict", "Resolve competing confirmed application corrections before choosing the current record.")
+    successors = {}
+    for row in rows:
+        predecessor = row["predecessor"]
+        if row["farm_id"] != by_id[predecessor]["data"]["farm_id"]:
+            continue
+        if predecessor in successors:
+            raise ApiError(409, "operation_correction_conflict", "Resolve competing confirmed application corrections before choosing the current record.")
+        successors[predecessor] = str(row["id"])
+    from .ppp_journal import journal_issues
+    result = []
+    for item in items:
+        if item["id"] not in by_id:
+            result.append(item)
+            continue
+        try:
+            issues = journal_issues(item["data"])
+        except ApiError as exc:
+            issues = [{"code": exc.code, "severity": "error", "field": exc.details.get("field"), "message": exc.message}]
+        result.append({**item, "journal_issues": issues, "active": item["id"] not in successors,
+            "confirmed_successor_id": successors.get(item["id"])})
+    return result
+
+
 def validate_data(conn, kind, patch, old=None, *, record_id=None):
     if kind not in FIELDS:
         raise ApiError(404, "not_found", "This collection is not available.")
@@ -154,7 +241,7 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             _invalid("A record cannot be moved to another farm; create a new record with its source retained.")
         if kind in {"facts", "operations"}:
             _physical_scope(farm["data"], data)
-    for field, target in (("document_id", "documents"), ("request_id", "requests"), ("supersedes_id", "facts"), ("checklist_id", "checklists")):
+    for field, target in (("document_id", "documents"), ("request_id", "requests"), ("supersedes_id", "operations" if kind == "operations" else "facts"), ("checklist_id", "checklists")):
         if data.get(field):
             data[field] = _uuid(data[field], field)
             related = fetch_record(conn, target, data[field])
@@ -206,6 +293,11 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             _invalid("A fact needs a value; null is allowed when the value is unknown.")
         from .compliance import validate_profile_value
         data["value"] = validate_profile_value(data.get("key"), data["value"])
+        if data["key"] == "cz.ppp.holder":
+            from .ppp_journal import validate_holder
+            if data.get("temporal_basis") != "static" or data.get("period") not in (None, "") or data.get("unit") is not None or physical_identity(data) is not None:
+                _invalid("The journal holder is a standing, whole-farm identity without an observation unit or field.", field="value")
+            data["value"] = validate_holder(data["value"])
         if "review_status" in patch and patch["review_status"] != "proposed":
             _invalid("Confirm or reject facts through the explicit review action.")
         if old and old.get("review_status") == "confirmed":
@@ -226,6 +318,7 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             _string(data, field, maximum=200)
         sources = data.setdefault("sources", [])
         _sources(conn, sources, data["farm_id"])
+        _pt_journal(conn, data)
     elif kind == "requests":
         for field in ("title", "recipient", "pack_id"):
             _string(data, field, required=True, maximum=500)
@@ -256,6 +349,15 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
     elif kind in {"operations", "purchases", "sales", "tasks", "checklists"}:
         _string(data, "title", required=True, maximum=500)
         if kind == "operations":
+            if old and old.get("supersedes_id") and data.get("supersedes_id") != old["supersedes_id"]:
+                _invalid("A saved correction must retain its original application link.", field="supersedes_id")
+            if "cz_ppp" in data:
+                from .ppp_journal import validate_details
+                if data.get("type") != "pesticide_application":
+                    _invalid("Czech crop-protection details belong to a pesticide application.", field="type")
+                data = validate_details(data)
+            if data.get("supersedes_id"):
+                _operation_correction(conn, data, record_id=record_id)
             for field in ("product_authorisation", "dose_unit", "treated_unit", "treated_location", "start_time", "eppo_code", "bbch_stage", "batch_number", "contractor", "operator"):
                 _string(data, field, maximum=500)
             if data.get("treatment_type") not in (None, "", "surface", "closed_space", "seed"):
@@ -300,6 +402,13 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             data.setdefault("status", "open")
             if not isinstance(data["status"], str) or data["status"] not in {"open", "in_progress", "done", "cancelled"}:
                 _invalid("Choose a supported task status.")
+            if "notes" in patch:
+                _string(data, "notes", maximum=4000)
+            if old and old.get("purpose") == "missing_information":
+                if any(key in patch and patch[key] != old.get(key) for key in ("title", "description", "assignee", "request_id")):
+                    _invalid("Keep the original question unchanged. Save your answer in the answer box.")
+                if data["status"] in {"done", "cancelled"} and (not isinstance(data.get("notes"), str) or not data["notes"].strip()):
+                    _invalid("Add your answer, or explain why you cannot answer, before closing this question.", field="notes")
             if data["status"] == "done" and data.get("checklist_id"):
                 from .obligations import require_task_evidence
                 require_task_evidence(conn, data)
@@ -382,6 +491,8 @@ def review_fact(record_id: str, body: ReviewFact, idempotency_key: str | None = 
                 _invalid("Explain the correction or rejection so the review history remains useful.")
             data = {**fact["data"], "review_status": body.decision,
                     "reviewed_by": session.user_id, "reviewed_at": datetime.now(timezone.utc).isoformat(), "review_note": body.note}
+            if body.decision == "confirmed":
+                _pt_journal(conn, data, lock=True)
             if body.decision == "confirmed" and data.get("supersedes_id"):
                 previous = fetch_record(conn, "facts", data["supersedes_id"])
                 if any(previous["data"].get(k) != data.get(k) for k in ("farm_id", "key", "period", "temporal_basis")):
@@ -407,9 +518,20 @@ def review_ledger(record_id: str, body: ReviewFact, request: Request, idempotenc
     with transaction(session) as conn:
         def perform():
             item = fetch_record(conn, kind, record_id)
-            if kind == "sales":
-                conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"{session.workspace_id}:reconciliation:{item['data']['farm_id']}",))
-                item = fetch_record(conn, kind, record_id)
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"{session.workspace_id}:reconciliation:{item['data']['farm_id']}",))
+            conn.execute("SELECT id FROM records WHERE id=%s AND kind=%s AND deleted_at IS NULL FOR UPDATE", (UUID(record_id), kind))
+            item = fetch_record(conn, kind, record_id)
+            if item["revision"] != body.expected_revision:
+                raise ApiError(409, "revision_conflict", "This record changed. Reload it before reviewing.")
+            if kind == "operations":
+                successor = conn.execute("SELECT id FROM records WHERE kind='operations' AND deleted_at IS NULL AND data->>'farm_id'=%s "
+                    "AND data->>'supersedes_id'=%s AND data->>'review_status'='confirmed' LIMIT 1", (item["data"]["farm_id"], item["id"])).fetchone()
+                if successor:
+                    raise ApiError(409, "operation_correction_conflict", "Review the current confirmed correction, not the superseded application.", {"successor_id": str(successor["id"])})
+            if kind == "operations" and body.decision == "confirmed":
+                _operation_correction(conn, item["data"], record_id=record_id)
+                if item["data"].get("supersedes_id") and not body.note.strip():
+                    raise ApiError(422, "review_note_required", "Explain the correction you checked before confirming this application.")
             if item["data"].get("review_status") == body.decision:
                 if item["revision"] != body.expected_revision:
                     raise ApiError(409, "revision_conflict", "This record was already reviewed. Reload it before continuing.")
@@ -477,13 +599,42 @@ def history(kind: str, record_id: str, limit: int = Query(50, ge=1, le=200), off
 
 
 @router.get("/{kind}")
-def collection(kind: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), farm_id: str | None = None, session: Session = Depends(require_session)):
+def collection(kind: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), farm_id: str | None = None,
+               task_state: Literal["all", "active"] = "all", fact_key: str | None = Query(None, min_length=1, max_length=300), session: Session = Depends(require_session)):
     if kind not in COLLECTIONS:
         raise ApiError(404, "not_found", "This collection was not found.")
     with transaction(session) as conn:
         if farm_id:
             fetch_record(conn, "farms", farm_id)
-        return list_records(conn, kind, limit, offset, farm_id)
+        if fact_key is not None:
+            if kind != "facts":
+                _invalid("The exact fact-key filter is only available for facts.")
+            where = "kind='facts' AND deleted_at IS NULL AND data->>'key'=%s"
+            args = [fact_key]
+            if farm_id:
+                where += " AND data->>'farm_id'=%s"
+                args.append(farm_id)
+            rows = conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records WHERE " + where
+                + " ORDER BY created_at,id LIMIT %s OFFSET %s", (*args, limit, offset)).fetchall()
+            total = conn.execute("SELECT count(*) AS total FROM records WHERE " + where, args).fetchone()["total"]
+            page = {"items": json_safe(rows), "total": total, "limit": limit, "offset": offset}
+        elif task_state == "active":
+            if kind != "tasks":
+                _invalid("The unfinished-task filter is only available for tasks.")
+            where = "kind='tasks' AND deleted_at IS NULL AND coalesce(data->>'status','open') IN ('open','in_progress')"
+            args = []
+            if farm_id:
+                where += " AND data->>'farm_id'=%s"
+                args.append(farm_id)
+            rows = conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records WHERE " + where
+                + " ORDER BY nullif(data->>'due_date','') NULLS LAST,updated_at,id LIMIT %s OFFSET %s", (*args, limit, offset)).fetchall()
+            total = conn.execute("SELECT count(*) AS total FROM records WHERE " + where, args).fetchone()["total"]
+            page = {"items": json_safe(rows), "total": total, "limit": limit, "offset": offset}
+        else:
+            page = list_records(conn, kind, limit, offset, farm_id)
+        if kind == "operations":
+            page["items"] = _operation_views(conn, page["items"])
+        return page
 
 
 @router.post("/{kind}", status_code=201)
@@ -502,7 +653,8 @@ def detail(kind: str, record_id: str, session: Session = Depends(require_session
     if kind not in COLLECTIONS:
         raise ApiError(404, "not_found", "This collection was not found.")
     with transaction(session) as conn:
-        return fetch_record(conn, kind, record_id)
+        item = fetch_record(conn, kind, record_id)
+        return _operation_views(conn, [item])[0] if kind == "operations" else item
 
 
 @router.patch("/{kind}/{record_id}")
@@ -510,6 +662,12 @@ def edit(kind: str, record_id: str, body: UpdateRecord, idempotency_key: str | N
     if kind not in COLLECTIONS:
         raise ApiError(404, "not_found", "This collection was not found.")
     with transaction(session) as conn:
+        if kind == "tasks":
+            current = fetch_record(conn, kind, record_id)
+            allowed = conn.execute("SELECT record_access(%s,'tasks',%s::jsonb,true) AS allowed",
+                (current["id"], json.dumps(current["data"]))).fetchone()["allowed"]
+            if not allowed:
+                raise ApiError(403, "task_write_required", "You can read this task, but your current farm permission does not allow changing its answer or status.")
         def perform():
             current = fetch_record(conn, kind, record_id)
             return update_record(conn, kind, record_id, body.expected_revision, validate_data(conn, kind, body.data, current["data"], record_id=record_id))

@@ -7,6 +7,7 @@ import { useSession } from '../auth';
 import type { RecordItem } from '../types';
 import { usePrivateDraft } from '../offline';
 import { FieldMap, FieldBoundaryWorkspace } from './FieldsMap';
+import { FundingGuide } from './FundingGuide';
 import './farm-work.css';
 
 // Uncontrolled short forms retain entered values without storing account credentials.
@@ -59,6 +60,7 @@ export interface WorkflowHome {
   farm: RecordItem | null;
   farms?: RecordItem[];
   deadlines?: {id:string;title:string;deadline:string;overdue?:boolean;href?:string}[];
+  task_preview?: {total:number;dated_total:number;overdue_total:number;due_today_total:number;actions_truncated:boolean;deadlines_truncated:boolean;href:string};
   summary: { open_requests: number; proposed_facts: number; proposed_operations: number; proposed_purchases: number; proposed_sales?:number; upcoming_deadlines: any[] | number };
   next_actions: { id: string; title: string; message: string; href: string; kind: string; priority?: string; count?: number }[];
   missing_information: { code: string; label: string; message: string;href?:string }[];
@@ -71,14 +73,19 @@ function farmerPath(path: string) {
 }
 
 function HomeTasks({farmId}:{farmId?:string}) {
-  const destination=(task:string)=>!farmId?`/app/fields?task=${task}`:task==='letter'?`/app/documents?farm_id=${farmId}&purpose=letter`:task==='fields'?`/app/fields/${farmId}`:task==='support'?`/app/paperwork?farm_id=${farmId}&intent=support`:task==='inspection'?`/app/paperwork?farm_id=${farmId}&intent=inspection`:'#next-task';
+  const destination=(task:string)=>['fields','correction','inspection'].includes(task)?`/app/cases/new?${new URLSearchParams({job_type:task,...(farmId?{farm_id:farmId}:{})})}`:!farmId?`/app/fields?task=${task}`:task==='letter'?`/app/documents?farm_id=${farmId}&purpose=letter`:task==='support'?`/app/paperwork?farm_id=${farmId}&intent=support`:'#next-task';
   return <section className="card"><h2>What would you like to do?</h2><div className="farm-start-choices">{[
     {id:'letter',title:'I received a letter',description:'Add the letter and work through what it asks for.'},
     {id:'fields',title:'Check my fields',description:'Check names, crops and boundaries against your own records.'},
+    {id:'correction',title:'Correct a submitted mistake',description:'Keep the original reference and work through the correction.'},
     {id:'support',title:'Apply for support',description:'Find the right application and check the answers still needed.'},
     {id:'inspection',title:'Prepare for inspection',description:'Gather the records requested for an inspection.'},
     {id:'next',title:'What needs doing next?',description:'See the next saved task, missing record or deadline.'}
   ].map(task=><Link key={task.id} className="farm-start-choice" to={destination(task.id)}><span><strong>{task.title}</strong><small>{task.description}</small></span></Link>)}</div></section>;
+}
+
+function CapExampleLink() {
+  return <aside className="card"><h2>See a CAP correction from start to finish</h2><p>Try a sample farm with a field difference and two missing records. Check the correction and prepare the folder without touching your own farm.</p><Link to="/app/examples/cap">Open the sample farm</Link></aside>;
 }
 
 export function HomePage() {
@@ -93,7 +100,7 @@ export function HomePage() {
     return()=>{active=false;};
   },[farmId,reload]);
   if(!home)return <><PageHeader title="Home" description="A hand with the paperwork, one task at a time."/><Failure error={error}/>{error?<Button onClick={()=>setReload(value=>value+1)}>Try again</Button>:<Notice>Checking your saved tasks…</Notice>}</>;
-  if(!home.farm)return <><PageHeader title="What brings you here today?" description="Start with the task in front of you. We will ask for your farm details once."/><HomeTasks/>{session?.workspace.role==='owner'?<OnboardingForm/>:<Notice>No farm is available through your current permission. Ask the farm owner to check your invitation.</Notice>}</>;
+  if(!home.farm)return <><PageHeader title="What brings you here today?" description="Start with the task in front of you. We will ask for your farm details once."/><HomeTasks/>{session?.workspace.role==='owner'?<><CapExampleLink/><OnboardingForm/></>:<Notice>No farm is available through your current permission. Ask the farm owner to check your invitation.</Notice>}</>;
   const deadlines=home.deadlines||(Array.isArray(home.summary.upcoming_deadlines)?home.summary.upcoming_deadlines:[]);
   const first=home.next_actions[0];
   const missing=home.missing_information;
@@ -101,9 +108,13 @@ export function HomePage() {
     <PageHeader title={`Home at ${home.farm.data.name}`} description="Choose a task, or pick up where you left off."/>
     {(home.farms?.length||0)>1&&<Field label="Farm"><select value={farmId||home.farm.id} onChange={event=>setFarmId(event.target.value)}>{home.farms?.map(farm=><option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field>}
     <HomeTasks farmId={home.farm.id}/>
+    {home.farm.data.country === 'PT' && <section className="card"><h2>Crop-protection records</h2><p>Save the details while they are fresh, check each row and prepare your Portuguese record when you need it.</p><Link className="button button-secondary" to={`/app/record-work?farm_id=${home.farm.id}#portuguese-journal`}>Open the Portuguese journal</Link></section>}
     <section id="next-task" className="farm-next"><h2>Your next step</h2>{first?<article className="card"><p className="eyebrow">From your saved records</p><h3>{first.title}</h3><p>{first.message}</p><Link className="button button-primary" to={farmerPath(first.href)}>{first.title}</Link>{home.next_actions.length>1&&<details><summary>What else needs attention?</summary><ul className="farm-plain-list">{home.next_actions.slice(1,3).map(action=><li key={action.id}><div><strong>{action.title}</strong><p>{action.message}</p></div><Link to={farmerPath(action.href)}>Open task</Link></li>)}</ul></details>}</article>:<div className="card"><h3>No outstanding task in your saved records</h3><p>Add a work note, purchase, sale or letter when you have one to record.</p><Link className="button button-secondary" to={`/app/record-work?farm_id=${home.farm.id}`}>Record work, a purchase or a sale</Link></div>}</section>
     <div className="two-column"><section className="card"><h2>Dates to keep in mind</h2>{deadlines.length?<ul className="farm-plain-list">{deadlines.slice(0,5).map((deadline:any,index:number)=><li key={deadline.id||index}><div><strong>{deadline.title||'Paperwork deadline'}</strong><p>{deadline.deadline||deadline.due_date||deadline.date}{deadline.overdue?' · overdue':''}</p></div>{deadline.id&&<Link to={farmerPath(deadline.href||`/app/paperwork/${deadline.id}`)}>Open paperwork</Link>}</li>)}</ul>:<p className="muted">No deadline is recorded for this farm.</p>}<Link to={`/app/paperwork?farm_id=${home.farm.id}`}>All paperwork</Link></section><section className="card"><h2>Records still needed</h2>{missing.length?<ul>{missing.slice(0,4).map((item,index)=><li key={`${item.code}:${index}`}><strong>{item.label}</strong><p>{item.message}</p>{item.href&&<Link to={farmerPath(item.href)}>Add the missing details</Link>}</li>)}</ul>:<p className="muted">No missing answer is recorded against your current paperwork. New requirements may still need review.</p>}{(home.summary.proposed_sales||0)>0&&<p><Link to={`/app/record-work?farm_id=${home.farm.id}&review=1`}>Check {home.summary.proposed_sales} saved {home.summary.proposed_sales===1?'sale':'sales'}</Link> before using the figures in paperwork.</p>}<Link to={`/app/documents?farm_id=${home.farm.id}`}>Add a notebook photo, letter or invoice</Link></section></div>
     <HomeChecks farmId={home.farm.id}/>
+    <section className="card"><h2>Tasks and questions</h2>{home.task_preview ? <p>{home.task_preview.total} unfinished{home.task_preview.overdue_total ? `, ${home.task_preview.overdue_total} overdue` : ''}{home.task_preview.due_today_total ? `, ${home.task_preview.due_today_total} due today` : ''}.{(home.task_preview.actions_truncated || home.task_preview.deadlines_truncated) && ' Home shows only the nearest tasks and dates.'}</p> : <p>Read and answer questions from your adviser, or follow up on saved tasks.</p>}<Link to={`/app/tasks?farm_id=${home.farm.id}`}>Open tasks and questions</Link></section>
+    <FundingGuide key={`${session?.user.id}:${session?.workspace.id}:${home.farm.id}`} farmId={home.farm.id}/>
+    <CapExampleLink/>
     <details className="card"><summary>Prepare this year's application</summary><p>Review the standing details you already recorded, then check this year's actual figures.</p><Link className="button button-secondary" to={`/app/fields/${home.farm.id}#annual-review`}>Review this year's answers</Link></details>
   </>;
 }

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "checked_date": "2026-10-17",
+  "profiles": [
+    {
+      "id": "cz-lpis-drawing",
+      "country": "CZ",
+      "title": "Check a Czech LPIS drawing",
+      "applies_to": "Farmer drawings and proposed changes to a land block. A private parcel, a working sketch and a DPB change proposal serve different purposes.",
+      "official_url": "https://mze.gov.cz/public/portal/mze/farmar/LPIS/uzivatelske-prirucky/lpis-pro-farmare/prirucky-pro-praci-s-ilpis/kresleni-a-vymena-dat-s-gps",
+      "campaign_year": null,
+      "steps": [
+        {"title": "Choose the right drawing", "text": "Sign in to your authorised LPIS account. Choose a private agricultural parcel, working sketch or DPB change proposal before drawing."},
+        {"title": "Check the outline", "text": "The official guide describes drawing, editing and coordinate or SHP import. Our GeoJSON and KML files have not been verified for that import route."},
+        {"title": "Check the saved result", "text": "Save explicitly and inspect the result. Some parcel types are clipped to the land block when saved."},
+        {"title": "Keep the next step separate", "text": "A DPB proposal needs the authority's register-update process. A private drawing is not a submitted subsidy application. Keep any actual reply separately."}
+      ],
+      "authority_import_formats": ["Coordinate entry", "SHP"],
+      "limits": ["Exact import attributes, coordinate text grammar and authenticated filing have not been verified.", "The drawing manual does not establish data or imagery redistribution rights."],
+      "sources": [{"title": "MZe drawing and GPS manual", "url": "https://mze.gov.cz/public/portal/mze/-q335367---Xppydnel/uzivatelska-prirucka?_linka=a671996", "edition": "Version 2.5, 29 July 2026; sections 2.5, 3.4.5 and 4.3"}]
+    },
+    {
+      "id": "nl-mijn-percelen-gps",
+      "country": "NL",
+      "title": "Take an outline to Mijn percelen",
+      "applies_to": "Manual GPS-file handoff to parcel registration, not a complete Gecombineerde opgave application.",
+      "official_url": "https://www.rvo.nl/onderwerpen/percelen-registreren",
+      "campaign_year": null,
+      "steps": [
+        {"title": "Check the saved file", "text": "Review the field outlines here and download KML. Confirm the intended year and holding in your own Mijn percelen account."},
+        {"title": "Upload the shapes", "text": "The retained RVO instructions describe GPS, then Uploaden GPS-bestand. Select the KML file."},
+        {"title": "Choose the outline to use", "text": "Inspect the uploaded GPS shapes. Adopting a shape is a separate step; check the GPS-vlakken layer and resulting field details."},
+        {"title": "Finish in the official service", "text": "Follow the current saving and sending instructions. Keep the actual confirmation. Changing parcel registration does not by itself correct an already sent aid application."}
+      ],
+      "authority_import_formats": ["KML, through the documented GPS-upload route"],
+      "limits": ["Live upload and acceptance are unverified. The detailed guide could not be refreshed in the latest lookup; use its current instructions.", "GeoJSON and this app's correction JSON are not verified RVO import files. Public PDOK outlines do not establish your private claim."],
+      "sources": [{"title": "RVO parcel registration", "url": "https://www.rvo.nl/onderwerpen/percelen-registreren", "edition": "Public page checked 18 September 2026"}, {"title": "RVO Mijn percelen instructions", "url": "https://www.rvo.nl/onderwerpen/percelen-registreren/aan-de-slag", "edition": "Retained GPS-upload instructions; latest refresh timed out"}]
+    },
+    {
+      "id": "sk-gsaa-land-register",
+      "country": "SK",
+      "title": "Change owned or rented land records",
+      "applies_to": "The owned and rented land register (EPVP) inside GSAA. These steps are not a general guide to every GSAA map or claim correction.",
+      "official_url": "https://www.apa.sk/evidencia-prenajatych-vlastnych-pozemkov-epvp",
+      "campaign_year": 2026,
+      "steps": [
+        {"title": "Open the current register", "text": "Use PPA's official instructions. In GSAA, open the current campaign in editing mode and check the last properly sent register."},
+        {"title": "Make and send the changes", "text": "Update the owned or rented land records in GSAA and complete its sending step."},
+        {"title": "Deliver the separate change form", "text": "The PPA notice also requires the change form through slovensko.sk. Mark that it concerns the land register; a GSAA edit alone is insufficient for this process."},
+        {"title": "Keep both confirmations", "text": "Keep evidence of the GSAA action and delivery of the change form. Record actual dates and references here; do not assume a deadline from the transition notice."}
+      ],
+      "authority_import_formats": [],
+      "limits": ["Geometry import formats, CRS, drawing controls and general claim-correction deadlines remain unverified.", "The notice describes the EPVP move to GSAA from 16 July 2026, not a blanket requirement for every field edit."],
+      "sources": [{"title": "PPA owned and rented land register notice", "url": "https://www.apa.sk/evidencia-prenajatych-vlastnych-pozemkov-epvp", "edition": "2026 transition notice, read 17 October 2026"}]
+    }
+  ]
+}
