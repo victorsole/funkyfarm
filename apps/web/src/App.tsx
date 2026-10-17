@@ -11,6 +11,7 @@ import { CasesPage, NewCasePage, CaseDetailPage } from './pages/Cases';
 import { CapExamplePage } from './pages/CapExample';
 import { DemoWorkspacePage } from './pages/DemoWorkspace';
 import { HackathonDemoPage } from './pages/HackathonDemo';
+import { EasyFarmFormPage } from './pages/EasyFarmForm';
 import { PublicDemoPage } from './pages/PublicDemo';
 import { ParcelCheckPage } from './pages/ParcelCheck';
 import { CorrectionWizardPage } from './pages/CorrectionWizard';
@@ -235,6 +236,7 @@ export default function App() {
       <Route index element={<Navigate to={session.workspace.role === 'adviser' ? 'adviser' : 'home'} replace/>}/>
       <Route path="home" element={<HomePage/>}/>
       <Route path="demo" element={<HackathonDemoPage/>}/>
+      <Route path="easy-form" element={<EasyFarmFormPage/>}/>
       <Route path="examples" element={<DemoWorkspacePage/>}/>
       <Route path="examples/cap" element={<CapExamplePage/>}/>
       <Route path="tasks" element={<TasksPage/>}/>

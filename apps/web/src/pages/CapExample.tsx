@@ -83,12 +83,12 @@ function CompareOutlines({ scenario }: { scenario: Example['scenario'] }) {
   const path = (part: number[][][]) => part.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${300 + (point[0] - longitude) * cosine * scale} ${150 - (point[1] - latitude) * scale}`).join(' ') + ' Z').join(' ');
   return <figure style={{ margin: '1rem 0' }}>
     <svg viewBox="0 0 600 300" role="img" aria-labelledby={`${id}-title ${id}-description`} style={{ display: 'block', width: '100%', maxHeight: 360, background: '#edf0e7', border: '1px solid #bec7b5', borderRadius: 10 }}>
-      <title id={`${id}-title`}>Fictional claim and supplied reference outlines</title><desc id={`${id}-description`}>The solid green outline is {scenario.reference_label}. The dashed plum outline is {scenario.claimed_label}. These are authored example shapes, not satellite imagery or a live land register.</desc>
+      <title id={`${id}-title`}>Sample claim and supplied reference outlines</title><desc id={`${id}-description`}>The solid green outline is {scenario.reference_label}. The dashed blue outline is {scenario.claimed_label}. These are sample shapes, not satellite imagery or an official field map.</desc>
       {reference.map((part, index) => <path key={`reference-${index}`} d={path(part)} fill="#688b68" fillOpacity=".32" fillRule="evenodd" stroke="#36583b" strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
-      {claimed.map((part, index) => <path key={`claimed-${index}`} d={path(part)} fill="#754363" fillOpacity=".12" fillRule="evenodd" stroke="#754363" strokeWidth="3" strokeDasharray="9 5" vectorEffect="non-scaling-stroke" />)}
-      <text x="12" y="284" fill="#433e3c" fontSize="13">FICTIONAL TRAINING EXAMPLE · NO SATELLITE OBSERVATION</text>
+      {claimed.map((part, index) => <path key={`claimed-${index}`} d={path(part)} fill="#1746a2" fillOpacity=".12" fillRule="evenodd" stroke="#1746a2" strokeWidth="3" strokeDasharray="9 5" vectorEffect="non-scaling-stroke" />)}
+      <text x="12" y="284" fill="#433e3c" fontSize="13">Sample field plan</text>
     </svg>
-    <figcaption><p><strong>Dashed plum:</strong> {scenario.claimed_label}<br /><strong>Solid green:</strong> {scenario.reference_label} · supplied reference year {scenario.reference_year}</p><p>The claimed area is not the eligible area. Neither outline proves ownership, land-use rights or eligibility. Satellite crop interpretation is unknown; no satellite observation was made for this example.</p></figcaption>
+    <figcaption><p><strong>Dashed blue:</strong> {scenario.claimed_label}<br /><strong>Solid green:</strong> {scenario.reference_label} · supplied reference year {scenario.reference_year}</p><details><summary>What these outlines show</summary><p>The area in a claim is not necessarily the area that can be paid for. Neither outline proves ownership, land-use rights or eligibility. No satellite observation was made for this example.</p></details></figcaption>
   </figure>;
 }
 
@@ -159,17 +159,18 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
   const data = current?.data;
   const caseHref = data ? `/app/cases/${data.case.id}` : '';
   return <>
-    <PageHeader title="Try a CAP correction" description="Work through a fictional claim correction, then prepare its records using the real private farm tools." />
-    <Notice kind="warning"><strong>Fictional training example — not a real holding or application.</strong> All outlines, claim details, notices and sample records are authored for this walkthrough. Nothing here establishes a real CAP entitlement or authority acceptance.</Notice>
+    <PageHeader title="Try a CAP correction" description="Check a sample claim, correct its field details and prepare the records." />
+    <p><span className="badge">Demo</span> Made-up records. Nothing is sent.</p>
+    <details><summary>About this example</summary><p>The farm, outlines, claim details, notices and sample records were made for this walkthrough. They do not establish a real CAP entitlement or authority acceptance.</p></details>
     {!draft.ready && <p role="status">Looking for your saved example on this device…</p>}
     {draft.saving && <p role="status">Keeping the example link privately on this device…</p>}
     {draft.error && <Notice kind="warning">{draft.error} Keep the saved example link before leaving.</Notice>}
     {invalidRun && <Notice kind="error">This example link is incomplete or invalid. Open its original saved link; a new example has not been created.</Notice>}
     {!runId && !invalidRun && draft.ready && <section className="paper-section">
-      <h2>Start with a fictional Dutch holding</h2>
+      <h2>Start with a sample Dutch farm</h2>
       <p>You will compare the claimed boundary with a supplied reference, check a correction, and attach the missing land-use and commitment records.</p>
       <p>Starting saves an example farm, claim and notice tasks, a proposed field change, and a case with three unfinished items in this workspace. It does not approve fields, add original documents, send a claim or record acceptance.</p>
-      {owner ? <><label className="check-row"><input type="checkbox" checked={acknowledged} disabled={creating} onChange={event => setAcknowledged(event.target.checked)} />I understand that these are fictional records and want to save this example in my workspace.</label><div className="actions"><Button onClick={() => void create()} loading={creating} disabled={!acknowledged || draft.saving}>Create or reopen my example</Button></div><p className="muted">If the connection stops, retry this same button. It reopens the saved example rather than creating another farm.</p></> : <Notice>You can view an existing example through its saved link. Only the workspace owner can create the example.</Notice>}
+      {owner ? <><label className="check-row"><input type="checkbox" checked={acknowledged} disabled={creating} onChange={event => setAcknowledged(event.target.checked)} />I want to save these sample records in my workspace.</label><div className="actions"><Button onClick={() => void create()} loading={creating} disabled={!acknowledged || draft.saving}>Create or reopen my example</Button></div><p className="muted">If the connection stops, retry this same button. It reopens the saved example rather than creating another farm.</p></> : <Notice>You can view an existing example through its saved link. Only the workspace owner can create the example.</Notice>}
       {createError && <Notice kind="error">{createError} Your retry reference has been kept; no second example should be started.</Notice>}
     </section>}
     {validRun && !data && !current?.error && <p role="status">Opening the saved example and checking its current records…</p>}
@@ -177,9 +178,9 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
     {data && <>
       <section className="paper-section">
         <div className="section-heading"><h2>{data.scenario.title}</h2><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh example progress</Button></div>
-        <p>{data.scenario.notice}</p><p><strong>Example farm:</strong> {String(data.farm.data.name || 'Fictional Dutch holding')}</p>
+        <p><strong>Example farm:</strong> {String(data.farm.data.name || 'Sample Dutch farm')}</p>
         <CompareOutlines scenario={data.scenario} />
-        <details><summary>Read the fictional claim and notice details</summary><dl className="detail-grid"><div><dt>Fictional original claim reference</dt><dd>{data.scenario.original_reference}</dd></div><div><dt>Fictional notice date</dt><dd>{data.scenario.fictional_notice_date}</dd></div><div><dt>Date supplied by the fictional notice</dt><dd>{data.scenario.fictional_deadline}</dd></div></dl><p>This date belongs only to this authored example. Real cases need the actual national process, authority notice and dates; no universal deadline is calculated here.</p></details>
+        <details><summary>Read the claim and notice details</summary><dl className="detail-grid"><div><dt>Original claim reference</dt><dd>{data.scenario.original_reference}</dd></div><div><dt>Notice date</dt><dd>{data.scenario.fictional_notice_date}</dd></div><div><dt>Response date in this example</dt><dd>{data.scenario.fictional_deadline}</dd></div></dl><p>{data.scenario.notice}</p><p>This date belongs only to the example. For a real case, check the national process, authority notice and actual dates. No universal deadline is calculated here.</p></details>
       </section>
       <section className="paper-section">
         <h2>Work through these three things</h2>
@@ -191,11 +192,11 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
       </section>
       <section className="paper-section">
         <h2>Add the missing records yourself</h2>
-        <p>For this fictional exercise, download the authored land-use and commitment samples below. Then open Documents, choose each file, save it to this example farm, and return to the case. Select the right document and review each requested item separately.</p>
+        <p>Download the sample land-use and commitment records below. Then open Documents, choose each file, save it to this example farm, and return to the case. Select the right document and review each requested item separately.</p>
         <p>A boundary does not prove a right to claim. A protected-area attribute is a reason to check the applicable commitment, not automatic ineligibility.</p>
         <ul>{data.scenario.samples.map(sample => <li key={sample.id}><strong>{sample.title}</strong><p>{sample.notice}</p><Button variant="secondary" onClick={() => { try { downloadSample(sample, data.scenario.title); setSampleError(''); } catch (reason) { setSampleError(errorMessage(reason)); } }}>Download {sample.title.toLowerCase()}</Button></li>)}</ul>
         {sampleError && <Notice kind="error">{sampleError}</Notice>}
-        <p>No sample is uploaded or selected automatically. For a real farm, use your actual records, not these fictional samples.</p>
+        <p>No sample is uploaded or selected automatically. For a real farm, use your actual records instead.</p>
         <div className="actions"><Link className="button button-secondary" to={`/app/documents?${new URLSearchParams({ farm_id: data.farm.id })}`}>Open Documents for the example farm</Link><Link className="button button-secondary" to={caseHref}>Select evidence and review the case items</Link></div>
       </section>
       <section className="paper-section">
@@ -206,10 +207,10 @@ function CapWalkthrough({ scope, workspaceId, owner }: { scope: string; workspac
         <p>{data.progress.review_current ? 'The selected saved records currently match the case review.' : data.progress.can_review ? 'The current check allows you to open the case and review the selected records yourself.' : 'A new review is not available in the case’s present state. Open it to check the remaining issues or the next permitted action.'}</p>
         <p>In the saved case, check the field change and evidence, explicitly review the records, then download the complete prepared folder (ZIP). The folder includes selected records and attachments, not unrelated farm documents. Downloading it sends nothing.</p>
         <Link className="button button-primary" to={caseHref}>Open the case for review and its complete folder</Link>
-        <p>Sending, receipt and acceptance are separate actions recorded by a person. This example has no authority connection and never records them automatically. Never send these fictional documents to an authority.</p>
+        <p>Sending, receipt and acceptance are separate actions recorded by a person. This example has no authority connection and never records them automatically. Do not send the sample documents to an authority.</p>
         <p className="muted">Progress is rechecked when you return here or choose Refresh example progress. An open or set-aside item is not an approved claim.</p>
       </section>
-      <p><Link to={`/app/examples/cap?${new URLSearchParams({ run_id: data.run_id })}`}>Saved link to this fictional example</Link></p>
+      <p><Link to={`/app/examples/cap?${new URLSearchParams({ run_id: data.run_id })}`}>Saved link to this example</Link></p>
     </>}
     <p><Link to="/app/paperwork">Back to Paperwork</Link></p>
   </>;

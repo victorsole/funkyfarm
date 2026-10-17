@@ -4,7 +4,9 @@ import { api, errorMessage } from '../api';
 import { useSession } from '../auth';
 import { Button, Notice, PageHeader } from '../components';
 import { saveDraft, usePrivateDraft } from '../offline';
+import type { RecordItem } from '../types';
 import { caseStatusLabel, type CaseStatus } from './case-types';
+import { ImportDemo } from './ImportDemo';
 import './hackathonDemo.css';
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -21,8 +23,28 @@ type Demo = {
   scenarios: { id: string; key: string; title: string; description: string; farmer_goal: string; adviser_goal: string;
     record_ids: string[]; expected_actions: string[]; cases: SavedCase[] }[];
 };
-type StepId = 'fields' | 'values' | 'correction' | 'folder';
-const stepIds: StepId[] = ['fields', 'values', 'correction', 'folder'];
+type StepId = 'fields' | 'import' | 'checks';
+const stepIds: StepId[] = ['fields', 'import', 'checks'];
+type Farm = RecordItem<{ name: string; parcels: { id: string; name: string; active?: boolean }[] }>;
+type ClaimFact = RecordItem<{ farm_id: string; parcel_id?: string; key: string; value: unknown; unit?: string | null; temporal_basis?: string; period?: string | null }>;
+type Guide = { case_id: string; case_revision: number; evaluation: {
+  title: string; explanation: string; status: string;
+  deadlines: { national: string | null; effective: string | null; eu_latest_possible: string | null; status: string };
+  sources: { key: string; title: string; url: string; article?: string; version?: string }[];
+} };
+const sampleLabel = (value: string) => value.replace(/^FICTIONAL(?:\s+example)?\s*(?:[—–-]\s*)?/i, '');
+function sourceHref(value: string) {
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; }
+  catch { return null; }
+}
+function suppliedNumber(facts: ClaimFact[] | undefined, id: string | undefined, key: string, unit: string) {
+  const data = facts?.find(fact => fact.id === id)?.data;
+  if (!data || data.key !== key || data.unit !== unit || data.temporal_basis !== 'campaign_year' || data.period !== '2026'
+    || typeof data.value !== 'number' || !Number.isFinite(data.value)) return 'Needs checking';
+  const raw = String(data.value);
+  const displayed = unit === '%' || /e/i.test(raw) ? raw : !raw.includes('.') ? `${raw}.00` : raw.split('.')[1].length === 1 ? `${raw}0` : raw;
+  return `${displayed}${unit === '%' ? '%' : ` ${unit}`}`;
+}
 
 function checked(value: Demo, workspaceId?: string, runId?: string): Demo {
   if (!value || !UUID.test(value.run_id) || !UUID.test(value.workspace?.id) || value.fixture_id !== 'lpis-correction-2026-v1' ||
@@ -77,12 +99,12 @@ function GuidedDemo({ scope, workspaceId, owner }: { scope: string; workspaceId:
   useEffect(() => {
     const sequence = ++generation.current;
     const controller = new AbortController();
-    setData(null); setError('');
+    setError('');
     if (valid && runId && !differentWorkspace) {
       api.downloadResponse(`/examples/workspace/${runId}`, { signal: controller.signal })
         .then(response => response.json() as Promise<Demo>)
         .then(value => { const saved = checked(value, workspaceId, runId); if (mounted.current && sequence === generation.current) setData(saved); })
-        .catch(failure => { if (mounted.current && sequence === generation.current && !controller.signal.aborted) setError(errorMessage(failure)); });
+        .catch(failure => { if (mounted.current && sequence === generation.current && !controller.signal.aborted) { setData(null); setError(errorMessage(failure)); } });
     }
     return () => controller.abort();
   }, [valid, runId, differentWorkspace, workspaceId, refresh]);
@@ -98,25 +120,59 @@ function GuidedDemo({ scope, workspaceId, owner }: { scope: string; workspaceId:
   const farm = related.find(record => record.kind === 'farms');
   const factAliases = ['es-claimed-area', 'es-eligible-area', 'es-coefficient', 'es-corrected-area'];
   const facts = related.filter(record => record.kind === 'facts' && factAliases.includes(record.alias ?? ''));
+  const claimFact = facts.find(record => record.alias === 'es-claimed-area');
   const evidenceTask = related.find(record => record.kind === 'tasks' && record.alias === 'es-lease-evidence');
   const savedCase = scenario?.cases.find(item => item.id === related.find(record => record.kind === 'admin_cases')?.id);
   const reviewedFacts = facts.filter(record => record.status === 'confirmed').length;
-  const valuesReviewed = facts.length === 4 && reviewedFacts === 4;
-  const allItemsResolved = !!savedCase?.items.length && savedCase.items.every(item => item.status === 'resolved');
-  const suggested: StepId = valuesReviewed ? allItemsResolved ? 'folder' : 'correction' : 'fields';
   const requestedStep = params.get('step');
-  const step = requestedStep && stepIds.includes(requestedStep as StepId) ? requestedStep as StepId : suggested;
+  const step: StepId = requestedStep && stepIds.includes(requestedStep as StepId) ? requestedStep as StepId
+    : requestedStep === 'correction' || requestedStep === 'folder' ? 'checks' : 'fields';
   const contextReady = !!farm && facts.length === 4 && !!savedCase && [farm.id, savedCase.id, ...facts.map(record => record.id)].every(id => UUID.test(id));
-  const fieldsHref = farm ? `/app/fields/${farm.id}/check?${new URLSearchParams({ expected_farm_revision: String(farm.revision), reporting_year: '2026' })}` : '';
+  const contextKey = contextReady ? `${data!.run_id}/${farm!.id}/${farm!.revision}/${facts.map(fact => `${fact.id}:${fact.revision}`).join(',')}/${savedCase!.id}/${savedCase!.revision}` : '';
+  const [fieldContext, setFieldContext] = useState<{ key: string; farm?: Farm; facts?: ClaimFact[]; parcelId?: string; error?: string }>({ key: '' });
+  const [guidance, setGuidance] = useState<{ key: string; guide?: Guide; error?: string }>({ key: '' });
+  const currentFields = fieldContext.key === contextKey ? fieldContext : null;
+  const currentGuide = guidance.key === contextKey ? guidance : null;
+  const activeFields = currentFields?.farm?.data.parcels.filter(parcel => parcel.active !== false);
+  const fieldQuery = new URLSearchParams({ expected_farm_revision: String(farm?.revision ?? ''), reporting_year: '2026' });
+  if (savedCase) { fieldQuery.set('case_id', savedCase.id); fieldQuery.set('expected_case_revision', String(savedCase.revision)); }
+  const fieldsHref = farm ? `/app/fields/${farm.id}/check?${fieldQuery}` : '';
+  const parcelQuery = new URLSearchParams(fieldQuery);
+  if (currentFields?.parcelId) parcelQuery.set('parcel_id', currentFields.parcelId);
+  const pastureHref = farm && currentFields?.parcelId ? `/app/fields/${farm.id}?${parcelQuery}#boundaries-${farm.id}` : '';
   const factsHref = farm ? `/app/fields/${farm.id}#facts` : '';
   const caseHref = savedCase ? `/app/cases/${savedCase.id}` : '';
-  const steps: { id: StepId; title: string; instruction: string; button: string; href: string; status: string }[] = [
-    { id: 'fields', title: 'Check the parcel', instruction: 'Compare the fictional 6.70 ha pasture drawing with the saved claim and supplied SIGPAC-style record. The supplied pasture coefficient is 45%, giving a supplied maximum of 3.02 ha. Keep the whole physical outline: 45% is not a smaller boundary to draw.', button: 'Check the sample parcel', href: fieldsHref, status: 'Compare physical land and supplied claim values' },
-    { id: 'values', title: 'Check the saved figures', instruction: 'Open the saved answers about this farm. Compare the claimed 6.70 ha, supplied 3.02 ha maximum, 45% coefficient and proposed 3.02 ha corrected claim with their original sample files. Confirm only the answers you checked. A confirmed source value is not an eligibility decision.', button: 'Review the four saved answers', href: factsHref, status: `${reviewedFacts} of ${facts.length} sample answers confirmed` },
-    { id: 'correction', title: 'Prepare the correction', instruction: 'Keep the fictional original claim separate. Work through each answer to prepare a claim of 3.02 ha if that is the correction you choose. The difference from the claimed 6.70 ha is 3.68 ha. Preparing this correction does not change a submitted claim or prove the permitted route.', button: 'Work through the correction', href: savedCase ? `${caseHref}/correction` : '', status: savedCase ? `${savedCase.items.filter(item => item.status === 'resolved').length} of ${savedCase.items.length} case items reviewed` : 'Open the saved case' },
-    { id: 'folder', title: 'Review and download', instruction: 'Review the answers and selected files in the case. When the checks allow it, approve the folder and download the ZIP. You decide what to send through the actual authority route.', button: 'Review the case and prepare the folder', href: caseHref, status: savedCase ? caseStatusLabel[savedCase.status] ?? 'Check the current case' : 'Not reviewed' },
+  const steps: { id: StepId; title: string; subtitle: string }[] = [
+    { id: 'fields', title: 'Check my fields', subtitle: 'Map, crop and claim' },
+    { id: 'import', title: 'Import my records', subtitle: 'Extract, check and save' },
+    { id: 'checks', title: 'Before and after filing', subtitle: 'Checks, dates and correction' },
   ];
   const active = steps.find(item => item.id === step)!;
+
+  useEffect(() => {
+    if (!contextReady || !farm || !claimFact || !savedCase) return;
+    const controller = new AbortController();
+    const get = async <T,>(path: string) => (await api.downloadResponse(path, { signal: controller.signal })).json() as Promise<T>;
+    void Promise.all([get<Farm>(`/farms/${farm.id}`), Promise.all(facts.map(fact => get<ClaimFact>(`/facts/${fact.id}`)))]).then(([savedFarm, savedFacts]) => {
+      if (savedFarm.id !== farm.id || savedFarm.kind !== 'farms' || savedFarm.workspace_id !== workspaceId || savedFarm.revision !== farm.revision
+        || !Array.isArray(savedFarm.data.parcels) || savedFarm.data.parcels.length > 2000
+        || savedFacts.some((savedFact, index) => savedFact.id !== facts[index].id || savedFact.kind !== 'facts' || savedFact.workspace_id !== workspaceId
+          || savedFact.revision !== facts[index].revision || savedFact.data.farm_id !== farm.id)) throw new Error('The farm changed. Refresh the saved demo before opening a particular field.');
+      const parcelId = savedFacts.find(fact => fact.id === claimFact.id)?.data.parcel_id;
+      const matches = savedFarm.data.parcels.filter(parcel => parcel.active !== false && parcel.id === parcelId);
+      if (parcelId && (!UUID.test(parcelId) || matches.length !== 1)) throw new Error('D04’s saved field link needs checking. Open the whole map to review the current fields.');
+      if (!controller.signal.aborted) setFieldContext({ key: contextKey, farm: savedFarm, facts: savedFacts, parcelId });
+    }).catch(failure => { if (!controller.signal.aborted) setFieldContext({ key: contextKey, error: errorMessage(failure) }); });
+    void get<Guide>(`/cases/${savedCase.id}/correction-guide`).then(guide => {
+      if (guide.case_id !== savedCase.id || guide.case_revision !== savedCase.revision || !guide.evaluation
+        || typeof guide.evaluation.title !== 'string' || typeof guide.evaluation.explanation !== 'string'
+        || !guide.evaluation.deadlines || !Array.isArray(guide.evaluation.sources) || guide.evaluation.sources.length > 20
+        || guide.evaluation.sources.some(source => !source || typeof source.key !== 'string' || typeof source.title !== 'string' || typeof source.url !== 'string')
+        || guide.evaluation.deadlines.effective !== null && !/^\d{4}-\d{2}-\d{2}$/.test(guide.evaluation.deadlines.effective)) throw new Error('The saved date guidance changed. Open the correction to check its current details.');
+      if (!controller.signal.aborted) setGuidance({ key: contextKey, guide });
+    }).catch(failure => { if (!controller.signal.aborted) setGuidance({ key: contextKey, error: errorMessage(failure) }); });
+    return () => controller.abort();
+  }, [contextKey, refresh]);
 
   useEffect(() => {
     if (!requestedStep || !data || !stepPanel.current) return;
@@ -153,24 +209,43 @@ function GuidedDemo({ scope, workspaceId, owner }: { scope: string; workspaceId:
   }
 
   return <div className="hackathon-demo">
-    <PageHeader title="One parcel. One correction." description="A Spanish sheep-farm example: check why a 6.70 ha claim differs from the supplied 3.02 ha maximum, then prepare the right paperwork."/>
-    <p className="hackathon-demo-notice">Fictional sample farm. Not an official claim or a satellite finding.</p>
+    <PageHeader title="From field to paperwork." description="Check a sheep farm, bring in a record, then work through the checks and any correction."/>
+    <p className="hackathon-demo-badge">Demo · private sample records</p>
     {!valid && <Notice kind="error">This demo link is incomplete. <Link to="/app/demo">Open the demo start page</Link>.</Notice>}
     {error && <Notice kind="error">{error} <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh the saved demo</Button></Notice>}
     {draft.error && <Notice kind="warning">{draft.error}</Notice>}
     {valid && differentWorkspace && <section className="card stack"><h2>Open this saved demo</h2><p>We will check your real access to the sample workspace before opening it.</p><Button onClick={() => void openRun({ runId: runId!, workspaceId: targetWorkspace! })}>Open the demo workspace</Button></section>}
-    {valid && !runId && <section className="card hackathon-demo-start"><h2>Try it without touching your farm</h2><p>Create a private workspace with seven made-up farm situations. We will start with a sheep farmer in Cáceres whose claim and supplied pasture figures differ. Your existing records stay unchanged.</p><p>You will use the normal parcel check, saved-answer review and paperwork pages. Nothing is submitted or sent.</p>
+    {valid && !runId && <section className="card hackathon-demo-start"><h2>Start with a farm ready to explore</h2><p>Create a separate sample workspace. Start in Cáceres: D04’s pasture claim needs comparing, D05 overlaps another field and D07 has no crop recorded.</p><p>Your existing farm stays unchanged. You will use the working map, record import and paperwork tools.</p>
       {!owner ? <Notice>Ask a workspace owner to create a sample and invite you. Your actual permissions stay in place.</Notice> : <><label className="hackathon-demo-ack"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} disabled={busy}/><span>I understand this creates a separate workspace with made-up farm records.</span></label><Button loading={busy} disabled={!acknowledged || !draft.ready} onClick={() => void start()}>Start the guided demo</Button></>}
       {remembered && <Button variant="secondary" onClick={() => void openRun(remembered)}>Continue my saved demo</Button>}
     </section>}
     {valid && runId && !differentWorkspace && !data && !error && <Notice>Opening your saved demo…</Notice>}
     {data && !contextReady && <Notice kind="warning">The Cáceres pasture correction is not available in this saved run. <Link to={`/app/examples?${new URLSearchParams({ run_id: data.run_id, workspace_id: data.workspace.id })}`}>Open the situations available to your account or start a fresh sample</Link>. This saved run has not been replaced.</Notice>}
     {data && contextReady && <>
-      <section className="hackathon-demo-story card"><p className="eyebrow">The situation</p><h2>{scenario!.title.replace(/^FICTIONAL\s*[—–-]\s*/i, '')}</h2><p>{scenario!.description}</p><p><strong>Your task:</strong> {scenario!.farmer_goal}</p></section>
-      <nav className="hackathon-demo-steps" aria-label="Demo steps">{steps.map((item, index) => <button key={item.id} type="button" className={step === item.id ? 'is-current' : ''} aria-current={step === item.id ? 'step' : undefined} onClick={() => chooseStep(item.id)}><span className="hackathon-demo-step-number" aria-hidden="true">{index + 1}</span><span>{item.title}<small>{item.status}</small></span></button>)}</nav>
-      <section ref={stepPanel} tabIndex={-1} className="card hackathon-demo-current" aria-labelledby="hackathon-demo-step-title"><p className="eyebrow">Step {stepIds.indexOf(step) + 1} of 4</p><h2 id="hackathon-demo-step-title">{active.title}</h2><p>{active.instruction}</p><p className="hackathon-demo-status"><strong>From the saved records:</strong> {active.status}.</p><Link className="button button-primary" to={active.href}>{active.button}</Link><p className="muted">Return to Hackathon demo from the page menu. Your progress comes from the saved records, not from clicking through these steps.</p>{step === 'values' && <details><summary>What if the farmer says the scrub was cleared?</summary><p>In this fictional alternative, the farmer says they cleared scrub last winter and disputes the supplied 45% coefficient. That is a reason to prepare a separate SIGPAC allegation, not to confirm a higher eligible area. Actual geotagged photographs and land-use or lease evidence are still needed; the authority decides.</p>{evidenceTask && <Link to={`/app/tasks/${evidenceTask.id}`}>Check the evidence still needed</Link>}<p>The default path in this demo prepares a 3.02 ha claim correction. It does not send an allegation or change SIGPAC.</p></details>}{step !== 'folder' && <Button variant="ghost" onClick={() => chooseStep(stepIds[stepIds.indexOf(step) + 1])}>Show the next step</Button>}</section>
-      <div className="hackathon-demo-bottom"><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh saved progress</Button><Link to={`/app/examples?${new URLSearchParams({ run_id: data.run_id, workspace_id: data.workspace.id })}`}>Try the other six situations</Link></div>
-      <details className="card"><summary>Adviser access and what this example means</summary><p>{scenario!.adviser_goal}</p><p><Link to="/app/adviser">Open Adviser view or invite an adviser</Link>. This uses actual account permissions, not a pretend adviser role.</p><p>{data.fixture_record_count} starting records across seven sample situations. {data.notice}</p><p>Private field changes do not update LPIS. A prepared ZIP is not a submission, a receipt or an acceptance. The physical 6.70 ha outline stays unchanged. The supplied coefficient and maximum are sample source values, not a current authority finding.</p></details>
+      <nav className="hackathon-demo-steps" aria-label="Demo chapters">{steps.map((item, index) => <button key={item.id} type="button" className={step === item.id ? 'is-current' : ''} aria-current={step === item.id ? 'step' : undefined} onClick={() => chooseStep(item.id)}><span className="hackathon-demo-step-number" aria-hidden="true">{index + 1}</span><span>{item.title}<small>{item.subtitle}</small></span></button>)}</nav>
+      <section ref={stepPanel} tabIndex={-1} className="card hackathon-demo-current" aria-labelledby="hackathon-demo-step-title">
+        <p className="eyebrow">Chapter {stepIds.indexOf(step) + 1} of 3</p><h2 id="hackathon-demo-step-title">{active.title}</h2>
+        {step === 'fields' && <div className="hackathon-demo-chapter">
+          <p>See the whole farm first. Compare boundaries, fix a missing crop and keep a claim figure separate from the land’s physical outline.</p>
+          <p className="hackathon-demo-status">{activeFields ? `${activeFields.length} active fields in the saved farm` : 'Open the map to see the current fields'} · {reviewedFacts} of {facts.length} supplied claim answers checked by a person.</p>
+          <Link className="button button-primary" to={fieldsHref}>Open the field map and checks</Link>
+          <div className="hackathon-demo-claim"><h3>D04: why does the claim need attention?</h3><dl><div><dt>Saved claim</dt><dd>{suppliedNumber(currentFields?.facts, claimFact?.id, 'cap.claimed_area_ha', 'ha')}</dd></div><div><dt>Supplied maximum</dt><dd>{suppliedNumber(currentFields?.facts, facts.find(fact => fact.alias === 'es-eligible-area')?.id, 'cap.supplied_max_eligible_area_ha', 'ha')}</dd></div><div><dt>Supplied pasture coefficient</dt><dd>{suppliedNumber(currentFields?.facts, facts.find(fact => fact.alias === 'es-coefficient')?.id, 'cap.pasture_coefficient_percent', '%')}</dd></div><div><dt>Proposed corrected claim</dt><dd>{suppliedNumber(currentFields?.facts, facts.find(fact => fact.alias === 'es-corrected-area')?.id, 'cap.proposed_claim_area_ha', 'ha')}</dd></div></dl><p>Compare these saved figures with the original sources. The coefficient is not a smaller boundary to draw.</p><div className="hackathon-demo-actions"><Link to={factsHref}>Review D04’s saved figures</Link>{pastureHref && <Link to={pastureHref}>Adjust D04 on the map</Link>}</div></div>
+          {currentFields?.error && <Notice kind="warning">{currentFields.error}</Notice>}
+          <Link className="hackathon-demo-easy" to={`/app/easy-form?farm_id=${farm!.id}`}>Easy form: fill it in step by step</Link>
+          <details><summary>What if the pasture was cleared?</summary><p>Keep the physical outline. If the farmer disputes the supplied coefficient, gather dated photographs and land-use evidence for a separate SIGPAC allegation; the authority decides.</p>{evidenceTask && <Link to={`/app/tasks/${evidenceTask.id}`}>Open the evidence task</Link>}</details>
+        </div>}
+        {step === 'import' && <div className="hackathon-demo-chapter"><p>Bring in a real file, let the app extract suggestions, then check them against the original before saving.</p><ImportDemo farmId={farm!.id} farmName={sampleLabel(farm!.label)}/></div>}
+        {step === 'checks' && <div className="hackathon-demo-chapter">
+          <p className="hackathon-demo-status"><strong>Current saved case:</strong> {caseStatusLabel[savedCase!.status] ?? 'Check the current case'}.</p>
+          <div className="hackathon-demo-check-jobs"><section><h3>Before you file</h3><p>Check fields and every prepared answer against its source.</p><Link to={fieldsHref}>Run the field checks</Link><Link to={`${caseHref}/correction?step=4`}>Check each answer</Link></section><section><h3>After you filed</h3><p>Keep the original, record what happened and prepare a correction through the right route.</p><Link to={`${caseHref}/correction?step=1`}>Work through a correction</Link><Link to={`${caseHref}/correction?step=3`}>Check the dates and conditions</Link></section></div>
+          <section className="hackathon-demo-date" aria-label="Saved correction date guidance"><h3>{currentGuide?.guide?.evaluation.deadlines.effective ? `Source-linked date: ${currentGuide.guide.evaluation.deadlines.effective}` : 'Correction date not established'}</h3>{currentGuide?.guide ? <><p>{sampleLabel(currentGuide.guide.evaluation.title)}</p><details><summary>Source and conditions</summary><p>{currentGuide.guide.evaluation.explanation}</p><p>A source-linked supplied date is not independent legal verification. The relevant conditions and current authority route still need checking.</p><ul>{currentGuide.guide.evaluation.sources.map(source => { const href = sourceHref(source.url); return <li key={source.key}>{href ? <a href={href} target="_blank" rel="noopener noreferrer">{source.title}</a> : source.title}{source.article && <> · {source.article}</>}{source.version && <> · {source.version}</>}</li>; })}</ul></details></> : <p>{currentGuide?.error || 'Open the date questions to check the saved details and their sources.'}</p>}<Link to={`${caseHref}/correction?step=3`}>Review the date questions</Link></section>
+          <details className="hackathon-demo-date" data-testid="demo-historical-deadlines"><summary>Historical deadline: 7 September 2026 · limited E1/E2 monitoring response, now past</summary><p>Extremadura campaign references. Neither is assigned to this case.</p><ul><li><strong><time dateTime="2026-05-15">15 May 2026</time> · ordinary filing · past</strong><p>The listed 2026/2027 Single Application presentation period, not an ordinary amendment deadline. A later exceptional late-filing announcement exists; its operative conditions were not checked here.</p><a href="https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=710o&xml=2026060825" target="_blank" rel="noopener noreferrer">DOE 71, 15 April 2026 · resolution of 8 April</a></li><li><strong><time dateTime="2026-09-07">7 September 2026</time> · limited monitoring response · past</strong><p>E1/E2 yellow/red monitoring incidents only: reason 5 modifications or reason 8 georeferenced-photo documents. Not a blanket amendment, appeal or correction date.</p><a href="https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=1720o&xml=2026081488" target="_blank" rel="noopener noreferrer">DOE 172, 4 September 2026 · announcement of 1 September</a></li></ul><p>The ordinary 2026 amendment date and this case’s matching notice remain unestablished. Select an actual matching notice and its saved source in the date questions before entering a date. A SIGPAC service window is a different procedure.</p><details><summary>Source review limits</summary><p>The full operative HTML acts for May (DOE 71) and September (DOE 172) were read. DOE identifies the linked official PDFs as authoritative; those PDFs were not fetched. These references do not establish applicability to this case or current permission to amend.</p></details></details>
+          <Link className="button button-primary" to={`${caseHref}#case-checks`}>Review the case and prepare the folder</Link><p className="muted">Preparing a folder and recording actual sending are separate steps.</p>
+        </div>}
+        {step !== 'checks' && <Button variant="ghost" onClick={() => chooseStep(stepIds[stepIds.indexOf(step) + 1])}>Next: {steps[stepIds.indexOf(step) + 1].title.toLowerCase()}</Button>}
+      </section>
+      <div className="hackathon-demo-bottom"><Button variant="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh saved records</Button><Link to={`/app/examples?${new URLSearchParams({ run_id: data.run_id, workspace_id: data.workspace.id })}`}>Try the other farm situations</Link></div>
+      <details className="card"><summary>About this demo and adviser access</summary><p>The records are authored examples in your separate workspace. You use actual permissions and working save/review flows. Private field changes do not update LPIS; a prepared folder is not a submission, receipt or acceptance.</p><p><Link to="/app/adviser">Open Adviser view or invite an adviser</Link>.</p><p>{data.fixture_record_count} starting records across seven situations. Source figures are not a current eligibility decision; national correction dates remain unknown until their applicable source and conditions are checked.</p></details>
     </>}
   </div>;
 }

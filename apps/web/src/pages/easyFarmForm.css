@@ -1,0 +1,34 @@
+.easy-farm-form { max-width: 980px; margin-inline: auto; }
+.easy-farm-form .page-header { border-bottom: 0; padding-bottom: 0; }
+.easy-form-paper { margin-top: 24px; border: 1px solid var(--line); border-top: 5px solid var(--forest); border-radius: 10px; padding: clamp(20px, 4vw, 42px); background: var(--paper); }
+.easy-form-progress { display: flex; align-items: center; gap: 16px; color: var(--forest); font-size: .84rem; font-weight: 650; }
+.easy-form-progress progress { width: 100px; height: 8px; accent-color: var(--forest); }
+.easy-form-progress span:last-child { margin-left: auto; color: var(--muted); font-weight: 400; }
+.easy-form-paper > h2 { margin-top: 28px; font-size: clamp(1.7rem, 4vw, 2.35rem); color: var(--forest); line-height: 1.2; }
+.easy-form-local { color: var(--muted); font-size: .8rem; line-height: 1.6; max-width: 690px; }
+.easy-form-content { border: 0; padding: 0; min-width: 0; margin-block: 26px; }
+.easy-form-content > p { line-height: 1.7; }
+.easy-form-readback { display: grid; gap: 0; margin-block: 24px; }
+.easy-form-readback > div { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.easy-form-readback dt { margin: 0; text-transform: none; letter-spacing: 0; font-size: .88rem; }
+.easy-form-readback dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.easy-form-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-block: 28px; }
+.easy-form-choices .button { min-height: 68px; white-space: normal; text-align: center; font-size: .95rem; line-height: 1.4; border-width: 2px; }
+.easy-form-choices .button-primary { background: var(--lime); color: var(--forest); border-color: var(--forest); }
+.easy-form-field-picker { display: flex; flex-wrap: wrap; gap: 9px; margin-block: 20px; }
+.easy-form-field-picker .button { display: grid; text-align: left; gap: 5px; }
+.easy-form-field-choice { font-size: .68rem; opacity: .85; font-weight: 400; }
+.easy-form-map { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.easy-form-map .parcel-map-canvas { min-height: 320px; }
+.easy-form-crop { margin-block: 20px; padding: 26px; background: var(--lime-soft); border-left: 3px solid var(--forest); }
+.easy-form-crop h3 { margin-top: 0; }
+.easy-form-crop strong { font-size: 1.2rem; }
+.easy-form-crop-change { display: grid; gap: 18px; padding: 22px; margin-block: 20px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: 6px; }
+.easy-form-crop-change .button { justify-self: start; }
+.easy-form-support { padding: 20px 0; border-block: 1px solid var(--line); }
+.easy-form-note { white-space: pre-wrap; font-weight: 400; }
+.easy-form-navigation, .easy-form-handoff { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.easy-form-navigation { padding-top: 24px; border-top: 1px solid var(--line); }
+.easy-form-navigation .button-primary { background: var(--blue); border-color: var(--blue); min-width: 160px; margin-left: auto; }
+.easy-form-source { margin-top: 25px; font-size: .8rem; color: var(--muted); }
+@media (max-width: 620px) { .easy-form-choices { grid-template-columns: 1fr; } .easy-form-choices .button { min-height: 58px; } .easy-form-readback > div { grid-template-columns: 1fr; gap: 6px; } .easy-form-progress { flex-wrap: wrap; } .easy-form-progress span:last-child { width: 100%; margin: 0; } .easy-form-navigation .button-primary { min-width: 0; } }

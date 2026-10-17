@@ -1,14 +1,16 @@
 {
-  "version": 4,
+  "version": 5,
   "name": "FunkyFarm",
   "locked_on": "2026-10-16",
   "purpose": "Check parcel outlines before filing, prepare corrections after filing, and explicitly review reused answers without repeated entry.",
-  "current_focus": ["Private LPIS parcel drawing and checks", "Source-backed after-filing correction preparation", "Explicit review of every reused answer", "Highlighted Spain pasture hackathon demo", "Seven isolated fictional farm scenarios with 39 editable records", "Simple farmer steps and a permission-scoped adviser worklist"],
+  "current_focus": ["Private LPIS parcel drawing and checks", "Source-backed after-filing correction preparation", "Explicit review of every reused answer", "Seven-field Spain pasture demo", "Real record import and source-linked extraction review", "Guided easy form with typed crop changes", "Seven isolated sample farm scenarios with 39 editable records", "Simple farmer steps and a permission-scoped adviser worklist"],
   "farmer_pages": ["Home", "Record work", "My fields", "Paperwork", "Documents"],
   "adviser_flow": ["Get permission", "Review allowed farms", "Ask only for missing details", "Prepare and review", "Complete authorised work and keep confirmation"],
   "modules": ["Support applications", "Land and field corrections", "Farm records", "Animals", "Purchases and sales", "Inspections and certificates", "Letters and corrections", "Obligations and sustainability checklists", "Changes to requirements", "Private adviser questions and public knowledge sharing", "Connected assistants and optional in-app help"],
   "countries": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
-  "clients": ["web", "native_android", "native_ios"],
+  "clients": ["web"],
+  "deferred_clients": ["native_android", "native_ios"],
+  "release_gate": "Web hackathon demo. Native work is excluded by the current request. External gates below remain necessary before broader production claims.",
   "automation": ["Authorised record retrieval", "Document proposals", "Typed import previews", "Deterministic farm and request checks", "Dated tasks and progress tracking", "Reviewed reuse", "Approved exports", "Verified government connections", "Field drawing, editing, splitting and merging proposals", "Satellite-assisted questions", "Scheduled official-source observations", "Personalised source-backed checklists", "Optional WebMCP and authenticated assistant tools"],
   "task_starts": ["I received a letter", "Check my fields", "Apply for support", "Prepare for inspection", "What needs doing next?"],
   "legal_checks": {"catalogue":"shared/obligations.json", "coverage":"Selected source-backed EU record duties and explicitly identified national information, not a complete legal inventory", "status":"Needs information, needs adviser, or ready for review; never a universal compliance certificate", "rules":"Keep actual dates, original units and source versions. Unknown applicability and national deadlines stay unknown."},
@@ -27,6 +29,6 @@
   ],
   "external_gates": ["Agency credentials and software approval", "Country and regional rule review", "Consented grower validation", "Fluent language review", "Actual Claude and ChatGPT account acceptance", "Mac/Xcode and physical-device verification"],
   "deployment": {"github_visibility": "private", "host": "existing Hetzner release platform", "domain": "funkyfarm.elfeel.me", "dns": "Cloudflare", "requirement": "Immutable release with app-specific isolation, health checks, backup and rollback"},
-  "acceptance": ["Complete farmer workflow", "Complete scoped adviser workflow", "Import and correction workflows", "Field and satellite review", "AI permission boundaries", "Tenant isolation", "Web and native client checks", "Private storage recovery", "Live HTTPS verification"],
+  "acceptance": ["Complete guided web farmer workflow", "Complete scoped adviser workflow", "Real import and extraction review", "LPIS map and claim checks", "Before and after-filing correction preparation with sourced date conditions", "Explicit review of reused answers", "AI permission boundaries", "Tenant isolation", "Private storage recovery", "Live HTTPS verification"],
   "verification_policy": "One integrated final workflow pass after source freeze; fix and rerun only affected failures. Never claim unavailable external evidence."
 }

@@ -326,7 +326,7 @@ BEGIN
  SELECT count(*) INTO retained FROM funkyfarm.demo_workspace_reservations r WHERE r.user_id=uid;
  IF retained>=20 THEN RAISE EXCEPTION 'demo_workspace_limit' USING ERRCODE='P0001'; END IF;
  INSERT INTO funkyfarm.workspaces(name,owner_id)
- VALUES('FICTIONAL training farms '||(retained+1)::text,uid) RETURNING id INTO result;
+ VALUES('Demo farms '||(retained+1)::text,uid) RETURNING id INTO result;
  INSERT INTO funkyfarm.memberships(workspace_id,user_id,role) VALUES(result,uid,'owner');
  INSERT INTO funkyfarm.demo_workspace_reservations(user_id,key_hash,fixture_id,workspace_id)
  VALUES(uid,request_hash,p_fixture,result);

@@ -5,24 +5,24 @@ import './publicDemo.css';
 export function PublicDemoPage() {
   const { session } = useSession();
   return <main className="public-demo">
-    <header><Link to="/" aria-label="Funkyfarmers home"><img src="/assets/funkyfarmers-logo.png" width="1397" height="1126" alt="Funkyfarmers" /></Link><span>Hackathon demo</span></header>
+    <header><Link to="/" aria-label="Funkyfarmers home"><img src="/assets/funkyfarmers-logo.png" width="1397" height="1126" alt="Funkyfarmers" /></Link><span>Demo</span></header>
     <section className="public-demo-intro">
-      <p className="eyebrow">Parcel maps and CAP paperwork</p>
-      <h1>Find the parcel mistake before you file.</h1>
-      <p>A sheep farmer in Cáceres brings a pasture claim to an adviser. The field covers 6.70 hectares, but the supplied reference gives a smaller maximum area. Check the figures together, prepare a correction and keep the supporting records.</p>
-      <p className="public-demo-fictional">This is a made-up farm and an example reference, not a real application or eligibility decision.</p>
-      <dl className="public-demo-figures"><div><dt>Physical field</dt><dd>6.70 ha</dd></div><div><dt>Maximum in the example reference</dt><dd>3.02 ha</dd></div><div><dt>Difference to check</dt><dd>3.68 ha</dd></div></dl>
-      <p>The example reference records a 45% pasture coefficient. That does not mean cutting 55% off the map. The field boundary and the area claimed for payment are separate things. Figures shown here are rounded example values.</p>
+      <p className="eyebrow">Your fields. Your records. Less retyping.</p>
+      <h1>Farm paperwork, one clear step at a time.</h1>
+      <p>EasyForm brings the maps, documents and saved records you choose into a guided form. Check the answers, see what is missing and prepare your next step, whether you are getting ready to file or correcting something already sent.</p>
       <Link className="button button-primary" to={session ? '/app/demo' : '/login?next=%2Fapp%2Fdemo'}>Try the Spain case</Link>
-      {!session && <p><Link to="/register?next=%2Fapp%2Fdemo">Create an account for the demo</Link>. The samples go into a separate private workspace.</p>}
+      {!session && <p><Link to="/register?next=%2Fapp%2Fdemo">Create an account</Link> to keep your progress in a private workspace.</p>}
     </section>
-    <section aria-labelledby="demo-steps-title"><h2 id="demo-steps-title">One case, from map to paperwork</h2><ol className="public-demo-steps">
-      <li><h3>Check the parcel</h3><p>See its outline, recorded use and figures. Open the source behind each warning.</p></li>
-      <li><h3>Check the proposed correction</h3><p>Review the example records. Keep the original claim separate from what you want to change.</p></li>
-      <li><h3>Review the answers</h3><p>Check every reused answer. Missing information and unknown national deadlines stay visible.</p></li>
-      <li><h3>Prepare the folder</h3><p>Collect the reviewed changes and evidence. You or your adviser use the official channel; this demo sends nothing.</p></li>
+    <section aria-labelledby="demo-steps-title"><h2 id="demo-steps-title">Three parts of the same job</h2><ol className="public-demo-steps">
+      <li><h3>Check your fields with LPIS tools</h3><p>Draw or import an outline, compare references and review changes on the map. Keep the physical field separate from the area you claim for support.</p></li>
+      <li><h3>Bring the records you already have</h3><p>Preview imports and details extracted from documents. Check uncertain values and reuse confirmed records instead of entering everything again.</p></li>
+      <li><h3>Check before filing. Correct after.</h3><p>Review each answer and the evidence still needed. Keep the actual deadline from your instructions alongside the checks; leave it open when it is not known.</p></li>
     </ol></section>
-    <details><summary>Where this example comes from</summary><p>The farm, reference number and figures are invented. Official guidance keeps parcel boundaries separate from the pasture coefficient. Other conditions or deductions may apply.</p><p><a href="https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=230o&xml=2026060302" target="_blank" rel="noreferrer">Extremadura SIGPAC rules, 2026</a> · <a href="https://www.juntaex.es/w/5698" target="_blank" rel="noreferrer">Official SIGPAC correction service</a></p></details>
+    <section aria-labelledby="demo-case-title"><h2 id="demo-case-title">Start with a Spanish pasture claim</h2><p>A sheep farmer in Cáceres brings a pasture claim to an adviser. Compare the saved figures, check the source and prepare the correction together.</p>
+      <dl className="public-demo-figures"><div><dt>Physical field</dt><dd>6.70 ha</dd></div><div><dt>Supplied maximum</dt><dd>3.02 ha</dd></div><div><dt>Difference to check</dt><dd>3.68 ha</dd></div></dl>
+      <p>The saved reference records a 45% pasture coefficient, not a smaller shape to draw. Keep the boundary intact while you check the original claim and the proposed correction.</p>
+    </section>
+    <details><summary>About the sample and its sources</summary><p>Sample farm; official sending stays with you. The sources explain SIGPAC corrections and pasture coefficients.</p><p><a href="https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=230o&xml=2026060302" target="_blank" rel="noreferrer">Extremadura SIGPAC rules, 2026</a> · <a href="https://www.juntaex.es/w/5698" target="_blank" rel="noreferrer">Official SIGPAC correction service</a></p></details>
     <footer><p>FunkyFarm · Less bureaucracy. More farming.</p><Link to={session ? '/app/home' : '/login'}>Open the farm workspace</Link></footer>
   </main>;
 }

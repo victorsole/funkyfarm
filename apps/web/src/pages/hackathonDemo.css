@@ -1,24 +1,41 @@
 .hackathon-demo { display: grid; gap: 24px; }
 .hackathon-demo .page-header { margin-bottom: 0; }
-.hackathon-demo-notice { margin: 0; padding: 12px 16px; background: #fff1d4; border-left: 3px solid #9b6923; color: #694614; font-size: .82rem; }
+.hackathon-demo-badge { justify-self: start; margin: -10px 0 0; padding: 5px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: .75rem; }
 .hackathon-demo-start { display: grid; justify-items: start; gap: 16px; }
 .hackathon-demo-start h2, .hackathon-demo-start p { margin-block: 0; }
 .hackathon-demo-ack { display: flex; gap: 12px; align-items: flex-start; line-height: 1.6; }
 .hackathon-demo-ack input { margin-top: 5px; flex: 0 0 auto; }
-.hackathon-demo-story { border-top: 3px solid var(--plum); }
-.hackathon-demo-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.hackathon-demo-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .hackathon-demo-steps button { display: flex; align-items: flex-start; gap: 10px; padding: 18px 14px; color: var(--ink); background: var(--paper); border: 0; border-right: 1px solid var(--line); text-align: left; cursor: pointer; transition: background 160ms ease; }
 .hackathon-demo-steps button:last-child { border-right: 0; }
-.hackathon-demo-steps button.is-current { background: #eee6ee; box-shadow: inset 0 -3px var(--plum); }
-.hackathon-demo-steps button:hover { background: #f1ece8; }
-.hackathon-demo-steps button:focus-visible { outline: 2px solid var(--plum); outline-offset: -3px; }
+.hackathon-demo-steps button.is-current { background: #eff7d5; box-shadow: inset 0 -3px var(--forest); }
+.hackathon-demo-steps button.is-current .hackathon-demo-step-number { background: var(--lime); color: var(--forest); border-color: var(--forest); }
+.hackathon-demo-steps button:hover { background: #f2f7e8; }
+.hackathon-demo-steps button:focus-visible { outline: 2px solid var(--forest); outline-offset: -3px; }
 .hackathon-demo-steps small { display: block; margin-top: 6px; color: var(--muted); font-size: .68rem; line-height: 1.5; }
 .hackathon-demo-step-number { flex: 0 0 25px; text-align: center; line-height: 25px; border: 1px solid var(--line); border-radius: 50%; font-size: .76rem; }
 .hackathon-demo-current { scroll-margin-top: 24px; animation: hackathon-demo-open 180ms ease-out; }
 .hackathon-demo-current .button-primary { margin-block: 12px; }
 .hackathon-demo-status { border-left: 2px solid var(--line); padding-left: 14px; font-size: .85rem; }
+.hackathon-demo-chapter { display: grid; gap: 20px; min-width: 0; }
+.hackathon-demo-chapter > p { margin: 0; }
+.hackathon-demo-chapter > .button { justify-self: start; }
+.hackathon-demo-claim { padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+.hackathon-demo-claim h3 { margin-top: 0; }
+.hackathon-demo-claim dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-block: 20px; }
+.hackathon-demo-claim dt { color: var(--muted); font-size: .78rem; }
+.hackathon-demo-claim dd { margin: 6px 0 0; font-size: clamp(1.1rem, 2vw, 1.6rem); font-weight: 600; }
+.hackathon-demo-actions { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.hackathon-demo-easy { justify-self: start; font-weight: 600; }
+.hackathon-demo-check-jobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.hackathon-demo-check-jobs > section { display: grid; align-content: start; gap: 12px; }
+.hackathon-demo-check-jobs h3, .hackathon-demo-check-jobs p { margin: 0; }
+.hackathon-demo-date { border-top: 1px solid var(--line); padding-top: 20px; }
+.hackathon-demo-date h3 { margin-top: 0; }
+.hackathon-demo-date li + li { margin-top: 20px; }
+.hackathon-demo a { overflow-wrap: anywhere; }
 .hackathon-demo-bottom { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 @keyframes hackathon-demo-open { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 900px) { .hackathon-demo-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hackathon-demo-steps button { border-bottom: 1px solid var(--line); } }
-@media (max-width: 520px) { .hackathon-demo-steps { grid-template-columns: 1fr; } .hackathon-demo-steps button { border-right: 0; } .hackathon-demo-bottom { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 700px) { .hackathon-demo-steps { grid-template-columns: 1fr; } .hackathon-demo-steps button { border-right: 0; border-bottom: 1px solid var(--line); } .hackathon-demo-steps button:last-child { border-bottom: 0; } }
+@media (max-width: 520px) { .hackathon-demo-claim { padding: 16px; } .hackathon-demo-claim dl, .hackathon-demo-check-jobs { grid-template-columns: 1fr; } .hackathon-demo-claim dl { gap: 14px; } .hackathon-demo-bottom { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .hackathon-demo-current { animation: none; } .hackathon-demo-steps button { transition: none; } }

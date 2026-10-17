@@ -21,11 +21,30 @@ async function signIn(page, who = 'owner') {
 async function read(page, path, workspaceId) {
   return checked(await page.request.get(`/api/v1${path}`, { headers: { 'X-Workspace-ID': workspaceId } }));
 }
+async function inspectReadOnlyMap(page) {
+  const map = page.getByRole('group', { name: 'Field boundary map', exact: true });
+  await expect(map).toHaveClass(/leaflet-container/);
+  const outline = map.locator('.leaflet-overlay-pane path').first();
+  await expect(outline).toBeVisible();
+  const before = await outline.getAttribute('d');
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await expect(outline).not.toHaveAttribute('d', before);
+  const closer = await outline.getAttribute('d');
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await expect(outline).not.toHaveAttribute('d', closer);
+  await map.click({ position: { x: 30, y: 30 } });
+  await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^(Draw excluded area|Close boundary|Save for comparison|Use my location)$/ })).toHaveCount(0);
+  await page.getByText('Choose an optional background map', { exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+}
 async function isolated(page) {
-  const errors = []; const external = []; const events = [];
+  const errors = []; const external = []; const events = []; const writes = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => {
-    if (request.method() === 'POST' && /\/api\/v1\/cases\/[^/]+\/events$/.test(new URL(request.url()).pathname)) events.push(request.postDataJSON());
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && /\/api\/v1\/cases\/[^/]+\/events$/.test(path)) events.push(request.postDataJSON());
+    if (path.startsWith('/api/v1/') && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method())) writes.push(`${request.method()} ${path}`);
   });
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
@@ -36,7 +55,7 @@ async function isolated(page) {
     external.push(`${url.origin}${url.pathname}`);
     return route.abort('blockedbyclient');
   });
-  return { errors, external, events };
+  return { errors, external, events, writes };
 }
 async function startExample(page) {
   await page.goto('/app/examples');
@@ -80,15 +99,19 @@ test('focused farmer checks a sample farm, edits an outline and adds a separatel
   const safety = await isolated(page); await signIn(page);
   const original = await read(page, `/farms/${fixture.farm.id}`, fixture.accounts.owner.workspace_id);
   const example = await startExample(page); const farm = farmFor(example, 'nl-overlap');
+  const savedFarm = await read(page, `/farms/${farm.id}`, example.workspace.id);
+  const savedProposals = await read(page, `/farms/${farm.id}/field-proposals`, example.workspace.id);
+  const mapWrites = safety.writes.length;
   await page.goto('/app/home');
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByRole('link', { name: 'Check my fields', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/fields/${farm.id}/check`));
   await expect(page.getByRole('heading', { name: 'Check your fields', exact: true })).toBeVisible();
-  await expect(page.getByRole('img', { name: /FICTIONAL .* meadow/ })).toBeVisible();
+  const fields = await read(page, `/farms/${farm.id}/fields`, example.workspace.id);
+  await expect(page.getByRole('heading', { name: fields.items[0].name, exact: true })).toBeVisible();
+  await inspectReadOnlyMap(page);
   await expect(page.getByText('Unknown. The responsible authority decides.', { exact: true })).toBeVisible();
   const field = page.getByLabel('Field to look at', { exact: true });
-  const fields = await read(page, `/farms/${farm.id}/fields`, example.workspace.id);
   await field.selectOption('1'); await field.selectOption('0');
   await page.getByRole('button', { name: /^Look at \d+ things? to check$/ }).click();
   const issueButtons = page.getByRole('navigation', { name: 'Things to check', exact: true }).getByRole('button');
@@ -101,6 +124,9 @@ test('focused farmer checks a sample farm, edits an outline and adds a separatel
   await stages.getByRole('button', { name: 'Fields and map', exact: true }).click();
   await field.selectOption('0');
   await stages.getByRole('button', { name: 'Prepare the next step', exact: true }).click();
+  expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(savedFarm);
+  expect(await read(page, `/farms/${farm.id}/field-proposals`, example.workspace.id)).toEqual(savedProposals);
+  expect(safety.writes.slice(mapWrites)).toEqual([]);
   await page.getByRole('link', { name: 'Change or compare a field first', exact: true }).click();
   const workspace = page.locator('section.boundary-workspace');
   const openedField = workspace.getByRole('region', { name: 'Field opened from the parcel check', exact: true });
@@ -195,16 +221,36 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   await page.goto('/app/home'); await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByRole('link', { name: 'Fix a mistake in filed paperwork', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Correct something you already sent', exact: true })).toBeVisible();
+  const originalWrites = safety.writes.length;
+  await expect(page.getByRole('heading', { name: 'Which application are you correcting?', exact: true })).toBeFocused();
   await page.getByLabel('Application year', { exact: true }).fill('2026');
-  await page.getByLabel('Name this correction', { exact: true }).fill('FICTIONAL browser correction');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'What did you actually send?', exact: true })).toBeFocused();
   await page.getByLabel('Original submission reference, if known', { exact: true }).fill('FICTIONAL-CAP-CZ-WINDOW-2026');
-  await page.getByLabel('What did you actually send?', { exact: true }).fill('FICTIONAL training original: an earlier field outline. This is not a real filing.');
+  await page.getByRole('textbox', { name: 'What did you actually send?', exact: true }).fill('FICTIONAL training original: an earlier field outline. This is not a real filing.');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Which application are you correcting?', exact: true })).toBeFocused();
+  await expect(page.getByLabel('Application year', { exact: true })).toHaveValue('2026');
+  await expect(page.getByLabel('Farm', { exact: true })).toHaveValue(farm.id);
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByLabel('Original submission reference, if known', { exact: true })).toHaveValue('FICTIONAL-CAP-CZ-WINDOW-2026');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'When did you send it, and is the original saved here?', exact: true })).toBeFocused();
+  await expect(page.getByLabel('Date you actually sent the original, if known', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Does this describe your original?', exact: true })).toBeFocused();
+  await page.getByLabel('Name this correction', { exact: true }).fill('FICTIONAL browser correction');
+  await expect(page.locator('.correction-readback')).toContainText('FICTIONAL-CAP-CZ-WINDOW-2026');
+  expect(safety.writes.slice(originalWrites)).toEqual([]);
   const create = page.getByRole('button', { name: 'Save original and continue', exact: true }); await expect(create).toBeDisabled();
   await page.getByRole('checkbox', { name: 'I have described an original I actually sent. A saved or approved app report alone does not establish that it was sent.', exact: true }).check();
   const created = responseFor(page, '/cases', 'POST'); await create.click();
   const record = await checked(await created); expect(record.data.focused_review_required).toBe(true);
   await expect(page).toHaveURL(new RegExp(`/app/cases/${record.id}/correction\\?step=2$`));
-  await page.getByLabel('What is wrong, and what should change?', { exact: true }).fill('FICTIONAL training: compare the corrected east edge against the retained original; do not treat private preparation as filing.');
+  await page.getByRole('textbox', { name: 'What is wrong, and what should change?', exact: true }).fill('FICTIONAL training: compare the corrected east edge against the retained original; do not treat private preparation as filing.');
+  const detailsWrites = safety.writes.length;
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Which corrected records support this change?', exact: true })).toBeFocused();
   await page.getByText('Choose corrected records and supporting evidence', { exact: true }).click();
   await page.getByLabel('Find a saved record', { exact: true }).selectOption('field_change_proposals');
   await page.getByLabel('Use this record as', { exact: true }).selectOption('change');
@@ -213,20 +259,37 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   await page.getByLabel('Find a saved record', { exact: true }).selectOption('documents');
   await page.getByLabel('Use this record as', { exact: true }).selectOption('notice');
   await choices.getByRole('button', { name: 'Choose this record', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Check what you want to correct', exact: true })).toBeFocused();
+  expect(safety.writes.slice(detailsWrites)).toEqual([]);
   await page.getByRole('checkbox', { name: 'I checked these entries against my records. Unknown details have not been guessed.', exact: true }).check();
   const details = responseFor(page, `/cases/${record.id}`, 'PATCH');
   await page.getByRole('button', { name: 'Save this step and continue', exact: true }).click();
   const amended = await checked(await details);
   await expect(page).toHaveURL(new RegExp(`step=3$`));
   await page.getByLabel('Which intervention or monitoring route applies?', { exact: true }).selectOption('ams');
+  const datesWrites = safety.writes.length;
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'What do the instructions say about the deadline?', exact: true })).toBeFocused();
   await page.getByLabel('National correction deadline stated in the applicable instructions', { exact: true }).fill('2026-10-30');
   const notice = amended.data.references.find(item => item.kind === 'documents' && item.role === 'notice'); expect(notice).toBeTruthy();
   await page.getByLabel('Saved source for that national deadline', { exact: true }).selectOption(`documents/${notice.id}/notice`);
   await page.getByLabel('First instalment date, if specifically established', { exact: true }).fill('2026-12-01');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Which route applies to this application?', exact: true })).toBeFocused();
+  await expect(page.getByLabel('Which intervention or monitoring route applies?', { exact: true })).toHaveValue('ams');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByLabel('National correction deadline stated in the applicable instructions', { exact: true })).toHaveValue('2026-10-30');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Has a check or finding changed the situation?', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Check the dates and unknowns before saving', exact: true })).toBeFocused();
+  expect(safety.writes.slice(datesWrites)).toEqual([]);
   await page.getByRole('checkbox', { name: 'I checked these entries against my records. Unknown details have not been guessed.', exact: true }).check();
   const dates = responseFor(page, `/cases/${record.id}`, 'PATCH');
   await page.getByRole('button', { name: 'Save this step and continue', exact: true }).click(); await checked(await dates);
   await page.getByRole('navigation', { name: 'Correction steps', exact: true }).getByRole('button', { name: /Check the dates$/ }).click();
+  await page.locator('details.correction-guidance-preview > summary').click();
   await expect(page.getByRole('heading', { name: 'Can I still change this?', exact: true })).toBeVisible();
   const latestDate = page.locator('.correction-guidance dl > div').filter({ has: page.getByText('EU latest possible date from the supplied first instalment', { exact: true }) }).locator('dd');
   await expect(latestDate).toBeVisible(); await expect(latestDate).toContainText('2026-11-16');

@@ -97,10 +97,10 @@ test(title, async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/home/);
   await page.goto('/app/examples/cap');
   await expect(page.getByRole('heading', { name: 'Try a CAP correction', exact: true })).toBeVisible();
-  await expect(page.getByText('Fictional training example — not a real holding or application.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Demo', { exact: true })).toBeVisible();
   const create = page.getByRole('button', { name: 'Create or reopen my example', exact: true });
   await expect(create).toBeDisabled(); expect(exampleCreates).toHaveLength(0);
-  await page.getByRole('checkbox', { name: 'I understand that these are fictional records and want to save this example in my workspace.', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'I want to save these sample records in my workspace.', exact: true }).check();
   const created = responseFor(page, '/examples/cap', 'POST'); await create.click();
   const createResponse = await created; expect(createResponse.status()).toBe(201);
   expect(createResponse.request().postDataJSON()).toEqual({ acknowledged: true });
@@ -110,9 +110,10 @@ test(title, async ({ page }) => {
   expect(example.case.data.status).toBe('draft'); expect(example.proposal.data.status).toBe('proposed');
   expect(example.progress.open_items).toBe(3); expect(example.checks.can_review).toBe(false);
   await expect(page).toHaveURL(new RegExp(`/app/examples/cap\\?run_id=${runId}$`));
-  await expect(page.getByRole('img', { name: /Fictional claim and supplied reference outlines/ })).toBeVisible();
-  await expect(page.getByText(/The claimed area is not the eligible area/)).toBeVisible();
-  await expect(page.getByText(/Satellite crop interpretation is unknown/)).toBeVisible();
+  await expect(page.getByRole('img', { name: /Sample claim and supplied reference outlines/ })).toBeVisible();
+  await page.getByText('What these outlines show', { exact: true }).click();
+  await expect(page.getByText(/The area in a claim is not necessarily the area that can be paid for/)).toBeVisible();
+  await expect(page.getByText(/No satellite observation was made for this example/)).toBeVisible();
   expect((await read(page, `/documents?farm_id=${farm.id}`)).total).toBe(0);
 
   await page.getByRole('link', { name: 'Open the actual saved field proposal', exact: true }).click();

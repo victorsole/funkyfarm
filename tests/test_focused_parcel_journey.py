@@ -33,8 +33,8 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         replay = call(browser, "POST", "/examples/workspace", expected=201, headers=retry_key, json=start)
         assert replay["run_id"] == demo["run_id"] and replay["workspace"]["id"] == demo["workspace"]["id"]
         assert demo["workspace"]["id"] != owner.workspace_id and demo["workspace"]["role"] == "owner"
-        assert "fictional" in demo["notice"].lower() and demo["fixture_record_count"] == 39
-        assert demo["fixture_version"] == 2
+        assert "demo" in demo["notice"].lower() and demo["fixture_record_count"] == 39
+        assert demo["fixture_version"] == 3
         base = [record for record in demo["records"] if record["kind"] not in {"admin_case_events", "demo_runs"}]
         assert len(base) == 39 and len({record["id"] for record in base}) == 39
         assert demo["record_count"] == len(demo["records"]) == sum(item["count"] for item in demo["inventory"])
@@ -58,14 +58,15 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
             if record["kind"] == "documents":
                 response = browser.get(f"/documents/{record['id']}/file")
                 assert response.status_code == 200 and "no-store" in response.headers["cache-control"]
-                assert b"FICTIONAL" in response.content
+                assert b"DEMO RECORD" in response.content
                 originals[record["id"]] = response.content
         assert len(originals) == 6
 
         # Spain's supplied figures are not a command to resize a physical
         # pasture. The proposed claim is separate from the original claim.
         es_farm = call(browser, "GET", f"/farms/{records['es-farm']['id']}")
-        es_parcel = es_farm["data"]["parcels"][0]
+        assert len(es_farm["data"]["parcels"]) == 7
+        es_parcel = next(parcel for parcel in es_farm["data"]["parcels"] if parcel["name"].startswith("D04"))
         es_facts = {}
         for summary in base:
             if summary["kind"] == "facts" and summary["farm_id"] == es_farm["id"]:
@@ -87,8 +88,8 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         def spanish_check():
             result = call(browser, "GET", f"/farms/{es_farm['id']}/parcel-check", params={
                 "expected_farm_revision": es_farm["revision"], "reporting_year": 2026, "limit": 100})
-            assert result["field_count"] == 1
-            return result, result["fields"][0]
+            assert result["field_count"] == 7
+            return result, next(field for field in result["fields"] if field["id"] == es_parcel["id"])
 
         es_initial, es_field = spanish_check()
         assert 6.69 < es_field["outline_area_ha"] < 6.71

@@ -151,7 +151,7 @@ function DemoRun({ scope, workspaceId, owner }: { scope: string; workspaceId: st
   }
   return <div className="demo-workspace">
     <PageHeader title="Try the sample farms" description="Seven farm situations. Work through the real pages with made-up records, without changing your own farm." />
-    <p className="demo-fictional">Fictional training data</p>
+    <p className="demo-fictional">Demo</p>
     {!validQuery && <Notice kind="error">This sample link is incomplete. <Link to="/app/examples">Open the sample start page</Link>.</Notice>}
     {actionError && <Notice kind="error">{actionError} Your previous workspace and its records have not been deleted.</Notice>}
     {draft.error && <Notice kind="warning">{draft.error}</Notice>}

@@ -27,7 +27,7 @@ from .security import Session, require_roles, require_session
 router = APIRouter(prefix="/examples/workspace", tags=["fictional demo workspaces"])
 FIXTURE_ID = "lpis-correction-2026-v1"
 FIXTURE_PATH = Path(__file__).resolve().parents[3] / "shared" / "demo-scenarios.json"
-NOTICE = "FICTIONAL TRAINING WORKSPACE. Authored records and outlines are not real farm evidence, official LPIS, a submitted claim or authority acceptance. Starting again preserves this workspace and creates a separate example."
+NOTICE = "Demo workspace. Your sample records are saved here. Starting again keeps this workspace and opens a new one."
 KINDS = COLLECTIONS | {"document", "documents", "admin_cases", "field_change_proposals", "reports"}
 
 
@@ -72,7 +72,7 @@ def _fixture(identifier):
         _fail("The fictional training fixture could not be read.", "demo_fixture_unavailable", 503)
     scenarios = fixture.get("scenarios", [])
     expected_count = fixture.get("expected_record_count")
-    if fixture.get("fixture_id") != identifier or type(fixture.get("version")) is not int or fixture["version"] not in {1, 2} or fixture.get("campaign_year") != 2026 or len(scenarios) != 7 or type(expected_count) is not int or not 20 <= expected_count <= 50:
+    if fixture.get("fixture_id") != identifier or type(fixture.get("version")) is not int or fixture["version"] not in {1, 2, 3} or fixture.get("campaign_year") != 2026 or len(scenarios) != 7 or type(expected_count) is not int or not 20 <= expected_count <= 50:
         _fail("The saved fictional fixture has an unsupported version.", "demo_fixture_unavailable", 503)
     records, aliases = [], set()
     for scenario in scenarios:
@@ -175,8 +175,8 @@ def _insert(conn, session, definition, records, parcel_ids, written):
         data["sources"] = sources
     if kind in {"document", "documents"}:
         text, filename = data.get("authored_text"), data.get("filename")
-        if not isinstance(text, str) or not 1 <= len(text.encode("utf-8")) <= 16_384 or not isinstance(filename, str) or not filename.startswith("FICTIONAL") or len(filename) > 180 or "/" in filename or "\\" in filename or data.get("mime_type") != "text/plain":
-            _fail("Example originals must be labelled FICTIONAL, small UTF-8 plain-text documents.")
+        if not isinstance(text, str) or not 1 <= len(text.encode("utf-8")) <= 16_384 or not isinstance(filename, str) or not (filename.startswith("FICTIONAL") or text.startswith("DEMO RECORD")) or len(filename) > 180 or "/" in filename or "\\" in filename or data.get("mime_type") != "text/plain":
+            _fail("Example originals must be labelled demo records and use small UTF-8 plain-text files.")
         content = text.encode("utf-8")
         media_type, properties = validate_original(content, "text/plain")
         document = insert_record(conn, "documents", {"farm_id": farm["id"], "filename": filename, "media_type": media_type, "size_bytes": len(content),

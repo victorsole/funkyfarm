@@ -1,0 +1,193 @@
+import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api, errorMessage } from '../api';
+import { useSession } from '../auth';
+import { Button, Field, Notice, PageHeader } from '../components';
+import { useRecords } from '../hooks';
+import { saveDraft, usePrivateDraft } from '../offline';
+import { ParcelMap } from '../maps/ParcelMap';
+import type { FieldGeometry, FieldPoint } from './FieldsMap';
+import type { RecordItem } from '../types';
+import './easyFarmForm.css';
+
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+type Decision = '' | 'yes' | 'change' | 'unknown';
+type Parcel = { id: string; name: string; crop?: string | null; notes?: string | null; greenhouse?: boolean; external_id?: string | null; geometry?: FieldGeometry | null; point?: FieldPoint | null; approximate_area_ha?: number | null; geometry_summary?: { bbox?: number[] | null; warnings?: string[] } };
+type Country = { country: string; name: string; modules: { workflow_id: string; name: string; task?: string; coverage_limit?: string; pack_ids?: string[]; mapping_status?: string }[] };
+type Bundle = { farm: RecordItem; fields: Parcel[]; country: Country };
+type CropEdit = { crop: string; custom: string; note: string; attempt: string; proposalId?: string; proposalRevision?: number };
+type Draft = { version: 1; farmRevision: number; step: number; identity: Decision; fields: Decision; crops: Record<string, Decision>; cropEdits?: Record<string, CropEdit>; features: Decision; featureNote: string; support: Decision };
+const titles = ['Is this your farm?', 'Do these fields look right?', 'What is growing here?', 'What else is on the land?', 'Do you need support paperwork?', 'Check your answers'];
+const decisionLabel: Record<Decision, string> = { '': 'Not answered', yes: 'You said this is right', change: 'Needs a change', unknown: 'Not sure yet' };
+const noMapEdit = () => { /* This form only reads saved outlines. */ };
+const hasValidOutline = (field: Parcel) => !!field.geometry && Array.isArray(field.geometry_summary?.bbox) && field.geometry_summary.bbox.length === 4 && field.geometry_summary.bbox.every(Number.isFinite);
+
+function Choices({ value, onChange, disabled, support = false }: { value: Decision; onChange: (value: Decision) => void; disabled?: boolean; support?: boolean }) {
+  const choices: [Decision, string][] = support ? [['yes', 'Yes, help me prepare'], ['change', 'Not now'], ['unknown', 'I am not sure']] : [['yes', 'Yes, this is right'], ['change', 'I need to change this'], ['unknown', 'I am not sure']];
+  return <div className="easy-form-choices" role="group" aria-label={support ? 'Choose whether you need support paperwork' : 'Check this answer'}>{choices.map(([choice, label]) => <Button key={choice} variant={value === choice ? 'primary' : 'secondary'} aria-pressed={value === choice} disabled={disabled} onClick={() => onChange(choice)}>{label}</Button>)}</div>;
+}
+
+export function EasyFarmFormPage() {
+  const { session } = useSession();
+  const [params, setParams] = useSearchParams();
+  const farms = useRecords('farms');
+  const supplied = params.get('farm_id');
+  const valid = params.getAll('farm_id').length <= 1 && (supplied === null || UUID.test(supplied));
+  const farmId = supplied?.toLowerCase() ?? (farms.items.length === 1 ? farms.items[0].id : '');
+  const available = farms.items.some(farm => farm.id === farmId);
+  return <div className="easy-farm-form"><PageHeader title="Your farm, one step at a time" description="Check your farm details, record crop changes and get the right paperwork ready."/>
+    {farms.error && <Notice kind="error">{farms.error}<Button variant="secondary" onClick={() => void farms.reload()}>Try opening my farms again</Button></Notice>}
+    {!valid && <Notice kind="error">Choose a farm from your workspace. This farm link could not be checked.</Notice>}
+    {farms.loading ? <Notice>Opening your farms…</Notice> : <Field label="Farm"><select value={available ? farmId : ''} onChange={event => setParams(event.target.value ? { farm_id: event.target.value } : {}, { replace: true })}><option value="">Choose your farm</option>{farms.items.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field>}
+    {!farms.loading && !farms.items.length && <p><Link to="/app/fields">Add your farm</Link> to start with your own records.</p>}
+    {!farms.loading && supplied && valid && !available && <Notice kind="warning">That farm is not available through your current access. No other farm has been selected in its place.</Notice>}
+    {session && valid && available && <FarmQuestions key={`${session.user.id}/${session.workspace.id}/${farmId}`} farmId={farmId} workspaceId={session.workspace.id} scope={`${session.user.id}/${session.workspace.id}`}/>}
+  </div>;
+}
+
+function FarmQuestions({ farmId, workspaceId, scope }: { farmId: string; workspaceId: string; scope: string }) {
+  const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [error, setError] = useState('');
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setBundle(null); setError('');
+    void (async () => {
+      const farm = await api.get<RecordItem>(`/farms/${farmId}`);
+      if (farm.id !== farmId || farm.workspace_id !== workspaceId) throw new Error('The saved farm does not match the farm you selected.');
+      const [fields, country] = await Promise.all([
+        api.get<{ farm_id: string; revision: number; items: Parcel[] }>(`/farms/${farmId}/fields`),
+        api.get<Country>(`/countries/${encodeURIComponent(String(farm.data.country))}`),
+      ]);
+      if (fields.farm_id !== farm.id || fields.revision !== farm.revision || country.country !== farm.data.country || !Array.isArray(fields.items) || !Array.isArray(country.modules)) throw new Error('The saved farm details changed while opening this form. Open them again before continuing.');
+      if (active) setBundle({ farm, fields: fields.items, country });
+    })().catch(failure => { if (active) setError(errorMessage(failure)); });
+    const returned = () => { if (document.visibilityState === 'visible') setGeneration(value => value + 1); };
+    window.addEventListener('focus', returned);
+    return () => { active = false; window.removeEventListener('focus', returned); };
+  }, [farmId, workspaceId, generation]);
+  return <>{error ? <Notice kind="error">{error}<Button variant="secondary" onClick={() => setGeneration(value => value + 1)}>Open the latest saved details</Button></Notice> : !bundle ? <Notice>Opening the saved farm, fields and country forms…</Notice> : <QuestionSteps bundle={bundle} scope={scope} refresh={() => setGeneration(value => value + 1)}/>}</>;
+}
+
+function QuestionSteps({ bundle, scope, refresh }: { bundle: Bundle; scope: string; refresh: () => void }) {
+  const { session } = useSession();
+  const { farm, fields, country } = bundle;
+  const draftName = `easy-farm-form:${farm.id}`;
+  const initial: Draft = { version: 1, farmRevision: farm.revision, step: 1, identity: '', fields: '', crops: {}, features: '', featureNote: '', support: '' };
+  const draft = usePrivateDraft<Draft>(draftName, initial);
+  const [saveError, setSaveError] = useState('');
+  const [moving, setMoving] = useState(false);
+  const [cropIndex, setCropIndex] = useState(0);
+  const [proposalChecks, setProposalChecks] = useState<{ binding: string; current: Record<string, boolean> }>({ binding: '', current: {} });
+  const heading = useRef<HTMLHeadingElement | null>(null);
+  const value = draft.value;
+  const step = Number.isInteger(value.step) && value.step >= 1 && value.step <= 6 ? value.step : 1;
+  const stale = value.farmRevision !== farm.revision;
+  const selected = fields[Math.min(cropIndex, Math.max(0, fields.length - 1))];
+  const cropEdit = selected ? value.cropEdits?.[selected.id] : undefined;
+  const validGeometry = !!selected && hasValidOutline(selected);
+  const fieldIdCounts = new Map<string, number>();
+  for (const field of fields) fieldIdCounts.set(field.id, (fieldIdCounts.get(field.id) ?? 0) + 1);
+  const contextOutlines = fields.filter(field => field.id !== selected?.id && fieldIdCounts.get(field.id) === 1 && hasValidOutline(field))
+    .map(field => ({ id: field.id, label: field.name, geometry: field.geometry! }));
+  const storedProposals = fields.flatMap(field => {
+    const saved = value.cropEdits?.[field.id];
+    return saved?.proposalId ? [{ fieldId: field.id, edit: saved }] : [];
+  });
+  const proposalBinding = JSON.stringify([scope, farm.id, farm.revision, storedProposals]);
+  const currentProposal = (fieldId: string) => proposalChecks.binding === proposalBinding && proposalChecks.current[fieldId] === true;
+  const mayReview = session?.workspace.role === 'owner' || session?.workspace.permissions?.includes('review') === true;
+  const cropOptions = [...new Set(fields.map(field => field.crop).filter((crop): crop is string => !!crop))];
+  const supportModules = country.modules.filter(module => module.workflow_id === 'cap');
+  const sourceHref = `/app/fields/${farm.id}`;
+  const checkHref = `${sourceHref}/check?${new URLSearchParams({ expected_farm_revision: String(farm.revision), reporting_year: String(farm.data.reporting_year) })}`;
+  const editorHref = selected ? `${sourceHref}?${new URLSearchParams({ parcel_id: selected.id, expected_farm_revision: String(farm.revision) })}#boundaries-${farm.id}` : sourceHref;
+  const cropsAnswered = fields.every(field => !!value.crops[field.id] && (value.crops[field.id] !== 'change' || currentProposal(field.id)));
+  const canContinue = step === 1 ? !!value.identity : step === 2 ? !!value.fields : step === 3 ? cropsAnswered : step === 4 ? !!value.features : step === 5 ? !!value.support : true;
+  const concerns = [value.identity, value.fields, ...fields.map(field => value.crops[field.id] ?? ''), value.features].filter(choice => choice !== 'yes').length + (value.support === 'unknown' || !value.support ? 1 : 0);
+
+  useEffect(() => {
+    if (draft.ready) heading.current?.focus({ preventScroll: true });
+  }, [step, draft.ready]);
+
+  useEffect(() => {
+    if (!draft.ready) return;
+    let active = true;
+    const controller = new AbortController();
+    const current: Record<string, boolean> = {};
+    let next = 0;
+    // Two readers keep a large farm's retained changes from flooding the API.
+    const read = async () => {
+      while (active && next < storedProposals.length) {
+        const { fieldId, edit } = storedProposals[next++];
+        try {
+          if (!UUID.test(edit.proposalId!) || !Number.isInteger(edit.proposalRevision)) throw new Error('Invalid retained proposal reference.');
+          const proposal = await (await api.downloadResponse(`/field-proposals/${edit.proposalId}`, { signal: controller.signal })).json() as RecordItem;
+          current[fieldId] = proposal.id === edit.proposalId && proposal.revision === edit.proposalRevision && proposal.workspace_id === farm.workspace_id &&
+            proposal.data.farm_id === farm.id && proposal.data.base_farm_revision === farm.revision && proposal.data.status === 'proposed' &&
+            proposal.data.parcel?.id === fieldId && proposal.data.parcel?.crop === (edit.crop === 'other' ? edit.custom : edit.crop);
+        } catch { current[fieldId] = false; }
+      }
+    };
+    void Promise.all([read(), read()]).then(() => { if (active) setProposalChecks({ binding: proposalBinding, current }); });
+    return () => { active = false; controller.abort(); };
+  }, [proposalBinding, draft.ready]);
+
+  function edit(patch: Partial<Draft>) { draft.setValue(previous => ({ ...previous, ...patch })); }
+  async function move(next: number, patch: Partial<Draft> = {}) {
+    setMoving(true); setSaveError('');
+    try {
+      const saved = { ...value, ...patch, step: next };
+      await saveDraft(scope, draftName, saved);
+      draft.setValue(saved);
+      window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    } catch (failure) { setSaveError(errorMessage(failure)); }
+    finally { setMoving(false); }
+  }
+  function editCrop(patch: Partial<CropEdit>) {
+    if (!selected) return;
+    edit({ cropEdits: { ...value.cropEdits, [selected.id]: { crop: 'other', custom: '', note: '', ...cropEdit, ...patch, attempt: crypto.randomUUID(), proposalId: undefined, proposalRevision: undefined } } });
+  }
+  async function saveCropProposal() {
+    if (!selected || !cropEdit || moving || stale || !mayReview) return;
+    setMoving(true); setSaveError('');
+    try {
+      const crop = cropEdit.crop === 'other' ? cropEdit.custom : cropEdit.crop;
+      if (!crop.trim() || crop.length > 200) throw new Error('Choose a crop or type its name, up to 200 characters.');
+      if (crop === selected.crop) throw new Error('This is already the saved crop. Choose “Yes, this is right” if it has not changed.');
+      if (!UUID.test(cropEdit.attempt)) throw new Error('The crop-change retry reference could not be read. Choose the crop again.');
+      await saveDraft(scope, draftName, value);
+      const proposal = await api.post<RecordItem>(`/farms/${farm.id}/field-proposals`, {
+        expected_revision: farm.revision,
+        parcel: { id: selected.id, name: selected.name, geometry: selected.geometry ?? null, point: selected.point ?? null,
+          crop, greenhouse: selected.greenhouse ?? false, notes: selected.notes ?? '', external_id: selected.external_id ?? null },
+        note: cropEdit.note || 'Crop change entered by the farmer in the Easy form; awaiting separate review.',
+      }, { idempotencyKey: cropEdit.attempt });
+      if (!UUID.test(proposal.id) || proposal.workspace_id !== farm.workspace_id || proposal.data.farm_id !== farm.id || proposal.data.status !== 'proposed') throw new Error('The crop proposal could not be checked. Retry the same saved change before creating another.');
+      const saved = { ...value, cropEdits: { ...value.cropEdits, [selected.id]: { ...cropEdit, proposalId: proposal.id, proposalRevision: proposal.revision } } };
+      await saveDraft(scope, draftName, saved);
+      draft.setValue(saved);
+    } catch (failure) { setSaveError(errorMessage(failure)); }
+    finally { setMoving(false); }
+  }
+  return <section className="easy-form-paper" aria-label="Farm questions">
+    <div className="easy-form-progress"><span>Step {step} of 6</span><progress max={6} value={step} aria-label="Current form step"/><span>{farm.data.name}</span></div>
+    <h2 ref={heading} tabIndex={-1}>{titles[step - 1]}</h2>
+    {!draft.ready && <Notice>Opening your saved answers…</Notice>}
+    {(draft.error || saveError) && <Notice kind="error">{saveError || draft.error}</Notice>}
+    {stale && <Notice kind="warning"><p>The farm changed since you started this form. Check the latest details before keeping these answers.</p><Button variant="secondary" disabled={!draft.ready || moving} onClick={() => edit({ ...initial, featureNote: value.featureNote })}>Start these checks again with the latest details</Button></Notice>}
+    {step === 3 && cropEdit?.proposalId && !currentProposal(selected.id) && <Notice kind="warning">The earlier crop proposal is being checked or has changed. Open its saved review before relying on it. It does not count as a current proposal here.</Notice>}
+    {step === 6 && storedProposals.some(saved => !currentProposal(saved.fieldId)) && <Notice kind="warning">At least one earlier crop proposal needs checking. Its retained link and earlier value are shown below; they are not a current approved change.</Notice>}
+    <fieldset className="easy-form-content" disabled={!draft.ready || stale || moving}>
+      {step === 1 && <><p>Are these the details you use for your farm?</p><dl className="easy-form-readback"><div><dt>Farm name</dt><dd>{farm.data.name || 'Not recorded'}</dd></div><div><dt>Country</dt><dd>{country.name}</dd></div><div><dt>Region</dt><dd>{farm.data.region || 'Not recorded'}</dd></div><div><dt>Year in the saved farm</dt><dd>{farm.data.reporting_year ?? 'Not recorded'}</dd></div><div><dt>Type of farm</dt><dd>{String(farm.data.farm_type || 'Not recorded').replaceAll('_', ' ')}</dd></div></dl><Choices value={value.identity} onChange={identity => edit({ identity })}/>{value.identity === 'change' && <p><Link to={sourceHref}>Open your farm details to make the change</Link>. Use Back to return to this form; the saved details will be checked again.</p>}{value.identity === 'unknown' && <p>We will keep this as a question to check. No identity or registration details are filled in for you.</p>}</>}
+      {step === 2 && <><p>These are the fields saved in your workspace, not an official land-register check.</p>{fields.length ? <><div className="easy-form-field-picker" role="group" aria-label="Choose a field to see on the map">{fields.map((field, index) => <Button key={field.id} variant={selected?.id === field.id ? 'primary' : 'secondary'} aria-pressed={selected?.id === field.id} onClick={() => setCropIndex(index)}>{field.name}</Button>)}</div><div className="easy-form-map"><ParcelMap key={`${farm.id}:${farm.revision}:${selected.id}`} readOnly contextOutlines={contextOutlines} geometry={validGeometry ? selected.geometry ?? null : null} point={selected.point} reference={null} sketch={[]} splitLine={[]} mode="edit" country={farm.data.country} region={farm.data.region} onGeometry={noMapEdit} onSketch={noMapEdit} onSplitLine={noMapEdit}/></div>{selected.geometry && !validGeometry && <Notice kind="warning"><p>The saved outline needs repair before it can be shown.</p>{selected.geometry_summary?.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}<Link to={editorHref}>Review and repair this field outline</Link></Notice>}<p><strong>{selected.name}</strong>{selected.approximate_area_ha != null ? ` · about ${selected.approximate_area_ha.toLocaleString(undefined, { maximumFractionDigits: 3 })} ha from the saved outline` : ' · no outline area is established'}.</p><p className="muted">An outline area is not the area you can claim. No part of this map is coloured as eligible land.</p></> : <p>No fields are saved yet. You can continue with this marked as needing a check, or <Link to={sourceHref}>add your first field</Link>.</p>}<Choices value={value.fields} onChange={answer => edit({ fields: answer })}/>{value.fields === 'change' && <p><Link to={editorHref}>Open the field editor</Link>. Changes saved there still need normal review.</p>}</>}
+      {step === 3 && <>{fields.length ? <><p>Check each field. If the crop changed, choose it below or type another name.</p><div className="easy-form-field-picker" role="group" aria-label="Choose a field to check its crop">{fields.map((field, index) => <Button key={field.id} variant={selected?.id === field.id ? 'primary' : 'secondary'} aria-pressed={selected?.id === field.id} onClick={() => setCropIndex(index)}>{field.name}<span className="easy-form-field-choice">{decisionLabel[value.crops[field.id] ?? '']}</span></Button>)}</div><article className="easy-form-crop" aria-label={`Crop for ${selected.name}`}><h3>{selected.name}</h3><p>Saved crop:</p><strong>{selected.crop || 'No crop recorded'}</strong></article><Choices value={value.crops[selected.id] ?? ''} onChange={answer => edit({ crops: { ...value.crops, [selected.id]: answer } })}/>{value.crops[selected.id] === 'change' && <section className="easy-form-crop-change" aria-label="Save a crop change"><Field label="Crop"><select value={cropEdit?.crop ?? 'other'} onChange={event => editCrop({ crop: event.target.value })}>{cropOptions.map(crop => <option key={crop} value={crop}>{crop}</option>)}<option value="other">Other crop — type its name</option></select></Field>{(!cropEdit || cropEdit.crop === 'other') && <Field label="Other crop name"><input value={cropEdit?.custom ?? ''} maxLength={200} onChange={event => editCrop({ custom: event.target.value })}/></Field>}<Field label="What changed? (optional)"><input value={cropEdit?.note ?? ''} maxLength={4000} onChange={event => editCrop({ note: event.target.value })}/></Field>{cropEdit?.proposalId ? <Notice kind={currentProposal(selected.id) ? "success" : "warning"}>{currentProposal(selected.id) ? "Crop change saved for review." : "Earlier crop proposal retained; check its current version."} <Link to={`${sourceHref}?${new URLSearchParams({ proposal_id: cropEdit.proposalId, expected_revision: String(cropEdit.proposalRevision) })}#boundaries-${farm.id}`}>Review and apply this crop change</Link>.</Notice> : <Button disabled={!mayReview || !cropEdit || !(cropEdit.crop === 'other' ? cropEdit.custom.trim() : cropEdit.crop)} loading={moving} onClick={() => void saveCropProposal()}>Save crop change for review</Button>}{!mayReview && <p>Your current access cannot save a field change. Ask the farm owner or a permitted reviewer.</p>}</section>}<p>{fields.filter(field => !!value.crops[field.id]).length} of {fields.length} fields answered.</p></> : <p>No field crop records are available. You can add them from My fields when you have the details.</p>}</>}
+      {step === 4 && <><p>Think about hedges, ponds, trees, buildings, scrub or other land features. Do your saved field notes cover what needs checking?</p>{fields.some(field => !!field.notes) ? <ul>{fields.filter(field => !!field.notes).map(field => <li key={field.id}><strong>{field.name}:</strong> {field.notes}</li>)}</ul> : <p>No land-feature notes were found in the saved fields. A shape on the map does not establish a protected area, land-use right or eligible feature.</p>}<Choices value={value.features} onChange={features => edit({ features })}/><Field label="Anything to check later? (optional)"><textarea maxLength={4000} rows={3} value={value.featureNote} onChange={event => edit({ featureNote: event.target.value })}/></Field><p><Link to={`/app/documents?farm_id=${farm.id}`}>Add an actual photo, lease or other record</Link> if you have one. Choosing “not sure” does not create missing evidence.</p></>}
+      {step === 5 && <><p>For {country.name}, these are the support-paperwork routes in the app's saved country catalogue. They are not proof that you are enrolled or eligible.</p>{supportModules.length ? supportModules.map((module, index) => <article key={`${module.name}:${index}`} className="easy-form-support"><h3>{module.name}</h3><p>{module.task}</p><details><summary>What is covered?</summary><p>{module.coverage_limit || 'Check the actual scheme and authority instructions before preparing an application.'}</p><p>{module.pack_ids?.length ? `Listed form references: ${module.pack_ids.join(', ')}` : 'No national form reference is mapped here.'}</p></details></article>) : <p>No support module is listed for this country. Keep the real request and ask the recipient or an adviser which scheme applies.</p>}<Choices support value={value.support} onChange={support => edit({ support })}/><p>We do not select a payment scheme, create an enrolment or fill in a claim amount here.</p></>}
+      {step === 6 && <><p>Check your answers before opening the next task.</p><dl className="easy-form-readback"><div><dt>Your farm</dt><dd>{farm.data.name}: {decisionLabel[value.identity]}</dd></div><div><dt>Fields</dt><dd>{decisionLabel[value.fields]}</dd></div>{fields.map(field => <div key={field.id}><dt>{field.name}: saved crop</dt><dd>{field.crop || 'Not recorded'} — {decisionLabel[value.crops[field.id] ?? '']}{value.cropEdits?.[field.id]?.proposalId && <p><Link to={`${sourceHref}?${new URLSearchParams({ proposal_id: value.cropEdits[field.id].proposalId!, expected_revision: String(value.cropEdits[field.id].proposalRevision) })}#boundaries-${farm.id}`}>Review the saved crop change</Link>: {value.cropEdits[field.id].crop === 'other' ? value.cropEdits[field.id].custom : value.cropEdits[field.id].crop}</p>}</dd></div>)}<div><dt>Land features and notes</dt><dd>{decisionLabel[value.features]}{value.featureNote && <p className="easy-form-note">{value.featureNote}</p>}</dd></div><div><dt>Support paperwork</dt><dd>{value.support === 'yes' ? 'You would like help preparing it' : value.support === 'change' ? 'Not now' : 'You are not sure yet'}</dd></div></dl><Notice kind={concerns || !fields.length ? 'warning' : 'info'}>{concerns || !fields.length ? 'Some details still need checking. You can keep working through the tasks below.' : 'Your answers are recorded in this form. Check the figures and review the paperwork next.'}</Notice><div className="easy-form-handoff"><Link className="button button-primary" to={checkHref}>Check my fields and saved figures</Link><Link className="button button-secondary" to={`/app/documents?${new URLSearchParams({ farm_id: farm.id, purpose: 'last_application' })}`}>Import a letter or previous application</Link><Link className="button button-secondary" to={`/app/paperwork?${new URLSearchParams({ farm_id: farm.id, intent: 'support' })}`}>Open my support paperwork</Link></div><p>Crop changes are saved as proposals until you review and apply them. Sending an application is a separate step.</p></>}
+    </fieldset>
+    <div className="easy-form-navigation">{step > 1 && <Button variant="secondary" disabled={!draft.ready || moving} onClick={() => void move(step - 1)}>Back</Button>}{step === 4 && <Button variant="ghost" disabled={!draft.ready || stale || moving} onClick={() => void move(5, { features: 'unknown' })}>Skip for now</Button>}{step < 6 && <Button disabled={!draft.ready || stale || !canContinue || moving} loading={moving} onClick={() => void move(step + 1)}>Continue</Button>}{step === 6 && <Button variant="secondary" onClick={refresh}>Check the latest saved farm details</Button>}</div>
+    {draft.saving ? <p role="status" className="muted">Saving your private draft…</p> : draft.ready && <p className="muted">Your choices are kept privately on this device when you go Back or reload.</p>}
+    <details className="easy-form-source"><summary>Where these details came from</summary><p>Farm details and field records saved in this workspace, farm version {farm.revision}. Country forms come from the app's {country.name} catalogue. These are not live authority records or verified legal eligibility.</p><Link to={sourceHref}>Open the saved farm</Link></details>
+  </section>;
+}

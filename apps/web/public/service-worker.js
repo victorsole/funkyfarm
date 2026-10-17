@@ -1,6 +1,6 @@
 /* This cache contains public application files only. Farm API responses and
    original documents always go directly to the server. */
-const CACHE = 'funkyfarm-public-shell-v4';
+const CACHE = 'funkyfarm-public-shell-v5';
 const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/funkyfarmers-logo.png'];
 
 self.addEventListener('install', event => {

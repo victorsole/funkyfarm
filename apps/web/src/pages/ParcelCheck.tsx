@@ -4,11 +4,12 @@ import { api, ApiError, errorMessage } from '../api';
 import { useSession } from '../auth';
 import { Button, Field, Notice, PageHeader } from '../components';
 import type { RecordItem } from '../types';
-import { FieldMap, type FieldGeometry, type FieldPoint } from './FieldsMap';
+import type { FieldGeometry, FieldPoint } from './FieldsMap';
+import { ParcelMap, isDisplayableFieldGeometry } from '../maps/ParcelMap';
 import './parcelCheck.css';
 
 type Source = { title?: string; url?: string; version?: string | null; article?: string | null; review_note?: string | null };
-type ClaimSource = { document_id: string; document_revision: number | null; current_revision: number | null; sha256: string | null; name: string; href: string | null; status: 'current' | 'stale' | 'unavailable' | 'unpinned' };
+type ClaimSource = { document_id: string | null; document_revision: number | null; current_revision: number | null; sha256: string | null; name: string; href: string | null; status: 'current' | 'stale' | 'unavailable' | 'unpinned' };
 type ClaimContext = {
   declared: number | null; max: number | null; coefficient: number | null; excess: number | null; proposed_claim: number | null;
   proposed_claim_is_draft: boolean;
@@ -38,6 +39,7 @@ const text = (value: unknown): string => value === null || value === undefined ?
 const validSource = (value: Source) => !!value && ['title', 'url', 'version', 'article', 'review_note'].every(key => typeof value[key as keyof Source] === 'string');
 const numberOrNull = (value: unknown) => value === null || typeof value === 'number' && Number.isFinite(value);
 const revisionOrNull = (value: unknown) => value === null || typeof value === 'number' && Number.isInteger(value) && value > 0;
+const noMapEdit = () => { /* Read-only map; no draft or save callbacks. */ };
 // Padding a decimal place does not round or recalculate the supplied value.
 const areaText = (value: number | null) => {
   if (value === null) return 'Not established';
@@ -57,7 +59,9 @@ function validClaimContext(context: ClaimContext, farmId: string) {
     && !!context.revisions && typeof context.revisions === 'object' && !Array.isArray(context.revisions)
     && context.fact_ids.every(id => Number.isInteger(context.revisions[id]) && context.revisions[id] > 0)
     && (context.problems === undefined || Array.isArray(context.problems) && context.problems.every(problem => typeof problem === 'string'))
-    && Array.isArray(context.sources) && context.sources.every(source => !!source && typeof source.document_id === 'string' && uuid.test(source.document_id)
+    && Array.isArray(context.sources) && context.sources.every(source => !!source
+      && (typeof source.document_id === 'string' && uuid.test(source.document_id)
+        || source.document_id === null && source.status === 'unavailable' && source.document_revision === null && source.current_revision === null && source.sha256 === null && source.href === null)
       && revisionOrNull(source.document_revision) && revisionOrNull(source.current_revision) && (source.sha256 === null || typeof source.sha256 === 'string')
       && typeof source.name === 'string' && (source.href === null || typeof source.href === 'string') && ['current', 'stale', 'unavailable', 'unpinned'].includes(source.status));
 }
@@ -70,13 +74,13 @@ function ClaimComparison({ context, farmId, year, caseId }: { context: ClaimCont
   return <section className="parcel-claim-comparison" aria-label="Claim area comparison">
     <p className="parcel-claim-status">{proposed ? 'Proposed values — not yet checked' : uncertain ? 'Source values need review' : 'Values checked by a person — not an authority decision'}</p>
     <h3>{uncertain ? 'Which claim values apply to this field?' : 'Compare the claim with the supplied maximum'}</h3>
-    <dl className="parcel-claim-values"><div><dt>Area in the saved claim</dt><dd>{areaText(context.declared)}</dd></div><div><dt>Maximum area supplied by the source</dt><dd>{areaText(context.max)}</dd></div><div><dt>Pasture coefficient supplied</dt><dd>{context.coefficient === null ? 'Not established' : `${context.coefficient}%`}</dd></div><div><dt>Claim above the supplied maximum</dt><dd>{areaText(context.excess)}</dd></div>{context.proposed_claim !== null && <div className="parcel-claim-draft"><dt>Proposed corrected claim — not sent</dt><dd>{areaText(context.proposed_claim)}</dd></div>}</dl>
-    {proposed && <p>These are proposals copied into your farm records. Check each value against the original before using the comparison.</p>}
+    <dl className="parcel-claim-values"><div className="parcel-claim-saved"><dt>Area in the saved claim</dt><dd>{areaText(context.declared)}</dd></div><div className="parcel-claim-maximum"><dt>Maximum area supplied by the source</dt><dd>{areaText(context.max)}</dd></div><div className="parcel-claim-coefficient"><dt>Pasture coefficient supplied</dt><dd>{context.coefficient === null ? 'Not established' : `${context.coefficient}%`}</dd></div><div className="parcel-claim-excess"><dt>Claim above the supplied maximum</dt><dd>{areaText(context.excess)}</dd></div>{context.proposed_claim !== null && <div className="parcel-claim-draft"><dt>Proposed corrected claim — not sent</dt><dd>{areaText(context.proposed_claim)}</dd></div>}</dl>
+    {proposed && <p>Check these proposed values against the original before using them.</p>}
     {uncertain && <p>Some values are missing, conflicting or no longer tied to a current source. No latest value has been chosen for you. Check which original applies to this field and year.</p>}
-    <p>The physical field outline stays unchanged. A pasture coefficient does not identify a contiguous part of the field to draw. A proposed corrected claim does not replace the saved claim or resize the field.</p>
+    <p className="parcel-claim-no-cut">Figures to compare, not a smaller field to draw. The physical outline stays unchanged.</p>
     <Link className="button button-primary" to={appPath(context.review_href, farmId)!}>{context.status === 'confirmed' ? 'See the checked claim values' : 'Review the saved claim values'}</Link>
     <p className="parcel-claim-next">After checking the values, <Link to={correction}>open the guided correction</Link>. Any actual sending remains a separate step.</p>
-    <details><summary>Original sources and limits of this comparison</summary><p>{context.notice}</p>{context.problems && <ul>{context.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>}{context.sources.length ? <ul>{context.sources.map((source, index) => <li key={`${source.document_id}:${index}`}><strong>{source.name || 'Original document'}</strong><p>{sourceStatus[source.status]}{source.document_revision !== null ? ` · selected version ${source.document_revision}` : ''}{source.current_revision !== null ? ` · current version ${source.current_revision}` : ''}.</p>{source.href === `/app/documents/${source.document_id}` && <Link to={source.href}>Open the original document</Link>}</li>)}</ul> : <p>No original document is available for this comparison.</p>}<p>The supplied maximum is not a new eligibility certification. The responsible authority decides the actual claim and eligible area under the applicable rules.</p></details>
+    <details><summary>Original sources and limits of this comparison</summary><p>{context.notice}</p><p>A pasture coefficient does not identify a contiguous part of the field. A proposed corrected claim does not replace the saved claim or resize its boundary.</p>{context.problems && <ul>{context.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>}{context.sources.length ? <ul>{context.sources.map((source, index) => <li key={`${source.document_id}:${index}`}><strong>{source.name || 'Original document'}</strong><p>{sourceStatus[source.status]}{source.document_revision !== null ? ` · selected version ${source.document_revision}` : ''}{source.current_revision !== null ? ` · current version ${source.current_revision}` : ''}.</p>{source.document_id !== null && source.href === `/app/documents/${source.document_id}` && <Link to={source.href}>Open the original document</Link>}</li>)}</ul> : <p>No original document is available for this comparison.</p>}<p>The supplied maximum is not a new eligibility certification. The responsible authority decides the actual claim and eligible area under the applicable rules.</p></details>
   </section>;
 }
 
@@ -199,6 +203,14 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
   const hasClaimContext = !!claimContext && (claimContext.fact_ids.length > 0 || claimContext.status === 'needs_review'
     || [claimContext.declared, claimContext.max, claimContext.coefficient, claimContext.excess, claimContext.proposed_claim].some(value => value !== null));
   const parcel = (bundle?.farm.data.parcels as Parcel[] | undefined)?.filter(field => field && field.active !== false)[selectedIndex];
+  const savedParcels = Array.isArray(bundle?.farm.data.parcels) ? bundle.farm.data.parcels as Parcel[] : [];
+  const contextOutlines = (check?.fields ?? []).flatMap(field => {
+    if (field.id === selected?.id || !field.identity_supplied || field.geometry_status !== 'valid'
+      || check?.fields.filter(other => other.id === field.id).length !== 1) return [];
+    const matches = savedParcels.filter(saved => saved && saved.active !== false && saved.id === field.id);
+    return matches.length === 1 && isDisplayableFieldGeometry(matches[0].geometry)
+      ? [{ id: field.id, label: field.name, geometry: matches[0].geometry }] : [];
+  });
   const uniqueIdentity = selected?.identity_supplied && check?.fields.filter(field => field.id === selected.id).length === 1;
   const issue = check?.issues.find(item => item.id === issueId) ?? check?.issues[0];
   const editorHref = appPath(selected?.editor_href || check?.editor_href, farmId) || `/app/fields/${farmId}#boundaries-${farmId}`;
@@ -231,7 +243,17 @@ function FarmParcelCheck({ farmId, workspaceId, query }: { farmId: string; works
         {selected ? <>
           <Field label="Field to look at"><select value={String(selectedIndex)} onChange={event => setFieldChoice(Number(event.target.value))}>{check.fields.map((field, index) => <option key={index} value={String(index)}>{field.name}</option>)}</select></Field>
           <div className="parcel-check-map-details">
-            <div><FieldMap geometry={selected.geometry_status === 'valid' ? parcel?.geometry : null} point={parcel?.point} label={selected.name} /><p className="muted">This map uses your saved outline or location. It is not an official register or satellite check.</p>{hasClaimContext && <p className="parcel-claim-outline">Physical outline, approximate: <strong>{areaText(selected.outline_area_ha)}</strong>. No boundary has been reduced for this comparison.</p>}</div>
+            <div className="parcel-check-map-panel">
+              <p className="parcel-check-map-source"><span>Saved farm coordinates · private outlines</span><span>Selected field in green{contextOutlines.length ? ' · other fields in blue' : ''}</span></p>
+              <ParcelMap key={`${bundle.farm.id}:${bundle.farm.revision}:${selectedIndex}`} readOnly
+                geometry={selected.geometry_status === 'valid' ? parcel?.geometry ?? null : null} point={parcel?.point}
+                contextOutlines={contextOutlines} reference={null} sketch={[]} splitLine={[]} mode="edit" onGeometry={noMapEdit} onSketch={noMapEdit} onSplitLine={noMapEdit}
+                country={typeof bundle.farm.data.country === 'string' ? bundle.farm.data.country : null}
+                region={typeof bundle.farm.data.region === 'string' ? bundle.farm.data.region : null} />
+              {hasClaimContext && <p className="parcel-claim-outline"><span>Physical outline, approximate<br />Unchanged by the claim comparison</span><strong>{areaText(selected.outline_area_ha)}</strong></p>}
+              {selected.geometry_status !== 'valid' && <p>{selected.geometry_status === 'invalid' ? 'The saved outline needs repair before it can be shown.' : parcel?.point ? 'Only a supplied location is recorded, not a field boundary.' : 'No field outline or location is saved. The map starts with a general overview, not this field’s location.'}</p>}
+              <details><summary>About the map and its sources</summary><p>This map uses your saved outline or location. It is not an official register or satellite check. The neutral background is a coordinate grid, not an aerial photograph. Any background you choose has its own source and privacy notice.</p><p>The area from an outline is approximate. It is not the area declared in a claim, the supplied maximum or an eligibility decision. This page never cuts the outline into a percentage-sized piece.</p></details>
+            </div>
             <div><h3>{selected.name}</h3>
               {hasClaimContext && claimContext && <ClaimComparison context={claimContext} farmId={farmId} year={check.reporting_year} caseId={check.case_id} />}
               <details open={hasClaimContext ? undefined : true} className="parcel-field-details"><summary>Field details and other area records</summary>

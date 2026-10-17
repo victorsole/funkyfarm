@@ -74,7 +74,7 @@ function farmerPath(path: string) {
 
 function HomeTasks({farmId}:{farmId?:string}) {
   const correction = `/app/cases/new?${new URLSearchParams({ job_type: 'correction', focused: '1', ...(farmId ? { farm_id: farmId } : {}) })}`;
-  return <section className="card farm-start"><h2>Are your field details right?</h2><p>Check your fields, see what needs attention and work through each change.</p><p><Link className="button button-primary" to={farmId ? `/app/fields/${farmId}/check` : '/app/fields'}>{farmId ? 'Check my fields' : 'Add or choose my farm'}</Link></p><div className="actions"><Link to={correction}>Fix a mistake in filed paperwork</Link><Link to="/app/examples">Try a sample farm</Link></div></section>;
+  return <section className="card farm-start"><h2>Are your field details right?</h2><p>Check your fields, see what needs attention and work through each change.</p><p><Link className="button button-primary" to={farmId ? `/app/fields/${farmId}/check` : '/app/fields'}>{farmId ? 'Check my fields' : 'Add or choose my farm'}</Link></p><p><Link to={farmId ? `/app/easy-form?farm_id=${encodeURIComponent(farmId)}` : '/app/easy-form'}>Easy form: fill it in step by step</Link></p><div className="actions"><Link to={correction}>Fix a mistake in filed paperwork</Link><Link to="/app/examples">Try a sample farm</Link></div></section>;
 }
 
 export function HomePage() {
