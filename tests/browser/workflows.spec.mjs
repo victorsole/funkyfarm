@@ -637,7 +637,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   // not silently rebase an encrypted unsaved draft after another client saves.
   const organicSource = correctionRecords.find(record => record.data.key === 'organic_operator');
   await page.goto(`/app/fields/${farmId}#facts`);
-  if (await page.locator('#facts').getAttribute('open') === null) await page.getByText('Check answers saved about this farm', { exact: true }).click();
+  await expect(page.locator('#facts')).toHaveAttribute('open', '');
   const organicFact = page.locator('#facts article.panel').filter({ has: page.getByRole('heading', { name: organicSource.data.label, exact: true }) })
     .filter({ has: page.getByText('Propose a correction', { exact: true }) });
   await organicFact.getByText('Propose a correction', { exact: true }).click();
@@ -960,12 +960,21 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   const savedDraft = workspace.locator('article.boundary-proposal').filter({ hasText: note });
   await expect(savedDraft.getByRole('heading', { name: 'Supplied comparison', exact: true })).toBeVisible();
   await expect(savedDraft).toContainText('Historical rye');
-  const guide = workspace.locator('details').filter({ has: page.getByText('Use this file in Mijn percelen', { exact: true }) });
+  const guide = workspace.locator('details').filter({ has: page.getByText('How do I update the official field register?', { exact: true }) });
   await expect(guide).not.toHaveAttribute('open', '');
-  await guide.getByText('Use this file in Mijn percelen', { exact: true }).click();
-  await expect(guide.getByRole('link', { name: "Read RVO's parcel instructions", exact: true })).toHaveAttribute('href', 'https://www.rvo.nl/onderwerpen/percelen-registreren/aan-de-slag');
+  const guideResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/farms/${farm.id}/lpis-guide` && response.request().method() === 'GET');
+  await guide.getByText('How do I update the official field register?', { exact: true }).click();
+  const guideHTTP = await guideResponse;
+  expect(guideHTTP.ok(), await guideHTTP.text()).toBeTruthy();
+  const retainedGuide = await guideHTTP.json();
+  expect(retainedGuide.farm_id).toBe(farm.id);
+  expect(retainedGuide.profiles.find(profile => profile.id === 'nl-mijn-percelen-gps').import_acceptance_verified).toBe(false);
+  await guide.getByLabel('What do you need to do?', { exact: true }).selectOption('nl-mijn-percelen-gps');
+  await expect(guide.getByRole('link', { name: 'RVO Mijn percelen instructions (opens a new tab)', exact: true })).toHaveAttribute('href', 'https://www.rvo.nl/onderwerpen/percelen-registreren/aan-de-slag');
   await expect(guide).toContainText('Uploaden GPS-bestand');
-  await expect(guide).toContainText('A live RVO upload has not been verified.');
+  await expect(guide).toContainText('KML, through the documented GPS-upload route');
+  await expect(guide).toContainText('Live upload and acceptance are unverified.');
+  await expect(guide).toContainText('This app has not verified a live import or acceptance.');
   for (const [label, filename] of [['Download boundary file', 'field-correction-draft.geojson'], ['Download correction draft', 'field-correction-handoff.json'], ['Download KML boundary', 'field-correction-draft.kml']]) {
     const download = page.waitForEvent('download');
     await savedDraft.getByRole('button', { name: label, exact: true }).click();
