@@ -7,20 +7,24 @@ It receives no farm, tenant, user, credential, or arbitrary endpoint parameters.
 import asyncio
 from dataclasses import dataclass
 import hashlib
+from html.parser import HTMLParser
 import json
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
 import httpx
 
 CATALOG_PATH = Path(__file__).resolve().parents[3] / "shared" / "obligations.json"
+FUNDING_PATH = CATALOG_PATH.with_name("funding.json")
 MAX_SOURCES = 100
 MAX_BYTES = 512_000
+MAX_TEXT = 24_000
 # Complete EUR-Lex texts/notices exceed the normal page budget. Keep that
 # exception publisher-specific; neither a user nor a redirect can raise it.
 EURLEX_MAX_BYTES = 2 * 1024 * 1024
 FETCH_DEADLINE_SECONDS = 12
-WORKFLOWS = frozenset({"annual", "cap", "inputs", "inspection", "sustainability"})
+WORKFLOWS = frozenset({"annual", "cap", "inputs", "inspection", "sustainability", "funding"})
 # Expanding this list is a reviewed source/code change, never a browser setting.
 OFFICIAL_PATHS = {
     "eur-lex.europa.eu": ("/legal-content/",),
@@ -38,6 +42,7 @@ OFFICIAL_PATHS = {
     "www.gesetze-im-internet.de": ("/pflschg_2012/__11.html",),
     "gesetze-im-internet.de": ("/pflschg_2012/__11.html",),
     "landwirtschaftskammer.de": ("/landwirtschaft/pflanzenschutz/genehmigungen/aufzeichnung.htm",),
+    "rea.ec.europa.eu": ("/funding-and-grants/promotion-agricultural-products-0/calls-proposals-promotion-agricultural-products_en",),
 }
 
 
@@ -46,6 +51,8 @@ def allowed_source_url(url):
         return False
     try:
         parsed = urlsplit(url)
+        if parsed.hostname == "rea.ec.europa.eu" and (parsed.path not in OFFICIAL_PATHS[parsed.hostname] or parsed.query):
+            return False
         return (parsed.scheme == "https" and parsed.hostname in OFFICIAL_PATHS and parsed.port in (None, 443)
                 and not parsed.username and not parsed.password and not parsed.fragment
                 and ".." not in parsed.path and "%" not in parsed.path
@@ -59,6 +66,9 @@ def source_catalog():
         return []
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8-sig"))
     raw = catalog.get("sources", [])
+    if FUNDING_PATH.exists():
+        funding = json.loads(FUNDING_PATH.read_text(encoding="utf-8-sig"))
+        raw = [*raw, *funding.get("monitoring_sources", [])]
     if not isinstance(raw, list) or len(raw) > MAX_SOURCES:
         raise ValueError("Regulatory source catalogue must be a bounded source list")
     result, identifiers, urls = [], set(), set()
@@ -79,6 +89,7 @@ def source_catalog():
             "country": source.get("country"), "region": source.get("region"), "workflow_ids": workflows,
             "source_type": source.get("source_type", "official_page"), "source_edition": source.get("version", source.get("edition")),
             "catalog_checked_at": source.get("checked_date", catalog.get("updated_at")), "rule_ids": [rule["id"] for rule in linked_rules],
+            "poll_interval_seconds": max(900, min(86400, int(source["poll_interval_seconds"]))) if source.get("poll_interval_seconds") is not None else None,
             "rules": linked_rules})
     return result
 
@@ -90,6 +101,54 @@ class SourceObservation:
     content_hash: str | None = None
     etag: str | None = None
     last_modified: str | None = None
+    readable_text: str | None = None
+    text_truncated: bool = False
+
+
+class _ReadablePage(HTMLParser):
+    """Retain plain publisher text only; never render or execute source markup."""
+
+    HIDDEN = {"script", "style", "nav", "header", "footer", "svg", "form", "iframe", "noscript", "template"}
+    BLOCKS = {"p", "li", "h1", "h2", "h3", "h4", "section", "article", "div", "br", "tr"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.hidden = []
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.HIDDEN:
+            self.hidden.append(tag)
+        elif not self.hidden and tag in self.BLOCKS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if self.hidden:
+            if tag == self.hidden[-1]:
+                self.hidden.pop()
+        elif tag in self.BLOCKS:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def readable_excerpt(content, media, encoding="utf-8"):
+    if media not in {"text/html", "application/xhtml+xml", "text/plain", "application/xml", "text/xml"}:
+        return None, False
+    try:
+        text = content.decode(encoding or "utf-8", errors="replace")
+    except LookupError:
+        text = content.decode("utf-8", errors="replace")
+    if media != "text/plain":
+        parser = _ReadablePage()
+        parser.feed(text)
+        parser.close()
+        text = "".join(parser.parts)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]", "", text)
+    text = "\n".join(line for raw in text.splitlines() if (line := " ".join(raw.split())))
+    return text[:MAX_TEXT] or None, len(text) > MAX_TEXT
 
 
 def _header(value):
@@ -144,7 +203,8 @@ async def _fetch_source(source, etag, last_modified):
                 probe = bytes(content[:100_000]).lower()
                 if media in {"text/html", "application/xhtml+xml"} and any(marker in probe for marker in (b"checking your browser", b"verify you are human", b"<title>just a moment", b"<title>access denied", b"<title>captcha", b"request rejected")):
                     return SourceObservation("publisher_access_challenge", 200)
-                return SourceObservation("observed", 200, hashlib.sha256(content).hexdigest(), _header(response.headers.get("etag")), _header(response.headers.get("last-modified")))
+                text, truncated = readable_excerpt(bytes(content), media, response.encoding)
+                return SourceObservation("observed", 200, hashlib.sha256(content).hexdigest(), _header(response.headers.get("etag")), _header(response.headers.get("last-modified")), text, truncated)
     except TimeoutError:
         return SourceObservation("read_deadline", http_status)
     except (httpx.HTTPError, ValueError):

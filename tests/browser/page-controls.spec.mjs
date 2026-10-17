@@ -123,7 +123,7 @@ test('page controls: account defaults, source handbook and legacy navigation do 
 
   await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: /^Tools\b/ }).click();
   await expect(page.getByRole('heading', { name: 'Farm tools', exact: true })).toBeVisible();
-  const toolPaths = ['fields', 'record-work', 'documents', 'imports', 'satellite', 'easy-form', 'paperwork', 'cases', 'tasks', 'checks', 'reports', 'connections', 'guidance', 'updates', 'adviser', 'community', 'help', 'assistant/connect', 'demo', 'examples', 'settings'];
+  const toolPaths = ['fields', 'record-work', 'documents', 'imports', 'satellite', 'easy-form', 'paperwork', 'cases', 'tasks', 'checks', 'reports', 'connections', 'guidance', 'updates', 'funding', 'adviser', 'community', 'help', 'assistant/connect', 'demo', 'examples', 'settings'];
   const tools = page.locator('main .tools-index a');
   await expect(tools).toHaveCount(toolPaths.length);
   expect(await tools.evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual(toolPaths.map(path => `/app/${path}`));

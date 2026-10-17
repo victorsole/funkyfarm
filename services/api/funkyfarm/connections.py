@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -65,6 +65,12 @@ class Credentials(Revision):
 class ReadParcels(Input):
     bbox: list[float] = Field(min_length=4, max_length=4)
     limit: int = Field(default=50, ge=1, le=100)
+
+
+class FieldPreview(Input):
+    expected_read_revision: int = Field(ge=1, strict=True)
+    expected_farm_revision: int = Field(ge=1, strict=True)
+    selected_indices: list[Annotated[int, Field(ge=0, le=99, strict=True)]] = Field(min_length=1, max_length=20)
 
 
 class ReadDiary(Revision):
@@ -236,6 +242,8 @@ def save_credentials(connection_id: UUID, body: Credentials, request: Request, s
     require_roles(session, "owner")
     with transaction(session) as conn:
         record = _connection(conn, connection_id)
+        if record["data"]["capability_id"] != "hu-nebih-egn-read":
+            raise ApiError(409, "credentials_not_used", "This route does not use saved sign-in details. Sign in on the official website instead.")
         values = {key: value.get_secret_value() for key, value in ((key, getattr(body, key)) for key in ("username", "password", "api_key")) if value is not None}
         private = record["data"]["capability_id"] == "hu-nebih-egn-read"
         if private:
@@ -316,10 +324,155 @@ def public_read(connection_id: UUID, body: ReadParcels, session: Session = Depen
 @router.get("/{connection_id}/reads")
 def read_history(connection_id: UUID, limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
     with transaction(session) as conn:
+        return connection_history(conn, connection_id, "connection_reads", limit, offset)
+
+
+@router.get("/{connection_id}/reads/{read_id}")
+def saved_read(connection_id: UUID, read_id: UUID, session: Session = Depends(require_session)):
+    with transaction(session) as conn:
         _connection(conn, connection_id)
-        count = conn.execute("SELECT count(*) AS count FROM records WHERE kind='connection_reads' AND data->>'connection_id'=%s AND deleted_at IS NULL", (str(connection_id),)).fetchone()["count"]
-        rows = conn.execute("SELECT id FROM records WHERE kind='connection_reads' AND data->>'connection_id'=%s AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s", (str(connection_id), limit, offset)).fetchall()
-        return {"items": [fetch_record(conn, "connection_reads", row["id"]) for row in rows], "total": count, "limit": limit, "offset": offset}
+        record = fetch_record(conn, "connection_reads", str(read_id))
+        if record["data"].get("connection_id") != str(connection_id):
+            raise ApiError(404, "not_found", "This saved read was not found for this connection.")
+        return record
+
+
+@router.post("/{connection_id}/reads/{read_id}/field-preview", status_code=201)
+def preview_public_fields(connection_id: UUID, read_id: UUID, body: FieldPreview, session: Session = Depends(require_session), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    """Bridge a retained public read to the ordinary reviewed field-import flow."""
+    from .field_imports import MAX_BYTES, _compact, _farm_lock, _geojson, _interactive
+    _interactive(session)
+    if len(set(body.selected_indices)) != len(body.selected_indices):
+        raise ApiError(422, "duplicate_selection", "Choose each public parcel only once.")
+    with transaction(session) as conn:
+        connection = _connection(conn, connection_id)
+        if connection["data"]["capability_id"] != "nl-pdok-brp-public":
+            raise ApiError(409, "public_fields_not_supported", "This route cannot prepare public parcel imports.")
+        # Check current farm write permission even when recovering a prior retry.
+        from .field_imports import _write
+        _write(conn, session, fetch_record(conn, "farms", connection["data"]["farm_id"]))
+        def perform():
+            farm = _farm_lock(conn, session, connection["data"]["farm_id"], body.expected_farm_revision)
+            saved = fetch_record(conn, "connection_reads", str(read_id))
+            data = saved["data"]
+            result = data.get("result", {})
+            if (saved["revision"] != body.expected_read_revision or data.get("connection_id") != connection["id"]
+                    or data.get("farm_id") != farm["id"] or result.get("type") != "FeatureCollection"):
+                raise ApiError(409, "public_read_changed", "Choose parcels from this farm's saved public read again.")
+            features = result.get("features", [])
+            if not isinstance(features, list) or any(index >= len(features) for index in body.selected_indices):
+                raise ApiError(422, "public_field_selection", "Choose parcels present in this exact saved read.")
+            selected = []
+            years = []
+            for index in body.selected_indices:
+                feature = deepcopy(features[index])
+                if not isinstance(feature, dict) or feature.get("type") != "Feature":
+                    raise ApiError(422, "public_field_selection", "A selected public parcel cannot be read. Choose a fresh map area.")
+                properties = feature.get("properties") or {}
+                # Literal source attributes stay in the retained file. Their crop
+                # and identifier are not promoted to current farm facts.
+                if not isinstance(properties, dict):
+                    raise ApiError(422, "public_field_selection", "A selected parcel has unreadable source details.")
+                year = properties.get("jaar")
+                if isinstance(year, str) and len(year) == 4 and year.isdecimal():
+                    year = int(year)
+                years.append(year if type(year) is int and 1900 <= year <= 2200 else None)
+                selected.append(feature)
+            contents = json.dumps({"type": "FeatureCollection", "features": selected}, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            raw = contents.encode("utf-8")
+            if len(raw) > MAX_BYTES:
+                raise ApiError(422, "field_import_size_limit", "These outlines are too large for one preview. Select fewer parcels.")
+            rows = _geojson(contents)
+            source_year = years[0] if years and years[0] is not None and len(set(years)) == 1 else None
+            for row in rows:
+                row["crop"] = None
+                row["external_id"] = None
+                row["warnings"].append("This is a public reference outline. Confirm the land you use and its current crop against your own records; neither is established by this source.")
+            return _compact(insert_record(conn, "field_imports", {
+                "farm_id": farm["id"], "farm_revision": farm["revision"], "filename": "pdok-selected-parcels.geojson",
+                "format": "geojson", "sha256": hashlib.sha256(raw).hexdigest(), "contents": contents,
+                "source_year": source_year, "source_origin": "public_reference", "status": "preview", "rows": rows,
+                "connection_source": {"connection_id": connection["id"], "read_id": saved["id"], "read_revision": saved["revision"],
+                    "selected_indices": body.selected_indices, "source_url": result.get("source_url"), "read_at": data.get("read_at")},
+                "notice": "Public outlines saved for review. No existing field was changed and no crop, ownership or eligibility was confirmed."}))
+        return idempotent(conn, idempotency_key, f"public-fields-preview:{connection_id}:{session.user_id}", {"read_id": str(read_id), **body.model_dump(mode="json")}, perform)
+
+
+def connection_history(conn, connection_id, kind, limit=10, offset=0):
+    if kind not in {"connection_reads", "connection_previews", "connection_handoffs"}:
+        raise ValueError("Unsupported connection history kind")
+    if type(limit) is not int or not 1 <= limit <= 50 or type(offset) is not int or offset < 0:
+        raise ApiError(422, "history_page", "Choose a page of up to 50 saved items.")
+    _connection(conn, connection_id)
+    predicate = "data->'binding'->>'connection_id'" if kind == "connection_previews" else "data->>'connection_id'"
+    count = conn.execute(f"SELECT count(*) AS count FROM records WHERE kind=%s AND {predicate}=%s AND deleted_at IS NULL", (kind, str(connection_id))).fetchone()["count"]
+    rows = conn.execute(f"SELECT id FROM records WHERE kind=%s AND {predicate}=%s AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s", (kind, str(connection_id), limit, offset)).fetchall()
+    items = []
+    for row in rows:
+        item = fetch_record(conn, kind, row["id"])
+        if kind == "connection_previews":
+            item["data"].pop("report_snapshot", None)
+        items.append(item)
+    return {"items": items, "total": count, "limit": limit, "offset": offset}
+
+
+@router.get("/{connection_id}/previews")
+def preview_history(connection_id: UUID, limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        return connection_history(conn, connection_id, "connection_previews", limit, offset)
+
+
+@router.get("/{connection_id}/handoffs")
+def handoff_history(connection_id: UUID, limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        return connection_history(conn, connection_id, "connection_handoffs", limit, offset)
+
+
+def connection_preview_view(conn, connection_id, preview_id, session):
+    _connection(conn, connection_id)
+    record = fetch_record(conn, "connection_previews", str(preview_id))
+    if record["data"].get("binding", {}).get("connection_id") != str(connection_id):
+        raise ApiError(404, "not_found", "This preview was not found for this connection.")
+    try:
+        _validate_preview(conn, connection_id, preview_id, record["data"]["checksum"], session)
+        state = {"available": True, "reason": None}
+    except ApiError as exc:
+        if exc.status not in (409, 422):
+            raise
+        state = {"available": False, "reason": exc.message}
+    return {**record, "review_state": state}
+
+
+@router.get("/{connection_id}/previews/{preview_id}")
+def saved_preview(connection_id: UUID, preview_id: UUID, session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        return connection_preview_view(conn, connection_id, preview_id, session)
+
+
+def connection_handoff_view(conn, connection_id, handoff_id):
+    _connection(conn, connection_id)
+    record = fetch_record(conn, "connection_handoffs", str(handoff_id))
+    if record["data"].get("connection_id") != str(connection_id):
+        raise ApiError(404, "not_found", "This handoff was not found for this connection.")
+    approval = fetch_record(conn, "connection_approvals", record["data"]["approval_id"])
+    retained = fetch_record(conn, "connection_previews", approval["data"]["preview_id"])
+    if (approval["data"].get("connection_id") != str(connection_id)
+            or retained["data"].get("binding", {}).get("connection_id") != str(connection_id)
+            or retained["data"].get("checksum") != record["data"].get("preview_checksum")):
+        raise ApiError(409, "handoff_changed", "The saved handoff references cannot be read together. Prepare a new download.")
+    from .reporting import _blockers
+    report = fetch_record(conn, "reports", record["data"]["report_id"])
+    blockers = _blockers(conn, report["data"])
+    current = (not blockers and report["data"].get("status") == "issued"
+        and report["data"].get("checksum") == retained["data"]["binding"]["report_checksum"])
+    return {**record, "data": {**record["data"], "report_snapshot": retained["data"]["report_snapshot"], "preview_id": retained["id"]},
+        "current_state": {"available": current, "reason": None if current else "The farm records or reporting format changed. Prepare a fresh report before copying values into new paperwork."}}
+
+
+@router.get("/{connection_id}/handoffs/{handoff_id}")
+def saved_handoff(connection_id: UUID, handoff_id: UUID, session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        return connection_handoff_view(conn, connection_id, handoff_id)
 
 
 def _binding(conn, record, report_id, session):

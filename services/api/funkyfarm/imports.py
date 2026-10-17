@@ -7,6 +7,8 @@ import json
 import math
 import re
 import tempfile
+import unicodedata
+from collections import Counter
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 
@@ -26,6 +28,102 @@ MAX_COLUMNS = 256
 MAX_WORKSPACE_ROWS = 200_000
 MAX_CELL_CHARS = 256_000
 MAX_PROFILE_RECORD_BYTES = 512_000
+
+# Deliberately small vocabulary: unknown headings remain source evidence.
+HEADER_ALIASES = {
+    "description": "title", "name": "title", "beschreibung": "title", "descripcion": "title",
+    "omschrijving": "title", "libelle": "title", "date": "date", "datum": "date", "fecha": "date",
+    "actual_date": "date", "record_date": "date", "quantity": "quantity", "menge": "quantity",
+    "cantidad": "quantity", "quantite": "quantity", "aantal": "quantity", "unit": "unit",
+    "einheit": "unit", "unidad": "unit", "unite": "unit", "eenheid": "unit",
+    "total": "amount", "amount": "amount", "betrag": "amount", "importe": "amount", "montant": "amount",
+    "currency": "currency", "wahrung": "currency", "moneda": "currency", "devise": "currency",
+    "supplier": "supplier", "merchant": "supplier", "lieferant": "supplier", "proveedor": "supplier",
+    "fournisseur": "supplier", "leverancier": "supplier", "buyer": "buyer", "customer": "buyer",
+    "kunde": "buyer", "cliente": "buyer", "client": "buyer", "klant": "buyer",
+    "invoice": "invoice_number", "invoice_no": "invoice_number", "rechnung": "invoice_number",
+    "rechnungsnummer": "invoice_number", "factura": "invoice_number", "facture": "invoice_number",
+    "factuurnummer": "invoice_number", "field_id": "parcel_id", "group_id": "parcel_id",
+    "record_id": "external_id", "source_id": "external_id", "identifier": "external_id",
+    "notes": "notes", "comment": "notes", "bemerkung": "notes", "observaciones": "notes",
+    "product": "product", "produkt": "product", "producto": "product", "produit": "product",
+    "crop": "crop", "cultivo": "crop", "hours": "hours", "stunden": "hours", "heures": "hours",
+    "operator": "operator", "year": "period", "jahr": "period", "ano": "period", "annee": "period",
+}
+
+
+def _header_field(header):
+    plain = "".join(char for char in unicodedata.normalize("NFKD", header) if not unicodedata.combining(char))
+    name = re.sub(r"[\s-]+", "_", plain.strip().lower())
+    return HEADER_ALIASES.get(name, name)
+
+
+def _setup_suggestions(imported, rows):
+    """Editable guesses only. Saving them still uses the normal mapping review."""
+    headers = imported["data"]["columns"]
+    name_counts = Counter(_header_field(column["header"]) for column in headers)
+    names = set(name_counts)
+    messages = []
+    if "period" in names and "date" not in names:
+        target = "facts"
+        messages.append("These look like yearly records. A year is not an invoice or work date.")
+    elif "buyer" in names and "supplier" not in names:
+        target = "sales"
+    elif "supplier" in names and "buyer" not in names:
+        target = "purchases"
+    elif names & {"operator", "hours", "product", "type"} and "amount" not in names:
+        target = "operations"
+    elif {"invoice_number", "amount"}.issubset(names):
+        target = "purchases"
+        messages.append("Check whether these invoices are purchases or sales; the headings do not tell us.")
+    else:
+        target = "facts"
+        messages.append("Choose what these rows describe. We could not tell from the headings alone.")
+    columns, used = [], set()
+    for column in headers:
+        field = _header_field(column["header"])
+        if name_counts[field] > 1:
+            field = None
+        if field == "title" and target == "facts":
+            field = "label"
+        # A source farm identifier is not permission to attach records to that farm.
+        if field == "farm_id" or (field == "external_id" and target == "facts"):
+            field = f"source.{column['header']}" if 0 < len(column["header"]) <= 113 else None
+        if (field and not field.startswith("source.") and field not in FIELDS[target] - {"review_status", "supersedes_id", "sources", "document_id", "origin"}) or field in used:
+            field = None
+        if field:
+            used.add(field)
+        suggested = {**column, "target_field": field, "role": "value", "reference_kind": None,
+                     "value_type": "text", "blank_behavior": "preserve", "null_tokens": []}
+        values = [row["data"]["original_row"][column["source_index"]] for row in rows
+                  if column["source_index"] < len(row["data"]["original_row"])]
+        supplied = [value for value in values if value != ""]
+        if field in {"quantity", "amount", "tax_amount", "tax_rate", "hours"}:
+            suggested["value_type"] = "number"
+            comma = supplied and all(re.fullmatch(r"[+-]?\d+(?:,\d{1,2})?", value.strip()) for value in supplied) and any("," in value for value in supplied)
+            suggested["decimal_separator"] = "," if comma else "."
+            if comma:
+                messages.append(f"{column['header']}: comma looks like the decimal mark. Please check it.")
+            if any(re.fullmatch(r"[+-]?\d+[.,]\d{3}", value.strip()) for value in supplied):
+                suggested["decimal_separator"] = None
+                messages.append(f"{column['header']}: check the decimal mark; a group of three digits can mean different things.")
+        elif field == "date":
+            suggested["value_type"] = "date"
+            possible = []
+            for name, pattern in (("iso", "%Y-%m-%d"), ("dmy", "%d/%m/%Y"), ("mdy", "%m/%d/%Y")):
+                try:
+                    if supplied:
+                        for value in supplied:
+                            date.fromisoformat(value) if name == "iso" else datetime.strptime(value, pattern)
+                        possible.append(name)
+                except ValueError:
+                    pass
+            suggested["date_format"] = possible[0] if len(possible) == 1 else None
+            if len(possible) != 1:
+                messages.append(f"{column['header']}: choose the date order. We could not read it reliably.")
+        columns.append(suggested)
+    return {"target": target, "columns": columns, "header_fields": [_header_field(column["header"]) for column in headers],
+            "messages": list(dict.fromkeys(messages)), "sampled_rows": len(rows)}
 
 
 class ColumnMapping(StrictModel):
@@ -413,10 +511,35 @@ def _require_profile_review(conn, imported):
 def _profile_delimiter(text, profile, selected):
     if selected != "auto":
         if selected not in (",", ";", "\t"):
-            raise ApiError(422, "invalid_delimiter", "Choose comma, semicolon, tab, or an unambiguous profile header match.")
+            raise ApiError(422, "invalid_delimiter", "Choose automatic, comma, semicolon or tab.")
         return selected
     if profile is None:
-        raise ApiError(422, "profile_required_for_auto", "Automatic delimiter detection requires an explicitly selected source profile.")
+        matches = []
+        recognized = set(HEADER_ALIASES.values()) | {"key", "label", "value", "period", "temporal_basis", "external_id", "invoice_number", "tax_amount", "tax_rate", "parcel_id", "credit"}
+        for candidate in (",", ";", "\t"):
+            text.seek(0)
+            try:
+                reader = csv.reader(text, delimiter=candidate, strict=True)
+                headers = next(reader, [])
+                if not 2 <= len(headers) <= MAX_COLUMNS or sum(_header_field(header) in recognized for header in headers) < 2:
+                    continue
+                sampled, characters, consistent = 0, sum(map(len, headers)), True
+                for row in reader:
+                    sampled += 1
+                    characters += sum(map(len, row))
+                    if len(row) != len(headers) or characters > 128_000:
+                        consistent = False
+                        break
+                    if sampled == 20:
+                        break
+                if sampled and consistent:
+                    matches.append(candidate)
+            except csv.Error:
+                continue
+        text.seek(0)
+        if len(matches) != 1:
+            raise ApiError(422, "delimiter_ambiguous", "We could not reliably read the column headings and separator. Check that the first row contains column names, then choose comma, semicolon or tab yourself. No rows were saved.")
+        return matches[0]
     matches = []
     for candidate in (",", ";", "\t"):
         text.seek(0)
@@ -552,7 +675,7 @@ def upload_import(file: UploadFile = File(...), grain: str = Form(..., min_lengt
                         "profile_definition_hash": profile["definition_hash"]} if profile else {}),
                 }, save)
         except (UnicodeDecodeError, csv.Error) as error:
-            raise ApiError(422, "invalid_csv", "Use a valid comma-separated UTF-8 CSV. No rows were saved.") from error
+            raise ApiError(422, "invalid_csv", "Use a valid UTF-8 CSV with the selected separator. No rows were saved.") from error
         finally:
             text.detach()
 
@@ -610,7 +733,13 @@ def import_detail(import_id: str, limit: int = Query(50, ge=1, le=100), offset: 
                   session: Session = Depends(require_session)):
     with transaction(session) as conn:
         record = fetch_record(conn, "imports", import_id)
-        return {**record, "rows": _page_rows(conn, record["id"], limit, offset)}
+        page = _page_rows(conn, record["id"], limit, offset)
+        suggestions = None
+        if not record["data"].get("format_profile") and not record["data"].get("target") and not any(
+                column.get("target_field") or column.get("role", "value") != "value" for column in record["data"]["columns"]):
+            sample = page["items"][:20] if offset == 0 else _page_rows(conn, record["id"], 20, 0)["items"]
+            suggestions = _setup_suggestions(record, sample)
+        return {**record, "rows": page, "setup_suggestions": suggestions}
 
 
 @router.get("/imports/{import_id}/rows")

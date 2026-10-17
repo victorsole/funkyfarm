@@ -513,7 +513,7 @@ export function ParcelMap(props: ParcelMapProps) {
       if (!shape.length) continue;
       // A read-only candidate must not swallow clicks intended for drawing.
       const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: '#466e98', weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false, interactive: !props.readOnly && props.mode === 'edit' && !drawingHole }).addTo(layers);
-      candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); if (!latest.current.readOnly) latest.current.onReferenceSelect?.(candidate.id); });
+      candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); latest.current.onReferenceSelect?.(candidate.id); });
     }
     if (snapshot && isDisplayableFieldGeometry(snapshot.field.geometry)) {
       if (props.reference && JSON.stringify(props.reference) !== JSON.stringify(snapshot.field.geometry)) addShape(props.reference, true);

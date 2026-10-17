@@ -775,6 +775,11 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
   await expect(page.getByRole('heading', { name: 'Help from the hosted model', exact: true })).toHaveCount(0);
 
   await page.goto('/app/community');
+  await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Country', { exact: true })).toHaveValue('');
+  await page.getByRole('navigation', { name: 'Community pages', exact: true }).getByRole('link', { name: 'Ask my adviser', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/community\/private$/);
+  await page.getByRole('button', { name: 'Write a private question', exact: true }).click();
   await page.getByLabel('Which farm?', { exact: true }).selectOption(farmId);
   await page.getByLabel('Who should receive it?', { exact: true }).selectOption(fixture.adviser_id);
   const privateTitle = 'Authored private question about the calf notebook';
@@ -789,7 +794,7 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
     const adviserPage = await adviserContext.newPage();
     await signIn(adviserPage, 'adviser');
     await chooseWorkspace(adviserPage, fixture.accounts.peer.workspace_id);
-    await adviserPage.goto('/app/community');
+    await adviserPage.goto('/app/community/private');
     await expect(adviserPage.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.peer.workspace_id);
     await adviserPage.reload();
     await expect(adviserPage.getByLabel('Switch workspace', { exact: true })).toHaveValue(fixture.accounts.peer.workspace_id);
@@ -809,19 +814,48 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
   await page.getByRole('button', { name: 'Mark question as resolved', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mark question as resolved', exact: true })).toHaveCount(0);
   expect((await (await page.request.get(`/api/v1/adviser/questions/${privateQuestion.id}`)).json()).data.status).toBe('closed');
-  await page.getByRole('button', { name: /Ask the community/ }).click();
+  await page.getByRole('navigation', { name: 'Community pages', exact: true }).getByRole('link', { name: 'Community posts', exact: true }).click();
+  await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Country', { exact: true })).toHaveValue('');
+  await page.getByRole('link', { name: 'Write a post', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/app\/community\/new$/);
   const publicTitle = 'Authored practical notebook storage question';
+  const publicText = 'What practical filing system helps you find last year’s receipts? This is fictional and contains no private farm details.';
   await page.getByLabel('Your question in a few words', { exact: true }).fill(publicTitle);
-  await page.getByLabel('What would you like to ask?', { exact: true }).fill('What practical filing system helps you find last year’s receipts? This is fictional and contains no private farm details.');
+  await page.getByLabel('What would you like to ask?', { exact: true }).fill(publicText);
+  await page.getByLabel('Topic', { exact: true }).selectOption('records');
+  await page.getByRole('link', { name: 'Finish later', exact: true }).click();
+  await page.getByRole('link', { name: 'Write a post', exact: true }).first().click();
+  await expect(page.getByLabel('Your question in a few words', { exact: true })).toHaveValue(publicTitle);
+  await expect(page.getByLabel('What would you like to ask?', { exact: true })).toHaveValue(publicText);
+  await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('records');
+  await page.getByRole('button', { name: 'Preview my post', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Check your post', exact: true })).toBeVisible();
+  await expect(page.getByText(publicText, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Publish my question', exact: true })).toBeDisabled();
   await page.getByRole('checkbox', { name: 'I have checked the text and want this question published publicly.', exact: true }).check();
   await page.getByRole('button', { name: 'Publish my question', exact: true }).click();
   await expect(page.getByRole('heading', { name: publicTitle, exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/community\/posts\/[0-9a-f-]+$/);
   await expect(page.getByText(privateText, { exact: true })).toHaveCount(0);
-  const postId = new URL(page.url()).searchParams.get('question');
+  const postId = new URL(page.url()).pathname.split('/').at(-1);
+  expect(postId).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+  await page.getByRole('link', { name: 'Back to community', exact: true }).click();
+  await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('heading', { name: publicTitle, exact: true })).toBeVisible();
+  await expect(page.getByText(publicText, { exact: true })).toBeVisible();
+  await expect(page.getByText(privateText, { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: publicTitle, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/app/community/posts/${postId}$`));
+  await page.goto(`/app/community?question=${postId}`);
+  await expect(page).toHaveURL(new RegExp(`/app/community/posts/${postId}$`));
   await page.getByRole('button', { name: 'Withdraw my question', exact: true }).click();
   await expect(page.getByText('Your public text has been withdrawn.', { exact: true })).toBeVisible();
   expect((await page.request.get(`/api/v1/community/${postId}`)).status()).toBe(404);
+  await page.getByRole('button', { name: 'My posts', exact: true }).click();
+  const withdrawn = page.locator('.community-post').filter({ has: page.getByRole('heading', { name: publicTitle, exact: true }) });
+  await expect(withdrawn.getByText('Withdrawn', { exact: true })).toBeVisible();
+  await expect(withdrawn.getByRole('link', { name: 'Read and reply', exact: true })).toHaveCount(0);
 });
 
 test('Dutch arable farmer compares historical LPIS evidence, exports a draft and reviews a private split', async ({ page }) => {
@@ -1106,6 +1140,49 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   expect(observation.data.date ?? null).toBeNull();
   expect(observation.data.type).toBe('observation');
   expect((await collection(page, 'facts'))).toHaveLength(0);
+
+  // The Connections page uses the same retained provider response and ordinary
+  // import/proposal checks, rather than silently turning public land into ours.
+  const beforeConnectionImport = await (await page.request.get(`/api/v1/farms/${farm.id}`)).json();
+  const tileRequestsBeforeConnections = tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length;
+  await page.goto(`/app/connections?farm_id=${farm.id}&task=fields`);
+  await expect(page.getByRole('button', { name: 'Bring in records', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('group', { name: 'Field boundary map', exact: true })).toHaveClass(/leaflet-container/);
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(tileRequestsBeforeConnections);
+  await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
+  const connectionReadResponse = page.waitForResponse(response => /\/api\/v1\/connections\/[^/]+\/read$/.test(response.url()) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Find public parcels here', exact: true }).click();
+  expect((await connectionReadResponse).status()).toBe(200);
+  await page.locator('label.connection-candidate').filter({ hasText: 'Wintertarwe' }).getByRole('checkbox').check();
+  const fieldPreviewResponse = page.waitForResponse(response => /\/connections\/[^/]+\/reads\/[^/]+\/field-preview$/.test(response.url()) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Review selected outlines', exact: true }).click();
+  const fieldPreviewHTTP = await fieldPreviewResponse;
+  expect(fieldPreviewHTTP.status(), await fieldPreviewHTTP.text()).toBe(201);
+  const publicImport = await fieldPreviewHTTP.json();
+  expect(publicImport.data.source_year).toBe(2025);
+  expect(publicImport.data.source_origin).toBe('public_reference');
+  expect(publicImport.data.rows).toHaveLength(1);
+  expect(publicImport.data.rows[0].crop).toBeNull();
+  expect(publicImport.data.rows[0].external_id).toBeNull();
+  expect(publicImport.data.rows[0].source_feature_id).toBe('authored-crop-007');
+  await expect(page).toHaveURL(new RegExp(`import_id=${publicImport.id}`));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Check before adding these fields', exact: true })).toBeVisible();
+  await page.getByLabel('What did you check?', { exact: true }).fill('Checked this historical public outline against the holding records; crop and ownership stay unconfirmed.');
+  await page.getByRole('checkbox', { name: 'I checked these outlines. Save them as a proposal for review, without changing my fields yet.', exact: true }).check();
+  const publicProposalResponse = page.waitForResponse(response => response.url().endsWith(`/field-imports/${publicImport.id}/propose`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Save field proposal', exact: true }).click();
+  const publicProposalHTTP = await publicProposalResponse;
+  expect(publicProposalHTTP.status(), await publicProposalHTTP.text()).toBe(201);
+  const publicProposal = await publicProposalHTTP.json();
+  expect(publicProposal.proposal.data.status).toBe('proposed');
+  expect(publicProposal.proposal.data.operation).toBe('import');
+  expect(publicProposal.proposal.data.parcels[0].crop).toBeNull();
+  expect((await (await page.request.get(`/api/v1/farms/${farm.id}`)).json())).toEqual(beforeConnectionImport);
+  await expect(page.getByRole('link', { name: 'Review it alongside your existing fields', exact: true })).toHaveAttribute('href', new RegExp(`proposal_id=${publicProposal.proposal.id}`));
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Review it alongside your existing fields', exact: true })).toBeVisible();
   expect(tiles.calls.every(call => !call.url.includes(farm.id) && !call.url.includes(fixture.accounts.land.email)
     && !String(call.headers.referer || '').includes(farm.id) && !call.headers.authorization && !call.headers.cookie)).toBe(true);
   expect(pageErrors).toEqual([]);
@@ -1127,8 +1204,8 @@ test('Hungarian farmer reads a consented diary page and selected work without im
   const pages = [];
   page.on('request', request => { if (/\/api\/v1\/connections\/[^/]+\/read-diary$/.test(request.url()) && request.method() === 'POST') pages.push(request.postDataJSON()); });
   async function chooseDiary() {
-    await page.getByLabel('Work to prepare', { exact: true }).selectOption('inputs');
-    await page.getByLabel('Available route', { exact: true }).selectOption('hu-nebih-egn-read');
+    await page.getByRole('button', { name: 'Bring in records', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Read my Nébih farm diary', exact: true })).toBeVisible();
   }
   await page.goto(`/app/connections?farm_id=${farm.id}`);
   await chooseDiary();
@@ -1180,6 +1257,7 @@ test('Hungarian farmer reads a consented diary page and selected work without im
   expect(snapshot.result.requested_site_id).toBe('00072');
   expect(JSON.stringify(snapshot.result.payload)).toContain('0.500');
   expect(JSON.stringify(snapshot)).not.toContain(token);
+  await page.getByRole('button', { name: 'Setup and official sources', exact: true }).click();
   const disconnectedResponse = page.waitForResponse(response => /\/connections\/[^/]+\/disconnect$/.test(response.url()) && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Disconnect this route', exact: true }).click();
   expect((await (await disconnectedResponse).json()).data.credentials_present).toBe(false);

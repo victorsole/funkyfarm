@@ -173,11 +173,24 @@ def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_ha
     assert owner.get("/facts").json()["total"] == 0
     assert owner.get("/operations").json()["total"] == 0
     assert owner.get(f"/connections/{ready['id']}").json()["data"]["automatic_filing"] is False
+    bridge = f"/connections/{connection['id']}/reads/{candidates['id']}/field-preview"
+    selection = {"expected_read_revision": candidates["revision"], "expected_farm_revision": original_farm["revision"], "selected_indices": [0]}
+    outsider.post(bridge, json=selection, expected=404)
+    owner.post(bridge, json={**selection, "selected_indices": [0, 0]}, expected=422)
+    selected = owner.post(bridge, json=selection, expected=201).json()
+    assert selected["data"]["status"] == "preview" and selected["data"]["source_year"] == 2025
+    assert len(selected["data"]["rows"]) == 1 and selected["data"]["rows"][0]["crop"] is None
+    assert owner.get(f"/farms/{farm['id']}").json() == original_farm
+    owner.post(f"/connections/{connection['id']}/credentials", json={"expected_revision": ready["revision"], "api_key": "unsupported-no-secret-stored"}, expected=409)
     handoff_connection = owner.post("/connections", json={"farm_id": farm["id"], "capability_id": "country-NL-inspection-handoff"}, expected=201).json()
     fact = confirm(owner, owner.create("facts", fact_data(farm["id"], value="3.75", basis="static", period=None)))
     draft = owner.post("/reports", json={"farm_id": farm["id"], "pack_id": "inspection-evidence", "reporting_year": 2026, "fact_ids": [fact["id"]]}, expected=201).json()
     issued = owner.post(f"/reports/{draft['id']}/approve", json={"expected_revision": draft["revision"]}).json()
     preview = owner.post(f"/connections/{handoff_connection['id']}/preview", json={"report_id": issued["id"], "expected_report_revision": issued["revision"]}, expected=201).json()
+    saved_preview = f"/connections/{handoff_connection['id']}/previews/{preview['id']}"
+    assert owner.get(saved_preview).json()["review_state"]["available"] is True
+    outsider.get(saved_preview, expected=404)
+    assert owner.get(f"/connections/{handoff_connection['id']}/previews").json()["total"] == 1
     approval_body = {"preview_id": preview["id"], "expected_checksum": preview["data"]["checksum"]}
     owner.post(f"/connections/{handoff_connection['id']}/approve", json=approval_body, expected=403)
     with human_browser(owner, service_url) as browser:
@@ -188,6 +201,25 @@ def test_connections_reject_arbitrary_network_targets_and_prepare_only_manual_ha
         assert handoff.json()["data"]["status"] == "prepared_for_manual_handoff"
         assert handoff.json()["data"]["automatic_filing"] is False
         assert handoff.json()["data"]["authority_acceptance_verified"] is False
+    handoff_id = handoff.json()["id"]
+    recovered = owner.get(f"/connections/{handoff_connection['id']}/handoffs/{handoff_id}").json()
+    assert recovered["data"]["report_snapshot"] == issued["data"]["snapshot"]
+    assert recovered["current_state"]["available"] is True
+    assert owner.get(f"/connections/{handoff_connection['id']}/handoffs").json()["total"] == 1
+    for name, arguments in (
+        ("list_connections", {}),
+        ("connection_support", {"connection_id": handoff_connection["id"]}),
+        ("connection_history", {"connection_id": handoff_connection["id"], "history_kind": "handoffs"}),
+        ("read_connection_preview", {"connection_id": handoff_connection["id"], "preview_id": preview["id"]}),
+        ("read_connection_handoff", {"connection_id": handoff_connection["id"], "handoff_id": handoff_id}),
+        ("funding_guide", {}),
+    ):
+        payload = {"arguments": {"farm_id": farm["id"], **arguments}}
+        owner.post(f"/assistant/execute/{name}", json=payload)
+        outsider.post(f"/assistant/execute/{name}", json=payload, expected=404)
+    confirm(owner, owner.create("facts", {**fact_data(farm["id"], value="3.76", basis="static", period=None), "supersedes_id": fact["id"]}))
+    assert owner.get(saved_preview).json()["review_state"]["available"] is False
+    assert owner.get(f"/connections/{handoff_connection['id']}/handoffs/{handoff_id}").json()["current_state"]["available"] is False
     assert len(authored_stac["calls"]) == before
     assert owner.get(f"/reports/{issued['id']}").json()["data"]["filing_status"] == "not_filed"
 

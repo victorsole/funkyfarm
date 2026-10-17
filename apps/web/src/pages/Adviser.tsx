@@ -5,22 +5,27 @@ import { useSession } from '../auth';
 import { Button, Field, Notice, PageHeader } from '../components';
 import { useRecords } from '../hooks';
 import { usePrivateDraft } from '../offline';
-import type { RecordItem, Session } from '../types';
+import type { Page, RecordItem, Session } from '../types';
 import './people-pages.css';
+import './adviser-desk.css';
 
 type Farm = { name?: string; country?: string; region?: string; farm_type?: string };
 type Request = { farm_id: string; title: string; deadline?: string | null; status: string; recipient?: string };
 type Task = { farm_id: string; title: string; description?: string; notes?: string; due_date?: string; status: string; request_id?: string };
 type Invitation = { email: string; role: string; permissions: string[]; farm_ids: string[] | null; expires_at: string; revoked_at?: string | null; accepted_at?: string | null };
 type Case = { farm_id: string; title: string; job_type: 'fields' | 'correction' | 'inspection'; status: string; reporting_year: number; deadline?: string | null };
-type Client = {
-  workspace: Session['workspace']; farms: RecordItem<Farm>[]; requests: RecordItem<Request>[]; tasks: RecordItem<Task>[];
-  admin_cases: RecordItem<Case>[]; case_counts: Record<string, number>;
-  review_counts: { facts: number; operations: number; purchases: number };
-  totals: { farms: number; requests: number; tasks: number; admin_cases: number }; truncated: boolean;
-  missing_information?: { farm_id?: string; report_id?: string; request_id?: string; code: string; message: string; field?: string; checked_at?: string; basis?: string }[];
+type Overview = Page<Session['workspace']> & { mandate_notice: string };
+type Selection = { workspaceId: string; farmId: string };
+type FarmDetail = {
+  workspace: Session['workspace']; farm: RecordItem<Farm>; tasks: Page<RecordItem<Task>>;
+  requests: Page<RecordItem<Request>>; admin_cases: Page<RecordItem<Case>>;
+  review_counts: { facts: number; operations: number; purchases: number; sales: number };
+  case_counts: Record<string, number>;
+  schedule: { overdue: number; upcoming: number; undated: number; today: string; through: string;
+    items: Array<{ id: string; kind: 'tasks' | 'requests' | 'admin_cases'; title: string; recorded_date: string }> };
+  missing_information: Array<{ report_id: string; message: string; checked_at: string }>;
+  reports_truncated: boolean;
 };
-type Overview = { clients: Client[]; total: number; limit: number; offset: number; mandate_notice: string };
 
 function Delegation({ farms }: { farms: RecordItem<Farm>[] }) {
   const invitations = useRecords<Invitation>('invitations');
@@ -80,6 +85,95 @@ function FarmerQuestion({ farms, requests, farmId, onSaved }: { farms: RecordIte
   </section>;
 }
 
+function FarmDirectory({ workspace, search, selected, disabled, choose }: {
+  workspace: Session['workspace']; search: string; selected: Selection | null; disabled: boolean; choose: (selection: Selection) => void;
+}) {
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<Page<RecordItem<Farm>> | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => { setOffset(0); }, [search]);
+  useEffect(() => {
+    let active = true; setPage(null); setError('');
+    const query = new URLSearchParams({ workspace_id: workspace.id, search, limit: '25', offset: String(offset) });
+    api.get<Page<RecordItem<Farm>>>(`/adviser/farms?${query}`).then(value => { if (active) setPage(value); })
+      .catch(failure => { if (active) setError(errorMessage(failure)); });
+    return () => { active = false; };
+  }, [workspace.id, search, offset, retry]);
+  return <section className="adviser-client">
+    <div className="section-heading"><h3>{workspace.name}</h3>{page && <span className="badge">{page.total} {page.total === 1 ? 'farm' : 'farms'}</span>}</div>
+    {error ? <Notice kind="error">{error}<Button variant="ghost" onClick={() => setRetry(value => value + 1)}>Reload these farms</Button></Notice>
+      : !page ? <p role="status">Opening permitted farms…</p>
+        : !page.items.length ? <p>{search ? 'No matching farms in this workspace.' : 'No farms on this page.'}</p>
+          : <ul className="record-list">{page.items.map(farm => {
+            const chosen = selected?.workspaceId === workspace.id && selected.farmId === farm.id;
+            return <li key={farm.id}><div className="record-main"><strong>{farm.data.name ?? 'Farm'}</strong><p>{farm.data.country}{farm.data.region ? ` · ${farm.data.region}` : ''} · {workspace.role === 'owner' || workspace.permissions?.includes('review') ? 'Read & review' : 'Read only'}</p></div>
+              <Button variant={chosen ? 'secondary' : 'ghost'} disabled={disabled} aria-expanded={chosen} aria-controls={chosen ? 'adviser-selected-farm' : undefined} onClick={() => choose({ workspaceId: workspace.id, farmId: farm.id })}>Open farm · {farm.data.name ?? 'Farm'}</Button></li>;
+          })}</ul>}
+    {page && (page.total > 25 || offset > 0) && <div className="actions" aria-label={`Farm pages for ${workspace.name}`}><Button variant="secondary" disabled={!offset || disabled} onClick={() => setOffset(value => Math.max(0, value - 25))}>Previous farms</Button><span>{page.items.length ? `${offset + 1} to ${offset + page.items.length} of ${page.total}` : 'No farms on this page'}</span><Button variant="secondary" disabled={disabled || offset + page.items.length >= page.total} onClick={() => setOffset(value => value + 25)}>Next farms</Button></div>}
+  </section>;
+}
+
+function RecordPages({ page, label, change }: { page: Page<unknown>; label: string; change: (offset: number) => void }) {
+  return page.total > page.limit || page.offset > 0 ? <div className="actions" aria-label={`${label} pages`}>
+    <Button variant="secondary" disabled={!page.offset} onClick={() => change(Math.max(0, page.offset - page.limit))}>Previous {label}</Button>
+    <span>{page.items.length ? `${page.offset + 1} to ${page.offset + page.items.length} of ${page.total}` : 'No records on this page'}</span>
+    <Button variant="secondary" disabled={page.offset + page.items.length >= page.total} onClick={() => change(page.offset + page.limit)}>Next {label}</Button>
+  </div> : null;
+}
+
+function SelectedFarm({ selection, close, open, question, reloadVersion, busy }: {
+  selection: Selection; close: () => void; open: (workspaceId: string, path: string) => Promise<void>;
+  question: (detail: FarmDetail) => void; reloadVersion: number; busy: boolean;
+}) {
+  const [data, setData] = useState<FarmDetail | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [offsets, setOffsets] = useState({ tasks: 0, requests: 0, cases: 0 });
+  const detailRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    let active = true; setData(null); setError('');
+    const query = new URLSearchParams({ workspace_id: selection.workspaceId, limit: '25', tasks_offset: String(offsets.tasks), requests_offset: String(offsets.requests), cases_offset: String(offsets.cases) });
+    api.get<FarmDetail>(`/adviser/farms/${selection.farmId}?${query}`).then(value => { if (active) setData(value); })
+      .catch(failure => { if (active) setError(errorMessage(failure)); });
+    return () => { active = false; };
+  }, [selection.workspaceId, selection.farmId, offsets, retry, reloadVersion]);
+  useEffect(() => { detailRef.current?.focus({ preventScroll: true }); detailRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }, [selection.farmId]);
+  const canReview = data?.workspace.role === 'owner' || data?.workspace.permissions?.includes('review') === true;
+  const go = (path: string) => void open(selection.workspaceId, path);
+  const statusLabel = (status: string) => (({ draft: 'Needs preparation', ready_to_send: 'Prepared for manual sending', sent: 'Sending recorded', receipt_saved: 'Receipt saved', accepted_recorded: 'Acceptance recorded', needs_changes: 'Changes requested', cancelled: 'Set aside' } as Record<string, string>)[status] ?? status.replaceAll('_', ' '));
+  return <section ref={detailRef} tabIndex={-1} id="adviser-selected-farm" className="panel adviser-selected" aria-label={data ? `Selected farm · ${data.farm.data.name ?? 'Farm'}` : 'Selected farm'}>
+    <div className="section-heading"><h2>{data?.farm.data.name ?? 'Farm details'}</h2><Button variant="ghost" onClick={close}>Close farm</Button></div>
+    {error ? <Notice kind="error">{error}<Button variant="secondary" onClick={() => setRetry(value => value + 1)}>Reload this farm</Button></Notice> : !data ? <p role="status">Checking this farm’s current access and records…</p> : <>
+      <p>{canReview ? 'You can read and check this farm’s records. Changes still need a separate approval.' : 'Read only. You can see the records, but cannot change or approve them.'}</p>
+      <div className="actions"><Button disabled={busy} onClick={() => go(`/app/fields/${data.farm.id}/check`)}>Check parcels</Button><Button variant="secondary" disabled={busy} onClick={() => go(`/app/farm/${data.farm.id}`)}>Open farm records</Button>{canReview && <Button variant="ghost" disabled={busy} onClick={() => question(data)}>Ask this farmer</Button>}</div>
+      <div className="adviser-summary" aria-label="Farm follow-up summary">
+        <div className={data.schedule.overdue ? 'is-urgent' : ''}><strong>{data.schedule.overdue}</strong><span>Past recorded date</span></div>
+        <div><strong>{data.schedule.upcoming}</strong><span>Due in the next 30 days</span></div>
+        <div><strong>{Object.values(data.review_counts).reduce((sum, count) => sum + count, 0)}</strong><span>Records to check</span></div>
+        <div><strong>{data.schedule.undated}</strong><span>No date recorded</span></div>
+      </div>
+      <p className="muted">Dates are from saved tasks and paperwork, not a new legal deadline. Date check: {data.schedule.today} (UTC).</p>
+      <section className="adviser-next"><h3>What needs attention first</h3>{data.schedule.items.length ? <ol>{data.schedule.items.map(item => <li key={item.id}>
+        <div><strong>{item.title}</strong><span className={item.recorded_date < data.schedule.today ? 'adviser-date is-urgent' : 'adviser-date'}>{item.recorded_date < data.schedule.today ? 'Past recorded date' : item.recorded_date === data.schedule.today ? 'Recorded date is today' : 'Recorded date'} · {item.recorded_date}</span></div>
+        <Button variant="ghost" disabled={busy} onClick={() => go(item.kind === 'tasks' ? `/app/tasks/${item.id}` : item.kind === 'requests' ? `/app/paperwork/${item.id}` : `/app/cases/${item.id}`)}>Open item</Button>
+      </li>)}</ol> : <p>No upcoming dates are saved. Check the undated work below.</p>}</section>
+      <section className="adviser-reviews"><h3>Records waiting for a check</h3><p>{data.review_counts.facts} farm answers · {data.review_counts.operations} work records · {data.review_counts.purchases} purchases · {data.review_counts.sales} sales</p><div className="actions"><Button variant="secondary" disabled={busy} onClick={() => go(`/app/fields/${data.farm.id}#facts`)}>Check farm answers</Button><Button variant="secondary" disabled={busy} onClick={() => go(`/app/record-work?farm_id=${data.farm.id}&review=1`)}>Check notebook records</Button></div></section>
+      <h3>Corrections and inspections</h3>{data.admin_cases.items.length ? <ul className="record-list">{data.admin_cases.items.map(item => <li key={item.id}><div className="record-main"><strong>{item.data.title}</strong><p>{statusLabel(item.data.status)} · {item.data.reporting_year}{item.data.deadline ? ` · Recorded date ${item.data.deadline}` : ''}</p></div><Button variant="secondary" disabled={busy} onClick={() => go(`/app/cases/${item.id}${item.data.job_type === 'correction' ? '/correction' : ''}`)}>Open {item.data.job_type === 'correction' ? 'correction' : item.data.job_type === 'inspection' ? 'inspection' : 'parcel case'} · {item.data.title}</Button></li>)}</ul> : <p>No cases on this page.</p>}
+      <RecordPages page={data.admin_cases} label="cases" change={offset => setOffsets(previous => ({ ...previous, cases: offset }))}/>
+      <p className="muted">{data.admin_cases.total} cases for this farm · {data.case_counts.draft ?? 0} drafts · {data.case_counts.needs_changes ?? 0} with changes requested.</p><Button variant="ghost" disabled={busy} onClick={() => go(`/app/cases?farm_id=${data.farm.id}`)}>All cases for this farm</Button>
+      <section className="adviser-follow-up" aria-label="Paperwork and questions"><h3>Paperwork</h3>{data.requests.items.length ? <ul className="record-list">{data.requests.items.map(request => <li key={request.id}><div><strong>{request.data.title}</strong><p>{request.data.deadline ? `Recorded date ${request.data.deadline}` : 'No deadline recorded'} · {statusLabel(request.data.status)}</p></div><Button variant="ghost" disabled={busy} onClick={() => go(`/app/paperwork/${request.id}`)}>Open paperwork</Button></li>)}</ul> : <p>No paperwork on this page.</p>}
+        <RecordPages page={data.requests} label="paperwork" change={offset => setOffsets(previous => ({ ...previous, requests: offset }))}/>
+        <h3>Farmer questions and follow-up</h3>{data.tasks.items.length ? <ul className="record-list">{data.tasks.items.map(task => <li key={task.id}><div><strong>{task.data.title}</strong>{task.data.description && <p>{task.data.description}</p>}{task.data.notes && <p>Saved answer: {task.data.notes}</p>}<p>{statusLabel(task.data.status)}{task.data.due_date ? ` · Due ${task.data.due_date}` : ''}</p></div><Button variant="ghost" disabled={busy} onClick={() => go(`/app/tasks/${task.id}`)}>Open question and answer</Button></li>)}</ul> : <p>No questions on this page.</p>}
+        <RecordPages page={data.tasks} label="questions" change={offset => setOffsets(previous => ({ ...previous, tasks: offset }))}/>
+        <Button variant="ghost" disabled={busy} onClick={() => go(`/app/tasks?farm_id=${data.farm.id}`)}>Questions and answers</Button>
+        {data.missing_information.length > 0 && <><h3>Missing details in saved drafts</h3>{data.missing_information.map((item, index) => <p key={`${item.report_id}-${index}`}>{item.message}<Button variant="ghost" disabled={busy} onClick={() => go(`/app/reports/${item.report_id}`)}>Review current response</Button></p>)}</>}
+        {data.reports_truncated && <p>More saved forms are available. Open the farm’s records to check the remaining forms.</p>}
+      </section>
+    </>}
+  </section>;
+}
+
 export function AdviserPage() {
   const { session, switchWorkspace, refresh } = useSession();
   const navigate = useNavigate();
@@ -87,52 +181,42 @@ export function AdviserPage() {
   const farms = useRecords<Farm>('farms');
   const requests = useRecords<Request>('requests');
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [overviewBinding, setOverviewBinding] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
-  const [selectedKey, setSelectedKey] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [questionFarm, setQuestionFarm] = useState<RecordItem<Farm> | null>(null);
   const [panel, setPanel] = useState<'question' | 'accept' | 'invite' | null>(null);
   const [invitationCode, setInvitationCode] = useState('');
   const [accepted, setAccepted] = useState('');
-  const detailRef = useRef<HTMLElement>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
   const actionRef = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
-  const binding = `${session?.workspace.id}/${offset}`;
-  const currentBinding = useRef(binding);
-  currentBinding.current = binding;
-  const visibleOverview = overviewBinding === binding ? overview : null;
   const owner = session?.workspace.role === 'owner';
   const canReview = owner || session?.workspace.permissions?.includes('review') === true;
+  const scope = JSON.stringify([session?.workspace.id, session?.workspace.role, session?.workspace.permissions, session?.workspace.farm_ids]);
   async function load() {
-    const attempt = ++generation.current;
-    const context = binding;
-    setLoading(true); setError('');
-    try {
-      const result = await api.get<Overview>(`/adviser/overview?limit=20&offset=${offset}`);
-      if (attempt === generation.current && context === currentBinding.current) { setOverview(result); setOverviewBinding(context); }
-    } catch (failure) { if (attempt === generation.current && context === currentBinding.current) setError(errorMessage(failure)); }
-    finally { if (attempt === generation.current && context === currentBinding.current) setLoading(false); }
+    const attempt = ++generation.current; setLoading(true); setError('');
+    try { const result = await api.get<Overview>(`/adviser/clients?limit=20&offset=${offset}`); if (attempt === generation.current) setOverview(result); }
+    catch (failure) { if (attempt === generation.current) { setOverview(null); setError(errorMessage(failure)); } }
+    finally { if (attempt === generation.current) setLoading(false); }
   }
+  useEffect(() => { const timer = window.setTimeout(() => setSubmittedSearch(search.trim()), 250); return () => window.clearTimeout(timer); }, [search]);
   useEffect(() => {
-    setOverview(null); setSelectedKey(''); setPanel(null); setInvitationCode(''); setAccepted(''); void load();
+    setOverview(null); setSelection(null); setPanel(null); setQuestionFarm(null); setInvitationCode(''); setAccepted(''); void load();
     return () => { generation.current += 1; };
-  }, [session?.workspace.id, offset]);
+  }, [scope, offset]);
   useEffect(() => {
     const farmId = params.get('farm');
-    if (!farmId || !visibleOverview) return;
-    const client = visibleOverview.clients.find(item => item.workspace.id === session?.workspace.id && item.farms.some(farm => farm.id === farmId));
-    if (client) { setSelectedKey(`${client.workspace.id}/${farmId}`); if (params.get('ask') === '1' && canReview) setPanel('question'); }
-  }, [visibleOverview, params, session?.workspace.id, canReview]);
-  function focusSection(node: HTMLElement | null) {
-    if (!node) return;
-    node.focus({ preventScroll: true });
-    node.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-  }
-  useEffect(() => { if (selectedKey) focusSection(detailRef.current); }, [selectedKey]);
-  useEffect(() => { if (panel) focusSection(actionRef.current); }, [panel, selectedKey]);
+    if (farmId && session && /^[0-9a-f-]{36}$/i.test(farmId)) setSelection({ workspaceId: session.workspace.id, farmId });
+  }, [params, scope]);
+  useEffect(() => {
+    if (!panel) return;
+    actionRef.current?.focus({ preventScroll: true }); actionRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }, [panel]);
   async function open(workspaceId: string, path: string) {
     setBusy(true); setError('');
     try { await switchWorkspace(workspaceId); navigate(path); }
@@ -140,44 +224,33 @@ export function AdviserPage() {
   }
   async function accept(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setAccepted('');
-    try { await api.post('/invitations/accept', { token: invitationCode.trim() }); setInvitationCode(''); await refresh(); await load(); setAccepted('Invitation accepted. The farm workspace is now available in your workspace selector. Your own records remain separate.'); }
+    try { await api.post('/invitations/accept', { token: invitationCode.trim() }); setInvitationCode(''); await refresh(); await load(); setReloadVersion(value => value + 1); setAccepted('Invitation accepted. The farm workspace is now available in your workspace selector. Your own records remain separate.'); }
     catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   }
-  const choices = (visibleOverview?.clients ?? []).flatMap(client => client.farms.map(farm => ({ client, farm, key: `${client.workspace.id}/${farm.id}` })));
-  const selected = choices.find(item => item.key === selectedKey);
-  const needle = search.trim().toLocaleLowerCase();
-  const filtered = choices.filter(({ client, farm }) => `${client.workspace.name} ${farm.data.name ?? ''} ${farm.data.country ?? ''} ${farm.data.region ?? ''}`.toLocaleLowerCase().includes(needle));
-  const selectedCanReview = !!selected && (selected.client.workspace.role === 'owner' || selected.client.workspace.permissions?.includes('review') === true);
-  const selectedCases = (selected?.client.admin_cases ?? []).filter(item => item.data.farm_id === selected?.farm.id);
-  const selectedTasks = selected?.client.tasks.filter(item => item.data.farm_id === selected.farm.id) ?? [];
-  const selectedRequests = selected?.client.requests.filter(item => item.data.farm_id === selected.farm.id) ?? [];
-  const statusLabel = (status: string) => (({ draft: 'Needs preparation', ready_to_send: 'Prepared for manual sending', sent: 'Sending recorded by a person', receipt_saved: 'Receipt recorded by a person', accepted_recorded: 'Acceptance recorded by a person', needs_changes: 'Changes requested', cancelled: 'Set aside' } as Record<string, string>)[status] ?? status.replaceAll('_', ' '));
+  function ask(data: FarmDetail) {
+    if (data.workspace.id !== session?.workspace.id) { void open(data.workspace.id, `/app/adviser?farm=${data.farm.id}&ask=1`); return; }
+    setQuestionFarm(data.farm); setPanel('question');
+  }
+  useEffect(() => {
+    if (params.get('ask') !== '1' || !selection || !canReview || selection.workspaceId !== session?.workspace.id) return;
+    const farm = farms.items.find(item => item.id === selection.farmId);
+    if (farm) { setQuestionFarm(farm); setPanel('question'); }
+  }, [selection, farms.items, params, canReview, scope]);
   return <>
     <PageHeader title="Adviser desk" description="Choose a farm, see what is missing and help with its next task." />
     {error && <Notice kind="error">{error}<Button variant="ghost" onClick={() => void load()}>Retry</Button></Notice>}{accepted && <Notice kind="success">{accepted}</Notice>}
-    <section className="panel"><div className="section-heading"><h2>Farms on your desk</h2><span className="badge">{visibleOverview?.total ?? '…'} workspaces</span></div>
-      <Field label="Search farms or clients"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Farm name, client or country" /></Field>
-      {loading ? <p role="status">Checking your current farm permissions…</p> : !choices.length ? <p>Your first farm starts with permission. Accept a farmer’s private invitation to add their workspace.</p> : !filtered.length ? <p>No farms match in this loaded view. Try another name or workspace page.</p> : <ul className="record-list">{filtered.map(({ client, farm, key }) => <li key={key}><div className="record-main"><strong>{farm.data.name ?? 'Farm'}</strong><p>{client.workspace.name} · {farm.data.country}{farm.data.region ? ` · ${farm.data.region}` : ''} · {client.workspace.role === 'owner' || client.workspace.permissions?.includes('review') ? 'Read & review' : 'Read only'}</p></div><Button variant={selectedKey === key ? 'secondary' : 'ghost'} disabled={busy} aria-expanded={selectedKey === key} aria-controls={selectedKey === key ? 'adviser-selected-farm' : undefined} onClick={() => { setSelectedKey(key); setPanel(null); }}>Open farm · {farm.data.name ?? 'Farm'}</Button></li>)}</ul>}
-      {visibleOverview && visibleOverview.total > visibleOverview.limit && <div className="actions"><Button variant="ghost" disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - 20))}>Previous workspaces</Button><Button variant="ghost" disabled={offset + visibleOverview.limit >= visibleOverview.total || loading} onClick={() => setOffset(value => value + 20)}>Next workspaces</Button></div>}
-      {visibleOverview?.clients.some(client => client.truncated) && <p className="muted">Search covers the loaded farms only. A workspace may have more records; open its farm for the complete view.</p>}
-      <p className="muted">{visibleOverview?.mandate_notice ?? 'Farm access here does not establish an official authority mandate.'}</p>
+    <section className="panel"><div className="section-heading"><h2>Farms on your desk</h2><span className="badge">{overview?.total ?? '…'} workspaces</span></div>
+      <Field label="Search farms or clients"><input type="search" maxLength={160} value={search} onChange={event => setSearch(event.target.value)} placeholder="Farm name, country or region" /></Field>
+      {loading ? <p role="status">Checking your current farm permissions…</p> : !overview?.items.length ? <p>Your first farm starts with permission. Accept a farmer’s private invitation to add their workspace.</p> : overview.items.map(workspace => <FarmDirectory key={`${scope}/${workspace.id}/${reloadVersion}`} workspace={workspace} search={workspace.name.toLocaleLowerCase().includes(submittedSearch.toLocaleLowerCase()) ? '' : submittedSearch} selected={selection} disabled={busy} choose={value => { setSelection(value); setPanel(null); setQuestionFarm(null); }}/>)}
+      {overview && (overview.total > overview.limit || offset > 0) && <div className="actions"><Button variant="ghost" disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - 20))}>Previous workspaces</Button><span>{offset + 1} to {Math.min(offset + overview.limit, overview.total)} of {overview.total}</span><Button variant="ghost" disabled={offset + overview.limit >= overview.total || loading} onClick={() => setOffset(value => value + 20)}>Next workspaces</Button></div>}
+      <p className="muted">Search includes every permitted farm in the displayed workspaces. Use workspace pages to see other clients.</p><p className="muted">{overview?.mandate_notice ?? 'Farm access here does not establish an official authority mandate.'}</p>
     </section>
-    {selected && <section ref={detailRef} tabIndex={-1} id="adviser-selected-farm" className="panel" aria-label={`Selected farm · ${selected.farm.data.name ?? 'Farm'}`}><div className="section-heading"><h2>{selected.farm.data.name ?? 'Farm'}</h2><Button variant="ghost" onClick={() => { setSelectedKey(''); setPanel(null); }}>Close farm</Button></div>
-      <p>{selectedCanReview ? 'You can read and check this farm’s records. Changes still need a separate approval.' : 'Read only. You can see the records, but cannot change or approve them.'}</p>
-      <div className="actions"><Button disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/fields/${selected.farm.id}/check`)}>Check parcels</Button><Button variant="secondary" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/farm/${selected.farm.id}`)}>Open farm records</Button>{selectedCanReview && <Button variant="ghost" disabled={busy} onClick={() => { if (selected.client.workspace.id === session?.workspace.id) setPanel('question'); else void open(selected.client.workspace.id, `/app/adviser?farm=${selected.farm.id}&ask=1`); }}>Ask this farmer</Button>}</div>
-      <h3>Corrections and inspections</h3>{selectedCases.length ? <ul className="record-list">{selectedCases.map(item => <li key={item.id}><div className="record-main"><strong>{item.data.title}</strong><p>{statusLabel(item.data.status)} · {item.data.reporting_year}{item.data.deadline ? ` · Recorded date ${item.data.deadline}` : ''}</p></div><Button variant="secondary" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/cases/${item.id}${item.data.job_type === 'correction' ? '/correction' : ''}`)}>Open {item.data.job_type === 'correction' ? 'correction' : item.data.job_type === 'inspection' ? 'inspection' : 'parcel case'} · {item.data.title}</Button></li>)}</ul> : <p>No case is saved for this farm in the loaded view.</p>}
-      <p className="muted">{selected.client.totals.admin_cases ?? 0} cases in permitted farms across this workspace · {selected.client.case_counts?.draft ?? 0} drafts · {selected.client.case_counts?.needs_changes ?? 0} with changes requested. These counts describe work in the app, not an authority decision.</p>
-      <Button variant="ghost" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/cases?farm_id=${selected.farm.id}`)}>All cases for this farm</Button>
-      <section className="adviser-follow-up" aria-label="Paperwork and questions"><h3>Paperwork</h3>{selectedRequests.length ? <ul className="record-list">{selectedRequests.map(request => <li key={request.id}><strong>{request.data.title}</strong><p>{request.data.deadline ? `Recorded date ${request.data.deadline}` : 'No deadline recorded'} · {request.data.status}</p><Button variant="ghost" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/paperwork/${request.id}`)}>Open paperwork</Button></li>)}</ul> : <p>No paperwork in this loaded view.</p>}
-        <h3>Farmer questions and follow-up</h3>{selectedTasks.length ? <ul>{selectedTasks.map(task => <li key={task.id}><strong>{task.data.title}</strong>{task.data.description && <p>{task.data.description}</p>}{task.data.notes && <p>Saved answer: {task.data.notes}</p>}<p>{task.data.status}{task.data.due_date ? ` · Due ${task.data.due_date}` : ''}</p><Button variant="ghost" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/tasks/${task.id}`)}>Open question and answer</Button></li>)}</ul> : <p>No questions in this loaded view.</p>}<Button variant="ghost" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/tasks?farm_id=${selected.farm.id}`)}>Questions and answers</Button>
-        {selected.client.missing_information?.filter(item => item.farm_id === selected.farm.id).map((item, index) => <p key={`${item.report_id}-${index}`}>{item.message}{item.checked_at ? ` · Saved check ${new Date(item.checked_at).toLocaleDateString()}` : ''}{item.report_id && <Button variant="ghost" disabled={busy} onClick={() => void open(selected.client.workspace.id, `/app/reports/${item.report_id}`)}>Review current response</Button>}</p>)}
-      </section>{selected.client.truncated && <Notice>This workspace has more records. Open the farm or its full case list for the complete current view.</Notice>}
-    </section>}
+    {selection && <SelectedFarm key={`${scope}/${selection.workspaceId}/${selection.farmId}`} selection={selection} close={() => { setSelection(null); setPanel(null); setQuestionFarm(null); }} open={open} question={ask} reloadVersion={reloadVersion} busy={busy}/>}
     <div className="actions"><Button variant="secondary" aria-expanded={panel === 'accept'} onClick={() => setPanel(panel === 'accept' ? null : 'accept')}>Accept a farmer’s invitation</Button>{owner && <Button variant="ghost" aria-expanded={panel === 'invite'} onClick={() => setPanel(panel === 'invite' ? null : 'invite')}>Give an adviser access</Button>}</div>
     {panel && <div ref={actionRef} tabIndex={-1} className="panel" aria-label={panel === 'question' ? 'Question for selected farm' : panel === 'accept' ? 'Accept invitation form' : 'Adviser invitation form'}><Button variant="ghost" onClick={() => setPanel(null)}>Close form</Button>
-      {panel === 'question' && selected && selectedCanReview && selected.client.workspace.id === session?.workspace.id && canReview && <><p>Question for {selected.farm.data.name ?? 'this farm'}.</p>{requests.error ? <Notice kind="error">{requests.error}</Notice> : requests.loading ? <p role="status">Loading this farm’s paperwork…</p> : <FarmerQuestion key={`${session?.workspace.id}/${selected.farm.id}`} farmId={selected.farm.id} farms={[selected.farm]} requests={requests.items} onSaved={load} />}</>}
+      {panel === 'question' && questionFarm && canReview && <><p>Question for {questionFarm.data.name ?? 'this farm'}.</p>{requests.error ? <Notice kind="error">{requests.error}</Notice> : requests.loading ? <p role="status">Loading this farm’s paperwork…</p> : <FarmerQuestion key={`${scope}/${questionFarm.id}`} farmId={questionFarm.id} farms={[questionFarm]} requests={requests.items} onSaved={async () => { await requests.reload(); setReloadVersion(value => value + 1); }}/>}</>}
       {panel === 'accept' && <section><h2>Accept a farmer’s invitation</h2><p>Use the private code addressed to your signed-in email. Acceptance adds only the access the farmer chose.</p><form className="stack" onSubmit={accept}><Field label="Private invitation code"><input required type="password" autoComplete="off" value={invitationCode} onChange={event => setInvitationCode(event.target.value)} /></Field><Button type="submit" loading={busy}>Accept invitation</Button></form></section>}
-      {panel === 'invite' && owner && (farms.error ? <Notice kind="error">{farms.error}</Notice> : farms.loading ? <p role="status">Loading permitted farms…</p> : <Delegation key={session?.workspace.id} farms={farms.items} />)}
+      {panel === 'invite' && owner && (farms.error ? <Notice kind="error">{farms.error}</Notice> : farms.loading ? <p role="status">Loading permitted farms…</p> : <Delegation key={scope} farms={farms.items} />)}
     </div>}
   </>;
 }

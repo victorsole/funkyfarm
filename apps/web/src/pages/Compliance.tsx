@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, errorMessage } from '../api';
 import { useSession } from '../auth';
@@ -14,32 +14,7 @@ type Obligation = { id: string; title: string; workflow_id: string; applicabilit
 type ProfileQuestion = { key: string; fact_key: string; label: string; prompt: string; value_type: string; choices: Array<{ value: string; label: string }>; sources: Source[]; conflicting_fact_ids: string[]; proposal_ids: string[] };
 type ProfileReview = ProfileQuestion & { state: string; current_value: unknown; confirmed: Array<{ id: string; revision: number; value: unknown; temporal_basis: string; period: string | null }>; proposed: Array<{ id: string; revision: number; value: unknown }> };
 type Checks = { farm_id: string; farm_revision: number; year: number; rules_version: string; rules_updated_at: string; profile_questions: ProfileQuestion[]; profile_review?: ProfileReview[]; obligations: Obligation[]; issues: Array<{ code: string; severity: string; message: string; href?: string }>; overall: string; limits: string[] };
-type Update = { id: string; title: string; url: string; country: string; region?: string; detected_at: string; effective_date: string | null; is_read: boolean; notice: string; source_edition?: string | null; required_action?: string; relevance?: string; rule_ids?: string[] };
-type SourceCheck = { source_id: string; title: string; url: string; status: string; http_status?: number | null; baseline_exists: boolean; last_checked_at: string | null; next_check_at?: string | null };
-type Updates = { items: Update[]; total: number; unread_count: number; preferences: { revision: number; enabled: boolean; families: string[]; read_event_ids: string[] }; monitor: { enabled: boolean; source_count: number; checked_count: number; baseline_count?: number; pending_count: number; error_count: number; last_checked_at: string | null; meaning?: string }; source_checks?: SourceCheck[]; notice: string };
-
-function sourceCheckMessage(status: string) {
-  const messages: Record<string, string> = {
-    pending_baseline: 'Waiting for the first check.',
-    source_changed: 'The source link changed. Waiting for a new check.',
-    baseline_created: 'First successful check. We can compare future versions.',
-    unchanged: 'No change found since the previous successful check.',
-    changed: 'The page changed. Please review it.',
-    http_error: 'The publisher did not provide the page. We will try again.',
-    network_error: 'We could not reach the publisher.',
-    read_deadline: 'The page took too long to load.',
-    response_too_large: 'This page is larger than our download limit.',
-    publisher_access_challenge: 'The publisher blocked this automatic check.',
-    redirect_blocked: 'The page moved. Its new address needs to be checked.',
-    unsupported_encoding: 'The publisher sent a format we cannot read.',
-    unsupported_content: 'The publisher did not send a supported document.',
-    empty_response: 'The publisher sent an empty page.',
-    invalid_response: 'The publisher sent an incomplete response.',
-    invalid_not_modified: 'The publisher did not send a page we can compare.',
-    blocked_source: 'This source address has not been approved for automatic checks.',
-  };
-  return messages[status] ?? 'We could not check this page.';
-}
+export { UpdatesPage, UpdateDetailPage } from './Updates';
 
 function sourceUrl(value?: string) {
   if (!value) return null;
@@ -60,7 +35,6 @@ function useFarmChoice() {
   function choose(id: string, nextYear = year) { setSearch({ ...(id ? { farm_id: id } : {}), year: nextYear }); }
   return { farms, farmId, year, choose };
 }
-
 type ProfileDraft = { answers: Record<string, string | string[]>; proposals: RecordItem[]; notes: Record<string, string>; corrections?: Record<string, { supersedes_id: string; expected_source_revision: number }> };
 
 function ProfileInput({ question, value, disabled, change }: { question: ProfileQuestion; value: string | string[] | undefined; disabled: boolean; change: (value: string | string[]) => void }) {
@@ -210,43 +184,6 @@ export function CompliancePage() {
         {canReview && data.obligations.length > 0 && <div className="admin-subsection"><Button loading={busy} disabled={!selected.length} onClick={() => void makeChecklist()}>Save selected checklists and tasks</Button><p className="admin-footnote">This saves a to-do list. It does not confirm evidence, approve a report or send anything to an authority.</p></div>}
       </section>
       <section className="admin-footnote"><p>Rules edition {data.rules_version} · updated {data.rules_updated_at ? new Date(data.rules_updated_at).toLocaleDateString() : 'date not supplied'}</p>{data.limits.length > 0 && <ul>{data.limits.map((limit, index) => <li key={index}>{limit}</li>)}</ul>}<Link to="/app/community">Ask your adviser about an unclear check</Link></section>
-    </>}
-  </>;
-}
-
-export function UpdatesPage() {
-  const { farms, farmId, choose } = useFarmChoice();
-  const [data, setData] = useState<Updates | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [version, setVersion] = useState(0);
-  const reload = useCallback(async () => {
-    if (farmId) setData(await api.get<Updates>(`/regulatory/updates?farm_id=${encodeURIComponent(farmId)}`));
-  }, [farmId]);
-  useEffect(() => {
-    let active = true; setData(null); setError(''); setMessage(''); setLoading(false);
-    if (!farmId) return;
-    setLoading(true);
-    api.get<Updates>(`/regulatory/updates?farm_id=${encodeURIComponent(farmId)}`).then(value => { if (active) setData(value); }).catch(failure => { if (active) setError(errorMessage(failure)); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [farmId, version]);
-  async function preference(enabled: boolean, readIds: string[]) {
-    if (!data) return;
-    setBusy(true); setError(''); setMessage('');
-    try { await api.post('/regulatory/preferences', { farm_id: farmId, expected_revision: data.preferences.revision, enabled, families: data.preferences.families, read_event_ids: readIds }); await reload(); setMessage('Your in-app update preference is saved.'); }
-    catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
-  }
-  return <>
-    <PageHeader title="Updates from official websites" description="See which official pages changed and check whether they affect your farm." action={<Link className="button button-secondary" to={`/app/checks${farmId ? `?farm_id=${farmId}` : ''}`}>Back to farm checks</Link>}/>
-    <section className="panel admin-section"><Field label="Which farm?"><select value={farmId} onChange={event => choose(event.target.value)}><option value="">Choose a farm</option>{farms.items.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field>{farms.error && <Notice kind="error">{farms.error}</Notice>}{farms.loading && <Loading>Opening farms…</Loading>}{!farmId && !farms.loading && <p className="admin-footnote">Choose a farm to see the relevant recorded source changes.</p>}</section>
-    {error && <Notice kind="error">{error}<div><Button variant="ghost" onClick={() => setVersion(value => value + 1)}>Try again</Button></div></Notice>}{message && <Notice kind="success">{message}</Notice>}{loading && <Loading>Opening recorded source updates…</Loading>}
-    {data && <>
-      <Notice>{data.notice} A changed web page does not by itself establish a changed legal duty or an effective date.</Notice>
-      <section className="panel admin-section"><h2>Pages checked</h2><p>{data.monitor.baseline_count === undefined ? 'We do not yet know how many pages have been checked successfully.' : `We have checked ${data.monitor.baseline_count} of ${data.monitor.source_count} pages successfully at least once.`}</p><p className="admin-footnote">Some recent checks may have failed. A failed check does not mean the rules stayed the same. Older texts alone cannot show every new amendment.</p>{!!data.source_checks?.length && <details><summary>Which source pages have been checked?</summary><ul className="admin-task-list">{data.source_checks.map(source => <li key={source.source_id}><strong>{source.title}</strong><p>{sourceCheckMessage(source.status)} {!source.baseline_exists && 'No successful check yet.'}</p>{source.last_checked_at && <p className="admin-footnote">Last attempt: {new Date(source.last_checked_at).toLocaleString()}.{source.next_check_at && ` Next attempt: ${new Date(source.next_check_at).toLocaleString()}.`}{source.http_status != null && ` Publisher response: HTTP ${source.http_status}.`}</p>}{sourceUrl(source.url) && <a href={sourceUrl(source.url)!} target="_blank" rel="noreferrer">Open source page</a>}</li>)}</ul></details>}</section>
-      <section className="panel admin-section"><h2>How you want to see updates</h2><label className="check-row"><input type="checkbox" checked={data.preferences.enabled} disabled={busy} onChange={event => void preference(event.target.checked, data.preferences.read_event_ids)}/>Show relevant source changes inside my farm workspace</label><p className="admin-footnote">This preference does not turn on email, push messages or background collection of your farm data.</p><p className="muted">Source checking is {data.monitor.enabled ? 'enabled' : 'not enabled on this server'}.{data.monitor.last_checked_at ? ` Last check: ${new Date(data.monitor.last_checked_at).toLocaleString()}.` : ' No completed source check is recorded.'} {data.monitor.error_count > 0 ? `${data.monitor.error_count} sources could not be checked.` : ''}</p><Button variant="secondary" disabled={busy} onClick={() => setVersion(value => value + 1)}>Refresh recorded updates</Button></section>
-      <section className="panel admin-section"><h2>{data.unread_count} unread source changes</h2>{!data.items.length && <p className="empty-state">No relevant source changes are recorded for this farm. This is not a guarantee that regulations have not changed.</p>}{data.items.map(update => <article className="admin-check" key={update.id}><div className="section-heading"><h3>{update.title}</h3><span className="badge">{update.is_read ? 'Marked as read' : 'New to you'}</span></div><p>{update.notice}</p>{update.required_action && <p>{update.required_action}</p>}<p className="admin-footnote">Page change detected {new Date(update.detected_at).toLocaleString()}{update.source_edition ? ` · source edition ${update.source_edition}` : ''}. Effective date has not been established by this observation.</p>{sourceUrl(update.url) && <p><a href={sourceUrl(update.url)!} target="_blank" rel="noreferrer">Read the official page</a></p>}<div className="actions"><Link to={`/app/checks?farm_id=${farmId}`}>Check recorded farm requirements</Link>{!update.is_read && <Button variant="secondary" loading={busy} onClick={() => void preference(data.preferences.enabled, [...new Set([...data.preferences.read_event_ids, update.id])])}>Mark as read</Button>}</div></article>)}</section>
     </>}
   </>;
 }

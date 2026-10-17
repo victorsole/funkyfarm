@@ -20,6 +20,8 @@ const names = new Set([
   'regulatory_changes', 'adviser_help', 'propose_request', 'propose_field_change',
   'list_cases', 'read_case', 'check_case', 'propose_case_draft',
   'read_lpis_guide', 'check_parcels',
+  'read_task', 'list_connections', 'connection_support', 'connection_history',
+  'read_connection_preview', 'read_connection_handoff', 'funding_guide', 'read_regulatory_update',
 ]);
 const identifier = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));

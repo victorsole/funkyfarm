@@ -1,0 +1,12 @@
+.funding-page { display: grid; gap: 1.5rem; }
+.funding-programme h3 { margin-top: 1.6rem; }
+.funding-call { padding: 1rem 1.2rem; border-inline-start: .3rem solid var(--forest); background: var(--lime-soft); border-radius: .5rem; }
+.funding-call p:last-child { margin-bottom: 0; }
+.funding-steps { display: grid; gap: 1rem; padding-inline-start: 1.4rem; }
+.funding-steps p { margin: .35rem 0 0; }
+.funding-source-list { list-style: none; padding: 0; display: grid; gap: 1.25rem; }
+.funding-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
+.funding-dates dt { font-weight: 600; }
+.funding-dates dd { margin: .3rem 0 0; }
+.funding-footnote { font-size: .9rem; padding: .5rem; }
+.funding-footnote h2 { font-size: 1.2rem; }

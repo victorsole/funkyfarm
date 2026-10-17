@@ -105,13 +105,20 @@ CREATE TABLE IF NOT EXISTS regulatory_source_state (
     etag text,
     last_modified text,
     content_hash text,
+    observed_text text,
+    text_truncated boolean NOT NULL DEFAULT false,
     last_checked_at timestamptz,
+    last_successful_at timestamptz,
     next_check_at timestamptz NOT NULL DEFAULT now(),
     lease_until timestamptz,
     last_status text,
     last_http_status integer,
     failure_count integer NOT NULL DEFAULT 0
 );
+-- Nullable success dates deliberately preserve uncertainty in older observations.
+ALTER TABLE regulatory_source_state ADD COLUMN IF NOT EXISTS observed_text text;
+ALTER TABLE regulatory_source_state ADD COLUMN IF NOT EXISTS text_truncated boolean NOT NULL DEFAULT false;
+ALTER TABLE regulatory_source_state ADD COLUMN IF NOT EXISTS last_successful_at timestamptz;
 CREATE INDEX IF NOT EXISTS regulatory_next_check ON regulatory_source_state(next_check_at);
 CREATE TABLE IF NOT EXISTS regulatory_source_events (
     id uuid PRIMARY KEY,
@@ -120,9 +127,17 @@ CREATE TABLE IF NOT EXISTS regulatory_source_events (
     detected_at timestamptz NOT NULL,
     previous_hash text NOT NULL,
     current_hash text NOT NULL,
+    previous_text text,
+    current_text text,
+    previous_text_truncated boolean NOT NULL DEFAULT false,
+    current_text_truncated boolean NOT NULL DEFAULT false,
     event_type text NOT NULL DEFAULT 'official_page_changed',
     UNIQUE(source_id,source_url,detected_at,current_hash)
 );
+ALTER TABLE regulatory_source_events ADD COLUMN IF NOT EXISTS previous_text text;
+ALTER TABLE regulatory_source_events ADD COLUMN IF NOT EXISTS current_text text;
+ALTER TABLE regulatory_source_events ADD COLUMN IF NOT EXISTS previous_text_truncated boolean NOT NULL DEFAULT false;
+ALTER TABLE regulatory_source_events ADD COLUMN IF NOT EXISTS current_text_truncated boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS regulatory_events_detected ON regulatory_source_events(detected_at DESC);
 CREATE TABLE IF NOT EXISTS assistant_oauth_clients (
     client_id text PRIMARY KEY,

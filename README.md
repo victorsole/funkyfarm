@@ -14,6 +14,10 @@ The other map examples use 2025 Dutch public parcel boundaries and attributed Cz
 
 The web app uses a private PostgreSQL API. Connected assistants can suggest changes; people approve them.
 
+**Farm tools** also includes a community feed and private adviser inbox, searchable adviser farms, task documents, editable spreadsheet suggestions, satellite field images and saved official-site handoffs. Rule and funding pages show recorded source changes and the last successful check; you decide whether to create a follow-up. Connected assistants can read these tools within the farms you allow. Government sign-in and final submission stay on the official service.
+
+The core release is tagged [1.0](https://github.com/mahmoudelfeelig/funkyfarm/tree/1.0).
+
 ## Run
 
 Local setup uses PowerShell, Python 3.11 or later, Node 24 and Docker.

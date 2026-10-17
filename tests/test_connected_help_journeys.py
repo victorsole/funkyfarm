@@ -179,8 +179,11 @@ def test_regulatory_baseline_changed_page_read_state_and_private_farm_relevance(
     assert authored_regulatory["poll"]()["items"][0]["status"] == "baseline_created"
     baseline = owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()
     assert baseline["total"] == 0 and baseline["monitor"]["baseline_count"] == 1
+    baseline_check = next(item for item in baseline["source_checks"] if item["source_id"] == authored_regulatory["source"]["id"])
+    assert baseline_check["freshness"] == "current" and baseline_check["last_successful_at"]
     assert authored_regulatory["poll"]()["items"][0]["status"] == "unchanged"
     assert authored_regulatory["state"]["calls"][-1]["headers"].get("If-None-Match")
+    successful_check = next(item for item in owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()["source_checks"] if item["source_id"] == authored_regulatory["source"]["id"])
     retained = authored_regulatory["retained_state"]()
     assert retained["content_hash"] == hashlib.sha256(authored_regulatory["state"]["body"]).hexdigest()
     authored_regulatory["state"]["status"] = 202
@@ -190,6 +193,7 @@ def test_regulatory_baseline_changed_page_read_state_and_private_farm_relevance(
         assert pending["total"] == 0 and pending["monitor"]["baseline_count"] == 1
         source_check = next(item for item in pending["source_checks"] if item["source_id"] == authored_regulatory["source"]["id"])
         assert source_check["http_status"] == 202 and source_check["baseline_exists"] is True
+        assert source_check["freshness"] == "failed" and source_check["last_successful_at"] == successful_check["last_successful_at"]
         failed = authored_regulatory["retained_state"]()
         assert {key: failed[key] for key in ("content_hash", "etag", "last_modified")} == {key: retained[key] for key in ("content_hash", "etag", "last_modified")}
         assert failed["last_http_status"] == 202 and failed["failure_count"] > retained["failure_count"]
@@ -222,6 +226,36 @@ def test_regulatory_baseline_changed_page_read_state_and_private_farm_relevance(
     assert muted["data"]["enabled"] is False
     assert owner.get("/regulatory/updates", params={"farm_id": farm["id"]}).json()["items"] == []
     assert owner.get("/tasks").json()["total"] == 0 and owner.get("/reports").json()["total"] == 0
+    detail_url = f"/regulatory/updates/{event['id']}"
+    detail = owner.get(detail_url, params={"farm_id": farm["id"]}).json()
+    assert detail["comparison"]["available"] is True
+    assert "Authored initial publisher response" in detail["comparison"]["before"]
+    assert "legal effect is not established" in detail["comparison"]["after"]
+    assert detail["comparison"]["passages"] and detail["review"] is None
+    outsider.get(detail_url, params={"farm_id": farm["id"]}, expected=404)
+    owner.get(detail_url, params={"farm_id": elsewhere["id"]}, expected=404)
+    review_body = {"farm_id": farm["id"], "expected_revision": 0, "outcome": "needs_action",
+                   "note": "Ask our adviser to compare the publisher's changed record instructions.",
+                   "create_follow_up": True, "due_date": "2026-11-01"}
+    review_retry = {"Idempotency-Key": "source-review-" + uuid4().hex}
+    reviewed = owner.post(detail_url + "/review", headers=review_retry, json=review_body).json()
+    assert owner.post(detail_url + "/review", headers=review_retry, json=review_body).json() == reviewed
+    owner.post(detail_url + "/review", expected=409, json=review_body)
+    outsider.post(detail_url + "/review", expected=404, json=review_body)
+    task = owner.get(f"/tasks/{reviewed['task_id']}").json()
+    assert task["data"]["farm_id"] == farm["id"] and task["data"]["due_date"] == "2026-11-01"
+    assert owner.get("/tasks").json()["total"] == 1
+    assert owner.get(detail_url, params={"farm_id": farm["id"]}).json()["review"]["id"] == reviewed["review"]["id"]
+    arguments = {"arguments": {"farm_id": farm["id"], "event_id": event["id"], "limit": 1}}
+    assistant_detail = owner.post("/assistant/execute/read_regulatory_update", json=arguments).json()
+    assert assistant_detail["comparison"]["full_text_omitted"] is True
+    assert "before" not in assistant_detail["comparison"] and "after" not in assistant_detail["comparison"]
+    assert assistant_detail["review"]["id"] == reviewed["review"]["id"]
+    outsider.post("/assistant/execute/read_regulatory_update", json=arguments, expected=404)
+    read_task = {"arguments": {"farm_id": farm["id"], "task_id": task["id"]}}
+    assert owner.post("/assistant/execute/read_task", json=read_task).json()["task"]["id"] == task["id"]
+    outsider.post("/assistant/execute/read_task", json=read_task, expected=404)
+    assert owner.get("/facts").json()["total"] == 0 and owner.get("/reports").json()["total"] == 0
     assert all(farm["data"]["name"] not in json.dumps(call) and farm["id"] not in json.dumps(call) for call in authored_regulatory["state"]["calls"])
     assert all(call["headers"]["Host"] == "eur-lex.europa.eu" and call["headers"]["Accept-Encoding"] == "identity"
                and "Authorization" not in call["headers"] and "Cookie" not in call["headers"] for call in authored_regulatory["state"]["calls"])

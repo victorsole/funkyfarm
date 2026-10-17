@@ -1,7 +1,19 @@
 {
-  "version": "2026-10-17.1",
-  "checked_date": "2026-10-17",
+  "version": "2026-10-18.1",
+  "checked_date": "2026-10-18",
   "scope_notice": "Optional organisation-level funding guidance. Separate from your CAP area application, parcel declaration and farm obligations. This guide does not assess your eligibility or submit an application.",
+  "monitoring_sources": [
+    {
+      "id": "rea-agrip-calls",
+      "title": "Agricultural promotion calls",
+      "url": "https://rea.ec.europa.eu/funding-and-grants/promotion-agricultural-products-0/calls-proposals-promotion-agricultural-products_en",
+      "workflow_ids": ["funding"],
+      "country": "EU",
+      "poll_interval_seconds": 86400,
+      "version": "REA AGRIP calls page checked 18 October 2026",
+      "checked_date": "2026-10-18"
+    }
+  ],
   "programmes": [
     {
       "id": "eu-agrip-promotion",
@@ -64,7 +76,8 @@
       ],
       "limitations": [
         "Source-backed general information, not personalised eligibility, an award promise or a legal determination.",
-        "No live call refresh, calculated deadlines, applications, portal prefill or submission integration.",
+        "Automatic page checks report source changes, not verified new calls or personal eligibility. Review the official call before acting.",
+        "No calculated application deadlines, portal prefill or submission integration.",
         "Legal instruments and the actual call text take precedence over informational REA pages.",
         "The full call text, programme guide, FAQ and application templates were not inspected for this guide."
       ]

@@ -171,7 +171,7 @@ def adviser_overview(limit: int = Query(20, ge=1, le=50), offset: int = Query(0,
                 pages = {kind: list_records(conn, kind, 100, 0) for kind in ("farms", "requests", "tasks", "admin_cases")}
                 report_page = list_records(conn, "reports", 100, 0)
                 reviews = conn.execute(
-                    "SELECT kind,count(*) AS total FROM records WHERE kind IN ('facts','operations','purchases') "
+                    "SELECT kind,count(*) AS total FROM records WHERE kind IN ('facts','operations','purchases','sales') "
                     "AND deleted_at IS NULL AND data->>'review_status'='proposed' GROUP BY kind"
                 ).fetchall()
                 case_rows = conn.execute(
@@ -182,7 +182,7 @@ def adviser_overview(limit: int = Query(20, ge=1, le=50), offset: int = Query(0,
             if error.status == 403:
                 continue  # A grant revoked after the membership list supplies no client data.
             raise
-        counts = {"facts": 0, "operations": 0, "purchases": 0}
+        counts = {"facts": 0, "operations": 0, "purchases": 0, "sales": 0}
         counts.update({row["kind"]: row["total"] for row in reviews})
         missing = []
         for report in report_page["items"]:
@@ -201,6 +201,96 @@ def adviser_overview(limit: int = Query(20, ge=1, le=50), offset: int = Query(0,
                         "review_counts": counts, "totals": {kind: page["total"] for kind, page in pages.items()},
                         "truncated": len(missing) > 100 or report_page["total"] > len(report_page["items"]) or any(page["total"] > len(page["items"]) for page in pages.values())})
     return {"clients": clients, "total": len(memberships), "limit": limit, "offset": offset,
+            "mandate_notice": MANDATE_NOTICE}
+
+
+def _adviser_memberships(session):
+    if session.credential_scope != "interactive":
+        raise ApiError(403, "interactive_session_required", "Open the signed-in adviser desk to view client farms.")
+    with transaction(session) as conn:
+        rows = conn.execute("SELECT * FROM workspace_list()").fetchall()
+    return [row for row in rows if row["role"] in {"owner", "adviser"}]
+
+
+def _adviser_workspace(session, workspace_id):
+    from dataclasses import replace
+
+    workspace = next((row for row in _adviser_memberships(session) if str(row["id"]) == str(workspace_id)), None)
+    if workspace is None:
+        raise ApiError(404, "not_found", "This client workspace is not available through your current access.")
+    return replace(session, workspace_id=str(workspace["id"]), role=workspace["role"]), json_safe(workspace)
+
+
+@router.get("/adviser/clients")
+def adviser_clients(limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0),
+                    session: Session = Depends(require_session)):
+    memberships = sorted(_adviser_memberships(session), key=lambda item: (item["name"].casefold(), str(item["id"])))
+    return {"items": json_safe(memberships[offset:offset + limit]), "total": len(memberships),
+            "limit": limit, "offset": offset, "mandate_notice": MANDATE_NOTICE}
+
+
+@router.get("/adviser/farms")
+def adviser_farms(workspace_id: UUID, search: str = Query("", max_length=160),
+                  limit: int = Query(25, ge=1, le=50), offset: int = Query(0, ge=0),
+                  session: Session = Depends(require_session)):
+    scoped, workspace = _adviser_workspace(session, workspace_id)
+    needle = search.strip().lower()
+    with transaction(scoped) as conn:
+        where = ("kind='farms' AND deleted_at IS NULL AND "
+                 "strpos(lower(concat_ws(' ',data->>'name',data->>'country',data->>'region')),%s)>0")
+        total = conn.execute(f"SELECT count(*) AS total FROM records WHERE {where}", (needle,)).fetchone()["total"]
+        rows = conn.execute("SELECT id,kind,workspace_id,revision,data,created_at,updated_at FROM records "
+                            f"WHERE {where} ORDER BY lower(data->>'name'),id LIMIT %s OFFSET %s",
+                            (needle, limit, offset)).fetchall()
+    return {"workspace": workspace, "items": json_safe(rows), "total": total, "limit": limit,
+            "offset": offset, "search": search.strip()}
+
+
+@router.get("/adviser/farms/{farm_id}")
+def adviser_farm_detail(farm_id: UUID, workspace_id: UUID, limit: int = Query(25, ge=1, le=50),
+                        tasks_offset: int = Query(0, ge=0), requests_offset: int = Query(0, ge=0),
+                        cases_offset: int = Query(0, ge=0), session: Session = Depends(require_session)):
+    scoped, workspace = _adviser_workspace(session, workspace_id)
+    farm_key = str(farm_id)
+    today = datetime.now(timezone.utc).date()
+    upcoming = today + timedelta(days=30)
+    with transaction(scoped) as conn:
+        farm = fetch_record(conn, "farms", farm_key)
+        pages = {kind: list_records(conn, kind, limit, offset, farm_key) for kind, offset in (
+            ("tasks", tasks_offset), ("requests", requests_offset), ("admin_cases", cases_offset))}
+        review_rows = conn.execute(
+            "SELECT kind,count(*) AS total FROM records WHERE deleted_at IS NULL "
+            "AND kind IN ('facts','operations','purchases','sales') AND data->>'farm_id'=%s "
+            "AND data->>'review_status'='proposed' GROUP BY kind", (farm_key,)).fetchall()
+        case_rows = conn.execute(
+            "SELECT data->>'status' AS status,count(*) AS total FROM records WHERE kind='admin_cases' "
+            "AND deleted_at IS NULL AND data->>'farm_id'=%s GROUP BY data->>'status'", (farm_key,)).fetchall()
+        # Compare validated ISO dates as text: old records without dates remain unknown.
+        active = ("SELECT id,kind,data->>'title' AS title,CASE WHEN kind='tasks' THEN data->>'due_date' "
+                  "ELSE data->>'deadline' END AS recorded_date FROM records WHERE deleted_at IS NULL "
+                  "AND kind IN ('tasks','requests','admin_cases') AND data->>'farm_id'=%s "
+                  "AND coalesce(data->>'status','open') NOT IN "
+                  "('done','complete','completed','cancelled','responded','accepted_recorded','receipt_saved')")
+        schedule = conn.execute(
+            "WITH active AS (" + active + ") SELECT "
+            "count(*) FILTER (WHERE recorded_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND recorded_date<%s) AS overdue, "
+            "count(*) FILTER (WHERE recorded_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND recorded_date>=%s AND recorded_date<=%s) AS upcoming, "
+            "count(*) FILTER (WHERE recorded_date IS NULL OR recorded_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') AS undated FROM active",
+            (farm_key, today.isoformat(), today.isoformat(), upcoming.isoformat())).fetchone()
+        due_items = conn.execute(
+            "WITH active AS (" + active + ") SELECT * FROM active "
+            "WHERE recorded_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ORDER BY recorded_date,id LIMIT 12", (farm_key,)).fetchall()
+        report_page = list_records(conn, "reports", 100, 0, farm_key)
+        missing = [{"report_id": report["id"], "message": blocker["message"], "checked_at": report["updated_at"]}
+                   for report in report_page["items"] if report["data"].get("status") == "draft"
+                   for blocker in report["data"].get("blockers", [])
+                   if blocker.get("code") in {"missing_fact", "missing_requirement", "missing_evidence"}][:100]
+    counts = {kind: 0 for kind in ("facts", "operations", "purchases", "sales")}
+    counts.update({row["kind"]: row["total"] for row in review_rows})
+    return {"workspace": workspace, "farm": farm, **pages, "review_counts": counts,
+            "case_counts": {row["status"] or "unknown": row["total"] for row in case_rows},
+            "schedule": {**schedule, "today": today.isoformat(), "through": upcoming.isoformat(), "items": json_safe(due_items)},
+            "missing_information": missing, "reports_truncated": report_page["total"] > len(report_page["items"]),
             "mandate_notice": MANDATE_NOTICE}
 
 

@@ -12,7 +12,7 @@ import { LuxembourgSourceReview, LuxembourgUpload, LuxembourgRowValues, useLuxem
 
 type Target = 'facts' | 'operations' | 'purchases' | 'sales';
 type Column = { source_index: number; header: string; target_field: string | null; role: 'value' | 'identifier' | 'foreign_key'; reference_kind?: string | null; value_type?: string; decimal_separator?: string; date_format?: string; blank_behavior?: string; null_tokens?: string[] };
-type ImportRecord = RecordItem & { rows: Page<RecordItem> };
+type ImportRecord = RecordItem & { rows: Page<RecordItem>; setup_suggestions?: { target: Target; columns: (Omit<Column, 'date_format' | 'decimal_separator'> & { date_format?: string | null; decimal_separator?: string | null })[]; header_fields: string[]; messages: string[]; sampled_rows: number } | null };
 type Issue = { code: string; severity: 'error' | 'warning'; message: string; field?: string };
 type Preview = { row: RecordItem; target: Target; data: Record<string, any>; normalized_data: Record<string, any>; issues: Issue[]; can_save: boolean; requires_acknowledgement: string[]; preview_token: string };
 type PreviewPage = Page<Preview> & { import_revision: number };
@@ -130,8 +130,9 @@ function initialMapping(imported: ImportRecord): MappingDraft {
   const defaults = imported.data.defaults || {};
   const names = imported.data.columns.map((column: Column) => headerName(column.header));
   const annualOnly = names.includes('year') && !names.some((name: string) => ['date', 'actual_date', 'record_date'].includes(name));
-  const target: Target = imported.data.target || (annualOnly ? 'facts' : names.some((name: string) => ['buyer', 'customer', 'credit'].includes(name)) ? 'sales' : names.some((name: string) => ['supplier', 'merchant', 'invoice', 'invoice_number', 'total', 'amount'].includes(name)) ? 'purchases' : names.some((name: string) => ['product', 'operator', 'hours', 'type'].includes(name)) ? 'operations' : 'facts');
-  const columns = imported.data.target ? imported.data.columns : suggestColumns(imported.data.columns, target);
+  const target: Target = imported.data.target || imported.setup_suggestions?.target || (annualOnly ? 'facts' : names.some((name: string) => ['buyer', 'customer', 'credit'].includes(name)) ? 'sales' : names.some((name: string) => ['supplier', 'merchant', 'invoice', 'invoice_number', 'total', 'amount'].includes(name)) ? 'purchases' : names.some((name: string) => ['product', 'operator', 'hours', 'type'].includes(name)) ? 'operations' : 'facts');
+  const configured = imported.data.target || imported.data.columns.some((column: Column) => column.target_field || column.role !== 'value');
+  const columns = configured ? imported.data.columns : imported.setup_suggestions ? imported.setup_suggestions.columns.map(column => ({ ...column, date_format: column.date_format ?? '', decimal_separator: column.decimal_separator ?? '' })) : suggestColumns(imported.data.columns, target);
   return { target, columns,
     farm_id: defaults.farm_id || imported.data.farm_id || '', temporal_basis: defaults.temporal_basis || '', period: defaults.period || '',
     unit_mode: Object.hasOwn(defaults, 'unit') ? defaults.unit === null ? 'unknown' : 'manual' : 'column', unit: defaults.unit || '',
@@ -139,12 +140,13 @@ function initialMapping(imported: ImportRecord): MappingDraft {
 }
 
 const headerName = (header: string) => header.trim().toLowerCase().replace(/[\s-]+/g, '_');
-function suggestColumns(columns: Column[], target: Target): Column[] {
+function suggestColumns(columns: Column[], target: Target, recognized?: string[]): Column[] {
   const aliases: Record<string, string> = { description: target === 'facts' ? 'label' : 'title', name: target === 'facts' ? 'label' : 'title', total: 'amount', invoice: 'invoice_number', invoice_no: 'invoice_number', invoice_number: 'invoice_number', customer: 'buyer', merchant: 'supplier', record_date: 'date', actual_date: 'date', field_id: 'parcel_id', group_id: 'parcel_id', value_json: 'value' };
   const used = new Set<string>();
   return columns.map(column => {
     const name = headerName(column.header);
-    const candidate = aliases[name] || name;
+    let candidate = recognized?.[column.source_index] || aliases[name] || name;
+    if (candidate === 'title' && target === 'facts') candidate = 'label';
     let field = fields[target].includes(candidate) ? candidate : null;
     if (field && used.has(field)) field = null;
     if (!field && (name.startsWith('source_') || ['holding_id', 'year', 'country', 'raw_value', 'value_origin', 'sqlite_type', 'lineage_path', 'lineage_sha256', 'temporal_warning', 'dataset_status', 'dataset_label', 'source_version'].includes(name))) field = `source.${column.header}`;
@@ -162,6 +164,14 @@ function mappingSignature(config: MappingDraft) {
       role: column.role, reference_kind: column.reference_kind || null, value_type: column.value_type || 'text',
       decimal_separator: column.decimal_separator || '.', date_format: column.date_format || 'iso',
       blank_behavior: column.blank_behavior || 'preserve', null_tokens: column.null_tokens || [] })) });
+}
+
+function ColumnFormat({ column, onChange }: { column: Column; onChange: (update: Partial<Column>) => void }) {
+  if (!column.target_field) return null;
+  return <>
+    {['number', 'integer'].includes(column.value_type || '') && <Field label="Source decimal mark"><select required value={column.decimal_separator ?? '.'} onChange={event => onChange({ decimal_separator: event.target.value })}><option value="" disabled>Choose the decimal mark</option><option value=".">Dot: 12.5</option><option value=",">Comma: 12,5</option></select></Field>}
+    {column.value_type === 'date' && <Field label="Source date format"><select required value={column.date_format ?? 'iso'} onChange={event => onChange({ date_format: event.target.value })}><option value="" disabled>Choose the date order</option><option value="iso">Year-month-day</option><option value="dmy">Day/month/year</option><option value="mdy">Month/day/year</option></select></Field>}
+  </>;
 }
 
 function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }: { imported: ImportRecord; profile:LuxembourgProfile|undefined; farms: RecordItem[]; canReview: boolean; onSaved: (record: RecordItem) => void;onReload:()=>Promise<void> }) {
@@ -201,7 +211,7 @@ function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }
   function change(update: Partial<MappingDraft>) { draft.setValue(previous => ({ ...previous, ...update })); setPreview(null); setSelected([]); setResult(null); }
   function changeColumn(index: number, update: Partial<Column>) { change({ columns: config.columns.map(column => column.source_index === index ? { ...column, ...update } : column) }); }
   function matchNames() {
-    change({ columns: suggestColumns(config.columns, config.target) });
+    change({ columns: suggestColumns(config.columns, config.target, imported.setup_suggestions?.header_fields) });
   }
 
   async function saveMapping(event: FormEvent) {
@@ -217,7 +227,7 @@ function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }
       const value = config[field as keyof MappingDraft]; if (value) defaults[field] = value;
     }
     try {
-      const record = await api.post<RecordItem>(`/imports/${imported.id}/mapping`, { expected_revision: imported.revision, target: config.target, columns: config.columns.map(({ header: _header, ...column }) => column), defaults });
+      const record = await api.post<RecordItem>(`/imports/${imported.id}/mapping`, { expected_revision: imported.revision, target: config.target, columns: config.columns.map(({ header: _header, ...column }) => ({ ...column, date_format: column.date_format || 'iso', decimal_separator: column.decimal_separator || '.' })), defaults });
       onSaved(record);
       draft.setValue(initialMapping({ ...imported, ...record }));
     } catch (failure) { setError(failure); } finally { setBusy(false); }
@@ -246,9 +256,10 @@ function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }
     {canReview && !preset && preview && !mappingOpen && <Button variant="secondary" onClick={() => setMappingOpen(true)}>Change column meanings</Button>}
     {canReview && !preset && (!preview || mappingOpen) && <form className="stack" onSubmit={saveMapping}>
       <fieldset disabled={!draft.ready || busy}><legend>2. Check the suggested column meanings</legend><div className="form-grid">
-        <Field label="These rows contain"><select value={config.target} onChange={event => change({ target: event.target.value as Target, columns: suggestColumns(config.columns, event.target.value as Target), ...(event.target.value === 'sales' ? { temporal_basis: 'calendar_date', period: '' } : {}) })}>{Object.entries(targetNames).map(([target, label]) => <option key={target} value={target}>{label}</option>)}</select></Field>
+        <Field label="These rows contain"><select value={config.target} onChange={event => change({ target: event.target.value as Target, columns: suggestColumns(config.columns, event.target.value as Target, imported.setup_suggestions?.header_fields), ...(event.target.value === 'sales' ? { temporal_basis: 'calendar_date', period: '' } : {}) })}>{Object.entries(targetNames).map(([target, label]) => <option key={target} value={target}>{label}</option>)}</select></Field>
         <Field label="Use this farm for all rows"><select value={config.farm_id} onChange={event => change({ farm_id: event.target.value })}><option value="">Use the mapped farm column</option>{farms.map(farm => <option key={farm.id} value={farm.id}>{farm.data.name}</option>)}</select></Field>
       </div>
+      {imported.setup_suggestions && <div className="panel"><p>We matched the headings and checked up to {imported.setup_suggestions.sampled_rows} rows. Please check the choices below.</p>{imported.setup_suggestions.messages.length > 0 && <ul>{imported.setup_suggestions.messages.map((message, index) => <li key={index}>{message}</li>)}</ul>}<p className="muted">Blank cells, zero and the word NULL stay different. No records are saved until you review the rows.</p></div>}
       <Button variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? 'Hide extra column settings' : 'Change dates, units or other settings'}</Button>
       {advanced && <div className="form-grid">
         <Field label="Time basis for all rows"><select value={config.temporal_basis} onChange={event => change({ temporal_basis: event.target.value })}><option value="">Use the mapped time-basis column</option>{config.target !== 'sales' && <><option value="static">Standing farm detail, not a new annual observation</option><option value="campaign_year">Campaign year / annual summary</option></>}<option value="calendar_date">An actual calendar date</option></select></Field>
@@ -262,10 +273,9 @@ function ImportReview({ imported, profile, farms, canReview, onSaved, onReload }
       <div className="import-demo-table"><table><caption>Check these suggestions. Unused columns stay with the original file.</caption><thead><tr><th scope="col">Column in your file</th><th scope="col">What it means</th>{advanced && <><th scope="col">Read the value as</th><th scope="col">More options</th></>}</tr></thead><tbody>{config.columns.map(column => {
         const sample = imported.rows.items.find(row => row.data.original_row[column.source_index] !== '')?.data.original_row[column.source_index];
         return <tr key={column.source_index}><th scope="row">{column.header || `Column ${column.source_index + 1}`}<small className="muted" style={{ display: 'block', maxWidth: 220, overflowWrap: 'anywhere' }}>{sample === undefined ? 'No sample on this page' : display(sample)}</small></th>
-          <td><select aria-label={`Destination for ${column.header || `column ${column.source_index + 1}`}`} value={column.target_field || ''} onChange={event => changeColumn(column.source_index, { target_field: event.target.value || null })}><option value="">Keep as source evidence only</option>{fields[config.target].map(field => <option key={field} value={field}>{fieldLabel(field, config.target)}</option>)}<option value={`source.${column.header || `column_${column.source_index + 1}`}`}>Source detail: {column.header || column.source_index + 1}</option></select></td>
+          <td><select aria-label={`Destination for ${column.header || `column ${column.source_index + 1}`}`} value={column.target_field || ''} onChange={event => { const field = event.target.value; changeColumn(column.source_index, { target_field: field || null, value_type: field === 'date' ? 'date' : numericFields.includes(field) ? 'number' : field === 'credit' ? 'json' : 'text' }); }}><option value="">Keep as source evidence only</option>{fields[config.target].map(field => <option key={field} value={field}>{fieldLabel(field, config.target)}</option>)}<option value={`source.${column.header || `column_${column.source_index + 1}`}`}>Source detail: {column.header || column.source_index + 1}</option></select>{!advanced && <ColumnFormat column={column} onChange={update => changeColumn(column.source_index, update)} />}</td>
           {advanced && <><td><select aria-label={`Value type for ${column.header}`} value={column.value_type || 'text'} onChange={event => changeColumn(column.source_index, { value_type: event.target.value })}><option value="text">Original text</option><option value="number">Number</option><option value="integer">Whole number</option><option value="date">Date</option><option value="json">Structured value</option></select>
-            {['number', 'integer'].includes(column.value_type || '') && <Field label="Source decimal mark"><select value={column.decimal_separator || '.'} onChange={event => changeColumn(column.source_index, { decimal_separator: event.target.value })}><option value=".">Dot: 12.5</option><option value=",">Comma: 12,5</option></select></Field>}
-            {column.value_type === 'date' && <Field label="Source date format"><select value={column.date_format || 'iso'} onChange={event => changeColumn(column.source_index, { date_format: event.target.value })}><option value="iso">Year-month-day</option><option value="dmy">Day/month/year</option><option value="mdy">Month/day/year</option></select></Field>}</td>
+            <ColumnFormat column={column} onChange={update => changeColumn(column.source_index, update)} /></td>
           <td><Field label="Blank cells"><select value={column.blank_behavior || 'preserve'} onChange={event => changeColumn(column.source_index, { blank_behavior: event.target.value })}><option value="preserve">Keep blank</option><option value="null">Not supplied</option><option value="missing">Use the shared value, if supplied</option></select></Field>
             <Field label="Literal text meaning unknown" hint="Exact match only. Leave blank to preserve every literal token."><input value={column.null_tokens?.[0] || ''} placeholder={'For example, \\N'} onChange={event => changeColumn(column.source_index, { null_tokens: event.target.value ? [event.target.value] : [] })} /></Field>
             <Field label="Reference check"><select value={column.role} onChange={event => changeColumn(column.source_index, { role: event.target.value as Column['role'], reference_kind: event.target.value === 'foreign_key' ? column.reference_kind || 'farms' : null })}><option value="value">No ID or join check</option><option value="identifier">Unique source reference</option><option value="foreign_key">Existing workspace record ID</option></select></Field>

@@ -22,7 +22,7 @@ FIELDS = {
     "operations": {"farm_id", "title", "date", "type", "quantity", "unit", "parcel", "parcel_id", "field_id", "group_id", "crop", "product", "operator", "hours", "note", "notes", "document_id", "external_id", "origin", "period", "temporal_basis", "sources", "review_status", "treatment_type", "product_authorisation", "dose", "dose_unit", "treated_size", "treated_unit", "treated_location", "start_time", "eppo_code", "bbch_stage", "batch_number", "contractor", "label_time_required", "label_growth_stage_required", "cz_ppp", "supersedes_id"},
     "purchases": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "supplier", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
     "sales": {"farm_id", "title", "date", "category", "quantity", "unit", "amount", "currency", "document_id", "buyer", "invoice_number", "tax_amount", "tax_rate", "note", "notes", "external_id", "origin", "credit", "period", "temporal_basis", "sources", "review_status"},
-    "tasks": {"farm_id", "title", "description", "due_date", "status", "assignee", "request_id", "document_id", "notes", "checklist_id", "checklist_item_key", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
+    "tasks": {"farm_id", "title", "description", "due_date", "status", "assignee", "request_id", "document_id", "evidence_documents", "notes", "checklist_id", "checklist_item_key", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
     "checklists": {"farm_id", "title", "pack_id", "version", "scheme", "items", "notes", "deadline", "request_id", "reporting_year", "compliance_rule_id", "compliance_version", "compliance_hash", "source_citations"},
     "settings": {"language", "country", "region", "reporting_year", "notifications"},
 }
@@ -399,6 +399,31 @@ def validate_data(conn, kind, patch, old=None, *, record_id=None):
             data["temporal_basis"] = "calendar_date"
             data["period"] = actual_date
         if kind == "tasks":
+            if old and old.get("document_id") and data.get("document_id") != old["document_id"]:
+                _invalid("Keep the original document linked to this task. Add supporting documents to your answer instead.", field="document_id")
+            evidence = data.get("evidence_documents", [])
+            if not isinstance(evidence, list) or len(evidence) > 20:
+                _invalid("Choose up to 20 supporting documents.", field="evidence_documents")
+            seen = set()
+            for source in evidence:
+                if not isinstance(source, dict) or set(source) != {"document_id", "document_revision"}:
+                    _invalid("Choose a supporting document and its saved version.", field="evidence_documents")
+                document_id = _uuid(source["document_id"], "document_id")
+                if document_id in seen:
+                    _invalid("Choose each supporting document only once.", field="evidence_documents")
+                seen.add(document_id)
+                if type(source["document_revision"]) is not int or source["document_revision"] < 1:
+                    _invalid("Choose a valid supporting document version.", field="evidence_documents")
+            if seen:
+                conn.execute("SELECT id FROM records WHERE id=ANY(%s::uuid[]) AND kind='documents' ORDER BY id FOR SHARE", (sorted(seen),)).fetchall()
+            for source in evidence:
+                document = fetch_record(conn, "documents", _uuid(source["document_id"], "document_id"))
+                if document["data"].get("farm_id") != data["farm_id"]:
+                    _invalid("Choose supporting documents saved for this farm.", field="evidence_documents")
+                if source["document_revision"] != document["revision"]:
+                    raise ApiError(409, "task_evidence_changed", "A supporting document changed. Read its latest version and select it again.", {"document_id": document["id"]})
+            if "evidence_documents" in patch:
+                data["evidence_documents"] = [{"document_id": _uuid(source["document_id"], "document_id"), "document_revision": source["document_revision"]} for source in evidence]
             data.setdefault("status", "open")
             if not isinstance(data["status"], str) or data["status"] not in {"open", "in_progress", "done", "cancelled"}:
                 _invalid("Choose a supported task status.")

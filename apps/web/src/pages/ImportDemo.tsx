@@ -52,7 +52,7 @@ export function ImportDemo({ farmId, farmName = 'Sample farm', showSamples = tru
 function FarmImport({ farmId, farmName, workspaceId, canWrite, showSamples }: { farmId: string; farmName: string; workspaceId: string; canWrite: boolean; showSamples: boolean }) {
   const bookmark = usePrivateDraft<Bookmark>(`examples/import/${farmId}`, { kind: 'document', id: null });
   const [file, setFile] = useState<File | null>(null);
-  const [delimiter, setDelimiter] = useState(',');
+  const [delimiter, setDelimiter] = useState('auto');
   const [showOriginal, setShowOriginal] = useState(false);
   const [source, setSource] = useState<SourceRecord | null>(null);
   const [records, setRecords] = useState<RecordItem[]>([]);
@@ -153,7 +153,7 @@ function FarmImport({ farmId, farmName, workspaceId, canWrite, showSamples }: { 
     {showSamples && <div className="actions"><span>Need a file to try?</span><Button variant="ghost" onClick={() => downloadSample('document', farmId, farmName)} disabled={!!busy}>Sample receipt</Button><Button variant="ghost" onClick={() => downloadSample('csv', farmId, farmName)} disabled={!!busy}>Sample CSV</Button></div>}
     <form onSubmit={upload} className="import-demo-upload">
       <Field label="File or photo" hint="CSV up to 20 MiB; PDF, JPG, PNG or text up to 12 MiB."><input ref={input} type="file" required disabled={!!busy || !canWrite} accept=".csv,.txt,.pdf,.png,.jpg,.jpeg,text/csv,text/plain,application/pdf,image/png,image/jpeg" onChange={event => { setFile(event.target.files?.[0] ?? null); setError(''); }}/></Field>
-      {file && fileKind(file) === 'csv' && <Field label="CSV separator"><select value={delimiter} disabled={!!busy} onChange={event => setDelimiter(event.target.value)}><option value=",">Comma</option><option value=";">Semicolon</option><option value={'\t'}>Tab</option></select></Field>}
+      {file && fileKind(file) === 'csv' && <Field label="CSV separator" hint="We can usually work this out. Change it if your file does not open correctly."><select value={delimiter} disabled={!!busy} onChange={event => setDelimiter(event.target.value)}><option value="auto">Work it out for me</option><option value=",">Comma</option><option value=";">Semicolon</option><option value={'\t'}>Tab</option></select></Field>}
       <Button type="submit" loading={!!busy} disabled={!file || !bookmark.ready || !canWrite}>{busy || 'Read this file'}</Button>
     </form>
     {!canWrite && <Notice>You can read existing files. The farm owner must grant review permission before you can upload.</Notice>}
@@ -173,7 +173,7 @@ function FarmImport({ farmId, farmName, workspaceId, canWrite, showSamples }: { 
             return <li key={index} value={Number(line.line)}>{selected ? <mark>{text(line.text)}</mark> : text(line.text) || ' '}</li>;
           })}</ol></section>)}{!list(extraction.pages).length && <p>No extracted text is available yet.</p>}<p className="muted">First three pages, up to 120 lines each. The reader shows the complete file.</p></div>}</div>
         {highlighted.filter(item => text(item.quote)).map((item, index) => <blockquote key={index}><p>{text(item.quote)}</p><cite>{item.source_kind === 'manual_transcription' ? 'Your transcription' : 'Read from the file'} · page {display(item.page)}, line {display(item.line_start)}</cite></blockquote>)}
-      </section> : <section aria-label="Original CSV rows"><p>{display(source.data.row_count)} rows. Open the review to check column meanings, dates and any warnings.</p>
+      </section> : <section aria-label="Original CSV rows"><p>{display(source.data.row_count)} rows. {source.data.delimiter === ';' ? 'Semicolon-separated' : source.data.delimiter === '\t' ? 'Tab-separated' : 'Comma-separated'} file. Open the review to check column meanings, dates and any warnings.</p>
         <div className="import-demo-table"><table><thead><tr><th>Row</th>{list(source.data.columns).map((column, index) => <th key={index}>{text(column.header, `Column ${index + 1}`)}</th>)}</tr></thead><tbody>{rows.slice(0, 5).map(row => <tr key={row.id}><th>{display(row.data.row_number)}</th>{(Array.isArray(row.data.original_row) ? row.data.original_row : []).map((cell: unknown, index: number) => <td key={index}>{display(cell)}</td>)}</tr>)}</tbody></table></div><p className="muted">First {Math.min(rows.length, 5)} rows. The review includes every row and its checks.</p>
       </section>}
       <h3>3. Review and save your records</h3>

@@ -26,8 +26,9 @@ import { ImportsPage } from './pages/ImportPage';
 import { SatellitePage } from './pages/Satellite';
 import { Connections } from './pages/Connections';
 import { HelpPage } from './pages/Help';
-import { CompliancePage, UpdatesPage } from './pages/Compliance';
-import { CommunityPage } from './pages/Community';
+import { CompliancePage, UpdatesPage, UpdateDetailPage } from './pages/Compliance';
+import { CommunityPage, CommunityComposePage, CommunityThreadPage, PrivateCommunityPage } from './pages/Community';
+import { FundingPage } from './pages/FundingPage';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
 import './pages/administration.css';
@@ -258,7 +259,12 @@ export default function App() {
       <Route path="checks" element={<CompliancePage/>}/>
       <Route path="compliance" element={<LegacyRedirect to="/app/checks"/>}/>
       <Route path="updates" element={<UpdatesPage/>}/>
+      <Route path="updates/:updateId" element={<UpdateDetailPage/>}/>
+      <Route path="funding" element={<FundingPage/>}/>
       <Route path="community" element={<CommunityPage/>}/>
+      <Route path="community/new" element={<CommunityComposePage/>}/>
+      <Route path="community/posts/:questionId" element={<CommunityThreadPage/>}/>
+      <Route path="community/private" element={<PrivateCommunityPage/>}/>
       <Route path="assistant/connect" element={<AssistantConnect/>}/>
       <Route path="guidance" element={<GuidancePage/>}/>
       <Route path="guidance/:packId" element={<GuidanceDetailPage/>}/>

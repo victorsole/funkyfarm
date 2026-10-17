@@ -1,4 +1,4 @@
-"""Optional sourced funding links; no eligibility engine or application action."""
+"""Farm-scoped funding guidance and public source status, not eligibility."""
 
 import json
 from pathlib import Path
@@ -25,12 +25,15 @@ def funding_catalogue():
     return catalogue
 
 
-@router.get("/farms/{farm_id}/funding-guide")
-def funding_guide(farm_id: UUID, session: Session = Depends(require_session)):
+def build_funding_guide(conn, farm_id: str):
     # The existing transaction applies the authenticated workspace's RLS scope.
     # Only minimal farm context is returned; it is not an eligibility input.
-    with transaction(session) as conn:
-        farm = fetch_record(conn, "farms", str(farm_id))
+    farm = fetch_record(conn, "farms", str(farm_id))
+    # A read of stored observations, never a request to a publisher URL.
+    from .regulatory import source_checks
+    from .regulatory_sources import source_catalog
+    monitoring = source_checks(conn, [source for source in source_catalog()
+                                     if "funding" in source.get("workflow_ids", [])])
     country = farm["data"].get("country")
     _, profiles = country_profiles()
     profile = next((item for item in profiles if item["country"] == country), None)
@@ -46,4 +49,17 @@ def funding_guide(farm_id: UUID, session: Session = Depends(require_session)):
         "items": catalogue["programmes"],
         "personalised_eligibility": False,
         "application_enabled": False,
+        "source_checks": monitoring,
+        "updates_href": f"/app/updates?farm_id={farm_id}&family=funding",
+        "questions": [
+            {"id": "organisation", "title": "Check who would apply", "message": "This programme is for qualifying organisations, not an individual farm payment. Check the organisation's legal status and representation with the official eligibility guide."},
+            {"id": "campaign", "title": "Check the project fits", "message": "The project must promote agricultural products. Routine farm costs and your annual CAP claim are different."},
+            {"id": "call", "title": "Check whether applications are open", "message": "The saved 2026 call is closed. Read the current official page before preparing a new application; no 2027 call has been verified here."},
+        ],
     }
+
+
+@router.get("/farms/{farm_id}/funding-guide")
+def funding_guide(farm_id: UUID, session: Session = Depends(require_session)):
+    with transaction(session) as conn:
+        return build_funding_guide(conn, str(farm_id))
