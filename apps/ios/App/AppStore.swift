@@ -70,8 +70,10 @@ import UniformTypeIdentifiers
         for collection in ["farms", "facts", "requests", "documents", "reports", "operations", "purchases", "sales", "tasks", "checklists"] {
             do {
                 var items: [RecordItem] = []; var offset = 0
+                // Source facts may retain a complete large CSV row; keep their page below the API response cap.
+                let pageLimit = collection == "facts" ? 20 : 100
                 while true {
-                    let page = try JSONDecoder().decode(RecordPage.self, from: await api.send("/\(collection)?limit=100&offset=\(offset)"))
+                    let page = try JSONDecoder().decode(RecordPage.self, from: await api.send("/\(collection)?limit=\(pageLimit)&offset=\(offset)"))
                     items.append(contentsOf: page.items)
                     offset += page.items.count
                     if offset >= page.total || page.items.isEmpty { break }
@@ -117,15 +119,25 @@ import UniformTypeIdentifiers
         disk.fieldLibraries[farmID] = value; try persist()
         return value.object
     }
-    func importCSV(bytes: Data, filename: String, grain: String, farmID: String?, idempotency: String) async throws -> RecordItem {
+    func importCSV(bytes: Data, filename: String, grain: String, farmID: String?, idempotency: String, formatProfile: String? = nil, sourceYear: String? = nil, delimiter: String = ",") async throws -> RecordItem {
         guard let api, sessionVerified else { throw ServiceError(status: 0, message: "Reconnect before importing records.") }
         guard bytes.count <= IntakeInbox.maximumFileBytes else { throw ServiceError(status: 0, message: "A native import must be at most 20 MB.") }
         let current = generation
-        var fields = ["grain": grain]
+        var fields = ["grain": grain, "delimiter": delimiter]
         if let farmID { fields["farm_id"] = farmID }
+        if let formatProfile { fields["format_profile"] = formatProfile }
+        if let sourceYear { fields["source_year"] = sourceYear }
         let item = try JSONDecoder().decode(RecordItem.self, from: await api.multipart(path: "/imports", filename: filename, mime: "text/csv", bytes: bytes, fields: fields, idempotency: idempotency))
         guard generation == current, item.workspace_id == account?.workspace.id else { throw CancellationError() }
         return item
+    }
+    func stageImportSource(_ bytes: Data) throws -> String {
+        guard let storage else { throw ServiceError(status: 0, message: "Open an account before saving this private import source.") }
+        return try storage.stage(bytes, extension: "csv")
+    }
+    func removeImportSource(_ name: String) throws {
+        guard let storage else { throw ServiceError(status: 0, message: "No private account is open.") }
+        try storage.removeAttachment(name)
     }
     func selectWorkspace(_ workspace: [String: JSONValue]) async throws {
         guard let old = account, !syncing, !busy,

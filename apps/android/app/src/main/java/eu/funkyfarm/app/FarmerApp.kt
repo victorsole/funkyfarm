@@ -151,6 +151,7 @@ private val tabs = listOf("Home", "Record work", "My fields", "Paperwork", "Docu
         questions?.let { farm -> GuidedQuestions(model, farm) { questions = null } }
         support?.let { section -> SupportHandoff(model, section) { support = null } }
         AdministrationDestination(model)
+        model.sourceImports?.let { route -> key(route.toString()) { SourceImportsScreen(model, route) { model.sourceImports = null } } }
         if (reports) Sheet("Reports and exports", { reports = false }) {
             Text("Prepare a report, check the original facts, then approve the exact version you want to export.")
             Button(onClick = { reports = false; editor = "reports" to null }) { Text("Prepare a report") }

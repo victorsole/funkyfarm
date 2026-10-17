@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -27,10 +28,11 @@ class FarmModel(val context: Context) {
     private var state = JSONObject()
     private var generation = 0
     var session by mutableStateOf<JSONObject?>(null); private set
-    var origin by mutableStateOf("http://10.0.2.2:8139"); private set
+    var origin by mutableStateOf("https://funkyfarm.elfeel.me"); private set
     var tab by mutableStateOf("Home")
     var detail by mutableStateOf<Pair<String, String>?>(null)
     var administration by mutableStateOf<Pair<String, String?>?>(null)
+    var sourceImports by mutableStateOf<JSONObject?>(null)
     var item by mutableStateOf<JSONObject?>(null); private set
     var records by mutableStateOf<Map<String, List<JSONObject>>>(emptyMap()); private set
     var totals by mutableStateOf<Map<String, Int>>(emptyMap()); private set
@@ -54,7 +56,7 @@ class FarmModel(val context: Context) {
     }
     fun api() = Api(origin, session?.optString("token").orEmpty(), session?.optJSONObject("workspace")?.optString("id").orEmpty())
     private fun activate(auth: JSONObject, endpoint: String) {
-        generation++; origin = endpoint; session = auth; administration = null
+        generation++; origin = endpoint; session = auth; administration = null; sourceImports = null
         vault = PrivateStore(context, auth.getJSONObject("user").getString("id") + ":" + auth.getJSONObject("workspace").getString("id"))
         state = vault!!.json("workspace.json")
         staged = state.optJSONArray("attachments")?.objects().orEmpty()
@@ -83,7 +85,7 @@ class FarmModel(val context: Context) {
         activate(response, endpoint); message = "Signed in to your private workspace."; refresh()
     }
     fun logout() {
-        val client = api(); val old = vault; administration = null
+        val client = api(); val old = vault; administration = null; sourceImports = null
         generation++; session = null; vault = null; state = JSONObject(); records = emptyMap(); totals = emptyMap(); staged = emptyList(); packs = emptyList(); extras = emptyMap(); privateUnavailable = emptySet(); item = null; detail = null; sending.clear(); busy = false; offline = false
         bootstrap.purge(); old?.purge(); intake.purge(); shared = emptyList()
         listOf("exports", "camera").forEach { name -> File(context.cacheDir, name).listFiles()?.forEach { it.delete() } }
@@ -95,7 +97,7 @@ class FarmModel(val context: Context) {
         try {
             val pages = withContext(Dispatchers.IO) {
                 client.request("/auth/session")
-                listOf("farms", "facts", "requests", "documents", "reports", "operations", "purchases", "sales", "tasks", "checklists").associateWith { kind -> client.request("/$kind?limit=200") }
+                listOf("farms", "facts", "requests", "documents", "reports", "operations", "purchases", "sales", "tasks", "checklists").associateWith { kind -> client.request("/$kind?limit=${recordPageSize(kind)}") }
             }
             if (generation != expected) return@action
             val loaded = pages.mapValues { it.value.optJSONArray("items")?.objects().orEmpty() }
@@ -115,7 +117,7 @@ class FarmModel(val context: Context) {
     }
     fun loadMore(kind: String) = action {
         val expected = generation; val client = api(); val offset = records[kind].orEmpty().size
-        val page = withContext(Dispatchers.IO) { client.request("/$kind?limit=200&offset=$offset") }
+        val page = withContext(Dispatchers.IO) { client.request("/$kind?limit=${recordPageSize(kind)}&offset=$offset") }
         if (generation == expected) {
             records = records + (kind to (records[kind].orEmpty() + page.optJSONArray("items")?.objects().orEmpty()).distinctBy { it.optString("id") })
             totals = totals + (kind to page.optInt("total")); state.put("totals", JSONObject(totals)); state.optJSONObject("cache")?.put(kind, JSONArray(records[kind])); persist()
@@ -156,6 +158,44 @@ class FarmModel(val context: Context) {
         }
     }
     fun forgetExtra(key: String) { extras = extras - key }
+    suspend fun sourceRequest(path: String, method: String = "GET", body: JSONObject? = null, retryId: String? = null): JSONObject {
+        val expected = generation; val client = api(); val workspace = session?.getJSONObject("workspace")?.getString("id") ?: throw CancellationException()
+        val response = withContext(Dispatchers.IO) { client.request(path, method, body, retryId) }
+        if (generation != expected || session == null) throw CancellationException()
+        fun checkWorkspace(value: JSONObject) {
+            if (value.has("workspace_id")) require(value.getString("workspace_id") == workspace) { "This source does not belong to the open workspace." }
+            value.optJSONArray("items")?.objects()?.forEach(::checkWorkspace)
+            listOf("rows", "row", "record", "farm").forEach { key -> value.optJSONObject(key)?.let(::checkWorkspace) }
+        }
+        checkWorkspace(response)
+        return response
+    }
+    fun saveImportFile(key: String, bytes: ByteArray, filename: String, owner: JSONObject): JSONObject {
+        require(session === owner && vault != null) { "The account changed before this file could be saved." }
+        require(bytes.isNotEmpty() && bytes.size <= MAX_SOURCE_IMPORT) { "Choose a nonempty CSV no larger than 20 MiB." }
+        val decoder = Charsets.UTF_8.newDecoder(); decoder.decode(java.nio.ByteBuffer.wrap(bytes))
+        require(bytes.none { it == 0.toByte() }) { "Use UTF-8 text CSV, not a spreadsheet workbook." }
+        val old = draft(key, JSONObject())
+        require(!old.has("upload_intent")) { "Resolve the pending upload before choosing another source." }
+        val file = obj("id" to UUID.randomUUID().toString(), "name" to filename.take(255), "size" to bytes.size)
+        vault!!.put(file.getString("id"), bytes)
+        val next = JSONObject(old.toString()).put("file", file)
+        try { saveDraft(key, next) } catch (error: Throwable) { vault!!.delete(file.getString("id")); throw error }
+        old.optJSONObject("file")?.optString("id")?.let { vault!!.delete(it) }
+        return next
+    }
+    fun clearImportFile(key: String) {
+        val file = draft(key, JSONObject()).optJSONObject("file")
+        deleteDraft(key); file?.optString("id")?.let { vault?.delete(it) }
+    }
+    suspend fun uploadImportFile(file: JSONObject, fields: JSONObject, retryId: String): JSONObject {
+        val expected = generation; val client = api(); val store = vault ?: throw CancellationException()
+        val workspace = session!!.getJSONObject("workspace").getString("id")
+        val response = withContext(Dispatchers.IO) { val bytes = store.read(file.getString("id")) ?: error("The saved source is missing. Select it again after resolving this upload."); client.uploadImport(bytes, file.getString("name"), fields, retryId) }
+        if (generation != expected || session == null) throw CancellationException()
+        require(response.getString("workspace_id") == workspace) { "The uploaded source did not match this workspace." }
+        return response
+    }
     fun checkCapture(key: String, body: JSONObject) = action {
         val expected = generation; val client = api()
         val response = withContext(Dispatchers.IO) { client.request("/workflow/check", "POST", body) }

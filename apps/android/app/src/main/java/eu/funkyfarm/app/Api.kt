@@ -8,7 +8,10 @@ import java.net.URI
 import java.net.URL
 
 const val MAX_DOCUMENT = 10 * 1024 * 1024
-class ApiFailure(val status: Int, val code: String, override val message: String) : Exception(message)
+const val MAX_SOURCE_IMPORT = 20 * 1024 * 1024
+internal const val SOURCE_FACT_PAGE_SIZE = 5
+internal fun recordPageSize(kind: String): Int = if (kind == "facts") SOURCE_FACT_PAGE_SIZE else 100
+class ApiFailure(val status: Int, val code: String, override val message: String, val details: JSONObject = JSONObject()) : Exception(message)
 fun InputStream.bounded(limit: Int): ByteArray {
     val result = ByteArrayOutputStream()
     val block = ByteArray(8192)
@@ -33,6 +36,19 @@ class Api(val base: String, private val token: String = "", private val workspac
         return JSONObject(exchange("/documents", "POST", output.toByteArray(), "multipart/form-data; boundary=$boundary", retryId).toString(Charsets.UTF_8))
     }
     fun download(path: String) = exchange(path, "GET", null, "application/json", null, 24 * 1024 * 1024)
+    fun uploadImport(bytes: ByteArray, filename: String, fields: JSONObject, retryId: String): JSONObject {
+        require(bytes.isNotEmpty() && bytes.size <= MAX_SOURCE_IMPORT) { "Choose a nonempty UTF-8 CSV no larger than 20 MiB." }
+        val boundary = "source-$retryId"
+        val output = ByteArrayOutputStream()
+        fields.keys().asSequence().sorted().forEach { key ->
+            require(key in listOf("grain", "farm_id", "format_profile", "source_year", "delimiter"))
+            output.write("--$boundary\r\nContent-Disposition: form-data; name=\"$key\"\r\n\r\n${fields.get(key)}\r\n".toByteArray(Charsets.UTF_8))
+        }
+        val safeName = filename.replace(Regex("[^a-zA-Z0-9._ -]"), "_").take(100).ifBlank { "source.csv" }
+        output.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeName\"\r\nContent-Type: text/csv\r\n\r\n".toByteArray())
+        output.write(bytes); output.write("\r\n--$boundary--\r\n".toByteArray())
+        return JSONObject(exchange("/imports", "POST", output.toByteArray(), "multipart/form-data; boundary=$boundary", retryId).toString(Charsets.UTF_8))
+    }
     private fun exchange(path: String, method: String, body: ByteArray?, mime: String, retryId: String?, limit: Int = 12 * 1024 * 1024): ByteArray {
         require(path.startsWith("/") && !path.startsWith("//"))
         val connection = URL("${base.trimEnd('/')}/api/v1$path").openConnection() as HttpURLConnection
@@ -46,7 +62,7 @@ class Api(val base: String, private val token: String = "", private val workspac
             val status = connection.responseCode
             if (status !in 200..299) {
                 val parsed = runCatching { JSONObject(connection.errorStream?.use { it.bounded(64 * 1024) }?.toString(Charsets.UTF_8) ?: "{}").optJSONObject("error") }.getOrNull()
-                throw ApiFailure(status, parsed?.optString("code") ?: "http_$status", parsed?.optString("message") ?: "The service returned $status.")
+                throw ApiFailure(status, parsed?.optString("code") ?: "http_$status", parsed?.optString("message") ?: "The service returned $status.", parsed?.optJSONObject("details") ?: JSONObject())
             }
             return connection.inputStream.use { it.bounded(limit) }
         } finally { connection.disconnect() }

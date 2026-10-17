@@ -16,7 +16,7 @@ import java.time.LocalDate
     val requests = model.records["requests"].orEmpty().filter { it.data().optString("farm_id") == farm.optString("id") }
     var requestId by remember(farm.optString("id")) { mutableStateOf(requests.firstOrNull()?.optString("id").orEmpty()) }
     var answering by remember { mutableStateOf<JSONObject?>(null) }
-    LaunchedEffect(requestId) { if (requestId.isNotBlank()) model.loadExtra("questions:$requestId", "/workflow/questions?request_id=$requestId") }
+    LaunchedEffect(requestId, model.serverVersion) { if (requestId.isNotBlank()) model.loadExtra("questions:$requestId", "/workflow/questions?request_id=$requestId") }
     val response = model.extras["questions:$requestId"]
     Sheet("A few answers for your paperwork", close) {
         Text("${farm.title()}. Start with the request you are working on. These questions focus on answers that still need attention; checked answers count towards your progress.")
@@ -28,6 +28,14 @@ import java.time.LocalDate
         else if (response != null) {
             Text("${response.optInt("completed_count")} of ${response.optInt("total_count")} answers checked", style = MaterialTheme.typography.titleMedium)
             response.optJSONArray("blocked_reasons")?.let { reasons -> repeat(reasons.length()) { Text(reasons.get(it).toString()) } }
+            response.optJSONArray("source_tables")?.objects()?.forEach { table -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(table.optString("label"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${table.optInt("confirmed_count")} confirmed source rows · ${table.optInt("proposed_count")} waiting for review")
+                Text("These counts do not establish eligibility or a complete application. Keep the original source units and review each proposed row separately.", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = { close(); model.sourceImports = obj("profile_id" to table.getString("profile_id"), "farm_id" to farm.getString("id")) }) { Text("Bring in this source table") }
+                TextButton(onClick = { close(); model.sourceImports = obj("mode" to "facts", "profile_id" to table.getString("profile_id"), "farm_id" to farm.getString("id")) }) { Text("Review saved rows from this table") }
+            } } }
+            OutlinedButton(onClick = { model.loadExtra("questions:$requestId", "/workflow/questions?request_id=$requestId") }, enabled = !model.busy) { Text("Refresh checked answers and source rows") }
             response.optJSONArray("questions")?.objects()?.forEach { question -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(question.optString("prompt").ifBlank { question.optString("label") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 (question.opt("physical_label") as? String)?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelLarge) }

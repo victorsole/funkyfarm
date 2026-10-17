@@ -28,15 +28,20 @@ import java.time.LocalDate
             Text("Farm information", style = MaterialTheme.typography.titleLarge)
             listOf("name", "country", "region", "area_ha", "external_id", "notes").forEach { key -> if (data.has(key)) LiteralField(key.replace('_', ' '), data.opt(key)) }
             Text("Facts and evidence", style = MaterialTheme.typography.titleLarge)
-            val facts = model.records["facts"].orEmpty().filter { it.data().optString("farm_id") == record.optString("id") }
-            if (facts.isEmpty()) Text("No facts recorded. Add a fact from My farm, then check its source before confirming.")
+            val workspaceFacts = model.records["facts"].orEmpty()
+            val factTotal = model.totals["facts"]
+            val facts = workspaceFacts.filter { it.data().optString("farm_id") == record.optString("id") }
+            if (facts.isEmpty()) Text("No facts for this farm are in the loaded records.")
             facts.forEach { fact -> OutlinedButton(onClick = { model.open("facts", fact.getString("id")) }, modifier = Modifier.fillMaxWidth()) { Column { Text(fact.title()); Text("${literal(fact.data().opt("value"))} ${fact.data().optString("unit").takeUnless { it == "null" }.orEmpty()} · ${fact.data().optString("review_status")}", style = MaterialTheme.typography.bodySmall) } } }
+            Text(if (factTotal != null) "${workspaceFacts.size} of $factTotal workspace facts loaded. Only this farm's loaded facts are shown here." else "${workspaceFacts.size} workspace facts loaded; refresh the workspace to check the current total. Only this farm's facts are shown here.", style = MaterialTheme.typography.bodySmall)
+            if (factTotal != null && workspaceFacts.size < factTotal) OutlinedButton(onClick = { model.loadMore("facts") }, enabled = !model.busy && !model.offline) { Text("Load more workspace facts for this farm list") }
             var reconcile by remember { mutableStateOf(false) }
             OutlinedButton(onClick = { model.loadExtra("reconciliation:${record.getString("id")}", "/reconciliation?farm_id=${record.getString("id")}"); reconcile = true }) { Text("Compare competing evidence") }
             if (reconcile) Reconciliation(model, record.getString("id")) { reconcile = false }
         } else if (kind == "facts") {
             Text("Check this fact against its source", style = MaterialTheme.typography.titleLarge)
-            LiteralField("Value", data.opt("value")); listOf("unit", "period", "temporal_basis").forEach { if (data.has(it)) LiteralField(it.replace('_', ' '), data.opt(it)) }
+            if (data.optJSONObject("value") != null && sourceProfileId(record) != null) SourceFactValue(model, record) else LiteralField("Value", data.opt("value"))
+            listOf("unit", "period", "temporal_basis").forEach { if (data.has(it)) LiteralField(it.replace('_', ' '), data.opt(it)) }
             Sources(data.optJSONArray("sources"))
             if (data.optString("review_status") == "proposed") {
                 var checked by remember(record.optString("id"), record.optInt("revision")) { mutableStateOf(false) }
@@ -159,8 +164,13 @@ private fun jsonLiteral(value: Any?): String {
     snapshot.optJSONArray("fields")?.objects()?.forEach { field ->
         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(field.optString("label", field.optString("field")), fontWeight = FontWeight.Bold)
-            LiteralField(if (field.optBoolean("missing")) "Missing answer" else "Snapshot value", field.opt("value"))
+            (field.opt("group_label") as? String)?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (!field.optBoolean("missing") && field.optJSONObject("row_schema") != null && field.optJSONObject("value") != null) {
+                SourceRowValues(field.getJSONObject("value"), field.getJSONObject("row_schema"))
+                Text("Column meanings and original units are retained in this report's snapshot.", style = MaterialTheme.typography.bodySmall)
+            } else LiteralField(if (field.optBoolean("missing")) "Missing answer" else "Snapshot value", field.opt("value"))
             listOf("unit", "period", "temporal_basis").forEach { if (field.has(it)) LiteralField(it.replace('_', ' '), field.opt(it)) }
+            Sources(field.optJSONArray("sources"))
             if (field.optString("fact_id").isNotBlank()) TextButton(onClick = { model.open("facts", field.getString("fact_id")) }) { Text("Check source fact · revision ${field.optInt("fact_revision")}") }
         } }
     }

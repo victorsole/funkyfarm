@@ -39,8 +39,13 @@ struct ReportDetail: View {
                 ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
                     let data = field.object
                     DisclosureGroup(data["label"]?.text ?? data["field"]?.text ?? "Report field") {
-                        Text(data["value"]?.text ?? "Not supplied").font(.headline)
-                        JSONFields(data: data.filter { $0.key != "value" && $0.key != "label" })
+                        if let schema = data["row_schema"]?.object, !schema.isEmpty, case .object(let values)? = data["value"] {
+                            Notice("These labels and source units are retained in this report snapshot. No current profile catalogue is used to reinterpret them.")
+                            SourceRowCells(value: values, schema: schema)
+                            if let period = data["period"] { LabeledContent("Retained source period", value: period.text) }
+                            if let id = schema["id"] { LabeledContent("Retained source definition", value: id.text) }
+                        } else { SourceCellValue(value: data["value"]) }
+                        DisclosureGroup("Retained field identity") { JSONFields(data: data.filter { !["value", "label", "row_schema"].contains($0.key) }) }
                         if let factID = data["fact_id"]?.text, UUID(uuidString: factID) != nil { NavigationLink("Review source fact") { DetailView(collection: "facts", id: factID) } }
                     }
                 }

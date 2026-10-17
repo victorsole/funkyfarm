@@ -39,7 +39,7 @@ struct ElephantMark: View {
 struct SignInView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var labels: NativeLabels
-    @State private var endpoint = "http://localhost:8139/api/v1"
+    @State private var endpoint = "https://funkyfarm.elfeel.me/api/v1"
     @State private var email = ""
     @State private var password = ""
     @State private var name = ""
@@ -68,9 +68,11 @@ struct SignInView: View {
                     if working { ProgressView("Connecting…") }
                     Toggle("I need a new account", isOn: $register)
                 }
-                Section("Local service") {
-                    TextField("Service API address", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    Text("The simulator uses localhost. An iPhone needs the service's reachable HTTPS or .local address. Account data stays with the selected service.").font(.footnote).foregroundStyle(.secondary)
+                Section {
+                    DisclosureGroup("Use another service") {
+                        TextField("Service API address", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                        Text("Leave this unchanged to use funkyfarm. For local testing, enter your local API address. Your records stay with the service you choose.").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }.disabled(working)
                 if let problem = problem ?? store.error { Section { Notice(problem, warning: true) } }
                 Section { NavigationLink(labels.text("common.language", fallback: "Language")) { LanguageSettingsView() } }
@@ -369,11 +371,16 @@ struct FactReview: View {
     @State private var confirm = false
     @State private var correctionSource: RecordItem?
     @State private var dependencies: JSONValue?
+    private var profileImportID: String? {
+        guard (item.data["sources"]?.array ?? []).contains(where: { $0.object["kind"] == .string("authority_csv_profile") }) else { return nil }
+        return (item.data["sources"]?.array ?? []).compactMap { $0.object["import_id"]?.text }.first
+    }
     var body: some View {
         List {
             Section("Review the proposed value") {
                 Text(item.title).font(.title2.bold())
-                Text(item.data["value"]?.text ?? "No value supplied").font(.title3).textSelection(.enabled)
+                if case .object(let value)? = item.data["value"], (item.data["sources"]?.array ?? []).contains(where: { $0.object["kind"] == .string("authority_csv_profile") }) { SourceRowCells(value: value) }
+                else { Text(item.data["value"]?.text ?? "No value supplied").font(.title3).textSelection(.enabled) }
                 LabeledContent("Review state", value: item.state)
                 LabeledContent("Unit", value: item.value("unit"))
                 LabeledContent("Period", value: item.value("period"))
@@ -386,6 +393,7 @@ struct FactReview: View {
                     VStack(alignment: .leading) {
                         Text(source.text).font(.callout).textSelection(.enabled)
                         RecordEvidenceLink(source: source)
+                        if let importID = source.object["import_id"]?.text { NavigationLink("Compare the original import row before confirming") { ImportedFactReviewView(factID: item.id, importID: importID) } }
                         if let documentID = source.object["document_id"]?.text { NavigationLink("Open source document") { DetailView(collection: "documents", id: documentID) } }
                     }
                 }
@@ -394,7 +402,8 @@ struct FactReview: View {
             Section {
                 TextField("Review note", text: $note, axis: .vertical)
                 if item.state == "proposed" {
-                    Button("Confirm this fact") { confirm = true }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || (item.data["supersedes_id"] != nil && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                    if let profileImportID { NavigationLink("Compare original source cells and confirm separately") { ImportedFactReviewView(factID: item.id, importID: profileImportID) } }
+                    else { Button("Confirm this fact") { confirm = true }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || (item.data["supersedes_id"] != nil && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)) }
                     Button("Reject proposal", role: .destructive) { review("rejected") }.disabled(working || !store.sessionVerified || note.isEmpty)
                 }
                 Button("Propose a correction") {

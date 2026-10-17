@@ -11,6 +11,7 @@ struct GuidedRequestView: View {
     @State private var completed = 0
     @State private var total = 0
     @State private var blocked: [JSONValue] = []
+    @State private var sourceTables: [[String: JSONValue]] = []
     @State private var text = ""
     @State private var choice: JSONValue = .null
     @State private var unknown = false
@@ -68,6 +69,23 @@ struct GuidedRequestView: View {
                 Text("Each answer starts as a proposal. Confirming its source is a separate review, and unresolved conflicts remain visible.").font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(Array(blocked.enumerated()), id: \.offset) { _, reason in Section { Notice(reason.object["message"]?.text ?? reason.text, warning: true) } }
+            if !sourceTables.isEmpty {
+                Section("Source tables needed for this request") {
+                    ForEach(Array(sourceTables.enumerated()), id: \.offset) { _, table in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(table["label"]?.text ?? "Original source table").font(.headline)
+                            if let count = table["confirmed_count"] { LabeledContent("Confirmed source rows", value: count.text) }
+                            if let count = table["proposed_count"] { LabeledContent("Proposed source rows", value: count.text) }
+                            if let profileID = table["profile_id"]?.text, let farmID = request?.data["farm_id"]?.text {
+                                NavigationLink("Import the matching source export") { ImportRecordsView(initialProfileID: profileID, initialFarmID: farmID) }
+                                NavigationLink("Compare and review existing source facts") { SourceTableFactsView(farmID: farmID, profileID: profileID) }
+                            }
+                            Text("Import preserves original rows. Review each proposal separately; a source table is not a manually typed summary answer.").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("Refresh confirmed source-row counts") { Task { await load() } }.disabled(working)
+                }
+            }
             if let question {
                 Section("Question \(index + 1) of \(questions.count) to review") {
                     Text(question["prompt"]?.text ?? question["label"]?.text ?? key).font(.title3.bold()).accessibilityAddTraits(.isHeader)
@@ -132,7 +150,7 @@ struct GuidedRequestView: View {
                 }
             } else if !working {
                 Section {
-                    Notice(questions.isEmpty && blocked.isEmpty ? "The service has no unresolved questions for this request. Review its report prerequisites before approval." : "Questions are not available until the listed prerequisites are resolved.")
+                    Notice(!sourceTables.isEmpty ? "Review the original source tables above. Confirmed source rows are separate from ordinary questions, and report prerequisites still apply." : questions.isEmpty && blocked.isEmpty ? "The service has no unresolved questions for this request. Review its report prerequisites before approval." : "Questions are not available until the listed prerequisites are resolved.")
                     NavigationLink("Return to request details") { DetailView(collection: "requests", id: requestID) }
                 }
             }
@@ -158,6 +176,7 @@ struct GuidedRequestView: View {
             if case .number(let number)? = value["completed_count"] { completed = Int(number) }
             if case .number(let number)? = value["total_count"] { total = Int(number) }
             blocked = value["blocked_reasons"]?.array ?? []
+            sourceTables = value["source_tables"]?.array.map(\.object) ?? []
             if let savedID = deviceDraft?.payload["question_id"]?.text, let savedIndex = questions.firstIndex(where: { $0["id"]?.text == savedID }) { index = savedIndex }
             else if !selectedQuestionID.isEmpty, let same = questions.firstIndex(where: { $0["id"]?.text == selectedQuestionID }) { index = same }
             else if deviceDraft?.payload["question_id"] == nil, let savedKey = deviceDraft?.payload["key"]?.text {

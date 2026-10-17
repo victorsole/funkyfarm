@@ -3,7 +3,20 @@ import UniformTypeIdentifiers
 
 struct ImportRecordsView: View {
     @EnvironmentObject private var store: AppStore
+    var initialProfileID: String? = nil
+    var initialFarmID: String? = nil
     @State private var imports: [RecordItem] = []
+    @State private var profiles: [[String: JSONValue]] = []
+    @State private var profileID = ""
+    @State private var delimiter = ","
+    @State private var sourceConfirmed = false
+    @State private var attachment: String?
+    @State private var draftLoaded = false
+    @State private var listOffset = 0
+    @State private var listTotal = 0
+    @State private var profileProblem: String?
+    @State private var profileCatalogueReady = false
+    @State private var trackedUploadValues: [String: JSONValue]?
     @State private var picker = false
     @State private var bytes: Data?
     @State private var filename = ""
@@ -12,52 +25,84 @@ struct ImportRecordsView: View {
     @State private var uploadKey = UUID()
     @State private var working = false
     @State private var problem: String?
+    private var profile: [String: JSONValue]? { profiles.first { $0["id"]?.text == profileID } }
+    private var formKey: String { "import-upload:" + (initialProfileID ?? "generic") + ":" + (initialFarmID ?? "choose") }
+    private var uploadValues: [String: JSONValue] { ["grain": .string(grain), "farm_id": .string(farm), "format_profile": .string(profileID), "delimiter": .string(delimiter), "profile_definition_hash": profile?["definition_hash"] ?? .null, "source_year": profile?["source_year"] ?? .null] }
+    private var canUpload: Bool {
+        guard !grain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        if profileID.isEmpty { return delimiter != "auto" }
+        guard profileCatalogueReady, let profile, SourceText.year(profile["source_year"]) != nil, let farm = store.record("farms", farm) else { return false }
+        return sourceConfirmed && farm.data["country"] == profile["country"]
+    }
     var body: some View {
         List {
             Section("Bring in existing records") {
                 Notice("Import a UTF-8 CSV file. The service preserves the original cells and source rows. Mapping and row review happen before any proposed farm facts or work records are created.")
-                Button("Choose CSV file") { picker = true }
+                Picker("Source format", selection: $profileID) { Text("Generic column mapping").tag(""); ForEach(Array(profiles.enumerated()), id: \.offset) { _, profile in Text(profile["label"]?.text ?? profile["id"]?.text ?? "Source profile").tag(profile["id"]?.text ?? "") } }
+                if !profileID.isEmpty {
+                    if let profile { Text(profile["label"]?.text ?? profileID).font(.headline); LabeledContent("Documented source country", value: profile["country"]?.text ?? "Unknown"); LabeledContent("Documented source year", value: SourceText.year(profile["source_year"]) ?? "Unknown"); if let notice = profile["notice"] { Notice(notice.text) }; Toggle("I checked this is the selected country and year's source export", isOn: $sourceConfirmed) }
+                    else { Notice("The selected source profile is unavailable. Reload the catalogue before uploading; no replacement profile is chosen automatically.", warning: true) }
+                }
+                Picker("File delimiter", selection: $delimiter) { Text("Comma").tag(","); Text("Semicolon").tag(";"); Text("Tab").tag("\t"); if !profileID.isEmpty { Text("Match the profile's documented headers").tag("auto") } }
+                Button("Choose CSV file") { picker = true }.disabled(working)
                 if let bytes {
                     Text(filename).font(.headline)
                     Text(ByteCountFormatter.string(fromByteCount: Int64(bytes.count), countStyle: .file)).font(.caption)
-                    FarmPicker(selected: $farm, optional: true)
+                    FarmPicker(selected: $farm, optional: profileID.isEmpty)
+                    if let profile, let selectedFarm = store.record("farms", farm), selectedFarm.data["country"] != profile["country"] { Notice("The selected farm country does not match this source profile. Choose the matching farm or source; nothing is reassigned automatically.", warning: true) }
                     TextField("What does each row represent?", text: $grain, axis: .vertical)
                     Text("For example, one field application on one date, or one holding and reporting year. Preserve the source's original level of detail.").font(.footnote).foregroundStyle(.secondary)
                     Button("Upload source for review") {
                         working = true; problem = nil
                         Task {
-                            do { let item = try await store.importCSV(bytes: bytes, filename: filename, grain: grain, farmID: farm.isEmpty ? nil : farm, idempotency: uploadKey.uuidString); imports.removeAll { $0.id == item.id }; imports.insert(item, at: 0); self.bytes = nil }
-                            catch { problem = error.localizedDescription }
+                            do { try persistDraft(); let item = try await store.importCSV(bytes: bytes, filename: filename, grain: grain, farmID: farm.isEmpty ? nil : farm, idempotency: uploadKey.uuidString, formatProfile: profileID.isEmpty ? nil : profileID, sourceYear: profile.flatMap { SourceText.year($0["source_year"]) }, delimiter: delimiter); imports.removeAll { $0.id == item.id }; imports.insert(item, at: 0); self.bytes = nil; try? store.clearForm(formKey); if let attachment { try? store.removeImportSource(attachment) }; attachment = nil }
+                            catch { sourceConfirmed = false; problem = SourceText.error(error) }
                             working = false
                         }
-                    }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || grain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }.buttonStyle(.borderedProminent).disabled(working || !store.sessionVerified || !canUpload)
+                    Text("The selected file and unfinished choices are saved in this account's protected device storage. Upload creates source rows, not confirmed facts.").font(.footnote).foregroundStyle(.secondary)
                 }
-            }
+                if let profileProblem { Notice(profileProblem, warning: true) }
+            }.disabled(working)
             Section("Import sources") {
                 if imports.isEmpty { Text("No import sources are loaded.").foregroundStyle(.secondary) }
                 ForEach(imports) { item in NavigationLink { ImportDetailView(importID: item.id) } label: { VStack(alignment: .leading) { Text(item.value("source_name").isEmpty ? item.title : item.value("source_name")).font(.headline); Text("\(item.value("row_count")) source rows · \(item.value("grain"))").font(.caption).foregroundStyle(.secondary) } } }
+                HStack { Button("Previous sources") { listOffset = max(0, listOffset - 20) }.disabled(working || listOffset == 0); Spacer(); Button("More sources") { listOffset += 20 }.disabled(working || listOffset + imports.count >= listTotal) }
             }
             if working { Section { ProgressView("Waiting for import service…") } }
             if let problem { Section { Notice(problem, warning: true) } }
-        }.navigationTitle("Import records").task { await load() }.refreshable { await load() }
+        }.navigationTitle("Import records").task(id: listOffset) { restoreDraft(); await load() }.refreshable { await load() }
             .fileImporter(isPresented: $picker, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: false) { result in
                 do {
                     guard let url = try result.get().first else { return }
-                    let scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                    guard size <= IntakeInbox.maximumFileBytes else { throw ServiceError(status: 0, message: "Choose a CSV file up to 20 MB.") }
-                    let selected = try Data(contentsOf: url)
-                    guard selected.count <= IntakeInbox.maximumFileBytes else { throw ServiceError(status: 0, message: "Choose a CSV file up to 20 MB.") }
-                    bytes = selected; filename = url.lastPathComponent; uploadKey = UUID()
+                    let selected = try BoundedCSVReader.read(url)
+                    let staged = try store.stageImportSource(selected), previous = attachment
+                    bytes = selected; attachment = staged; filename = url.lastPathComponent; uploadKey = UUID(); sourceConfirmed = false
+                    try persistDraft()
+                    if let previous { try? store.removeImportSource(previous) }
                 } catch { problem = error.localizedDescription }
             }
-            .onChange(of: grain) { _ in uploadKey = UUID() }
-            .onChange(of: farm) { _ in uploadKey = UUID() }
+            .onChange(of: uploadValues) { value in guard draftLoaded, !working, value != trackedUploadValues else { return }; trackedUploadValues = value; sourceConfirmed = false; uploadKey = UUID(); if profileID.isEmpty && delimiter == "auto" { delimiter = "," }; do { try persistDraft() } catch { problem = error.localizedDescription } }
     }
     private func load() async {
-        working = true; defer { working = false }
-        do { let page = try await store.scopedValue("/imports"); imports = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(page.object["items"] ?? .array([]))) }
+        guard !working else { return }
+        working = true; profileCatalogueReady = false; sourceConfirmed = false; defer { working = false }
+        do {
+            profiles = try await store.scopedValue("/imports/profiles").object["items"]?.array.map(\.object) ?? []; profileProblem = nil; profileCatalogueReady = true
+            let current = uploadValues
+            if current != trackedUploadValues { sourceConfirmed = false; uploadKey = UUID(); trackedUploadValues = current; try persistDraft() }
+        }
+        catch { profileProblem = "Prepared profiles could not be loaded. Generic mapping remains separate. " + SourceText.error(error) }
+        do { let page = try await store.scopedValue("/imports?limit=20&offset=\(listOffset)"); imports = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(page.object["items"] ?? .array([]))); if case .number(let n)? = page.object["total"] { listTotal = Int(n) } }
         catch { problem = error.localizedDescription }
+    }
+    private func restoreDraft() {
+        guard !draftLoaded else { return }; profileID = initialProfileID ?? ""; farm = initialFarmID ?? ""; delimiter = profileID.isEmpty ? "," : "auto"
+        do { if let saved = try store.loadForm(formKey) { grain = saved["grain"]?.text ?? ""; farm = saved["farm_id"]?.text ?? farm; profileID = saved["format_profile"]?.text ?? profileID; delimiter = saved["delimiter"]?.text ?? delimiter; filename = saved["filename"]?.text ?? ""; if let key = saved["upload_key"]?.text, let value = UUID(uuidString: key) { uploadKey = value }; trackedUploadValues = saved.filter { uploadValues.keys.contains($0.key) }; if let name = saved["attachment"]?.text { attachment = name; bytes = try BoundedCSVReader.read(store.localAttachment(name).url) } } }
+        catch { problem = "The saved import source could not be opened: " + error.localizedDescription }; if trackedUploadValues == nil { trackedUploadValues = uploadValues }; draftLoaded = true
+    }
+    private func persistDraft() throws {
+        guard let attachment else { return }; var value = uploadValues; value["attachment"] = .string(attachment); value["filename"] = .string(filename); value["upload_key"] = .string(uploadKey.uuidString); try store.saveForm(formKey, value: value)
     }
 }
 
@@ -68,6 +113,8 @@ struct ImportDetailView: View {
     @State private var rows: [RecordItem] = []
     @State private var working = false
     @State private var problem: String?
+    @State private var offset = 0
+    @State private var rowTotal = 0
     var body: some View {
         List {
             if let item {
@@ -76,27 +123,34 @@ struct ImportDetailView: View {
                     LabeledContent("Row meaning", value: item.value("grain"))
                     LabeledContent("Source rows", value: item.value("row_count"))
                     LabeledContent("Review state", value: item.state)
-                    NavigationLink("Review column mapping") { ImportMappingView(item: item) }
-                    NavigationLink("Preview and review mapped rows") { ImportPreviewView(importID: importID) }
-                    if let url = BrowserHandoff.url(account: store.account, path: "/app/imports", query: [URLQueryItem(name: "import", value: importID)]) { Link("Open advanced mapping in the web workspace", destination: url) }
-                    Text("The browser requires its own sign-in. No session token is passed in the link. Use advanced mapping for foreign-key joins and source-specific adapters.").font(.footnote).foregroundStyle(.secondary)
+                    if item.data["format_profile"] != nil && item.data["format_profile"] != .null { NavigationLink("Review the prepared source profile") { ImportProfileReviewView(importID: importID) }; Notice("This source uses a prepared profile. Generic column mapping cannot change its source meanings.") }
+                    else { NavigationLink("Review column mapping") { ImportMappingView(item: item) }; NavigationLink("Preview and review mapped rows") { ImportPreviewView(importID: importID) }; if let url = BrowserHandoff.url(account: store.account, path: "/app/imports", query: [URLQueryItem(name: "import", value: importID)]) { Link("Open advanced mapping in the web workspace", destination: url) }; Text("Advanced joins and exact null tokens use the web mapper with its own sign-in. No session token is passed in this link.").font(.footnote).foregroundStyle(.secondary) }
                 }
                 Section("Source rows, before mapping") {
-                    ForEach(rows) { row in DisclosureGroup("Row \(row.value("row_number"))") { Text(row.data["original_row"]?.text ?? "").font(.callout).textSelection(.enabled); if let diagnostics = row.data["diagnostics"] { Text(diagnostics.text).font(.caption) } } }
-                    Text("The first returned source rows are shown here. The mapped preview supports paging and per-row review.").font(.footnote).foregroundStyle(.secondary)
+                    ForEach(rows) { row in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Source row \(row.value("row_number"))").font(.headline)
+                            Text(row.data["promoted_record"] == nil || row.data["promoted_record"] == .null ? "Original source · not promoted" : "Linked record exists · separate review state").font(.caption).foregroundStyle(.secondary)
+                            DisclosureGroup("Inspect original source cells") { OriginalImportCells(columns: item.data["columns"]?.array ?? [], cells: row.data["original_row"]?.array ?? []) }
+                            PromotedImportRecordLink(importID: importID, row: row.data)
+                        }
+                    }
+                    HStack { Button("Previous source rows") { offset = max(0, offset - 20) }.disabled(working || offset == 0); Spacer(); Button("More source rows") { offset += 20 }.disabled(working || offset + rows.count >= rowTotal) }
                 }
                 Section { RecordMetadata(item: item) }
             }
             if working { Section { ProgressView("Loading import…") } }
             if let problem { Section { Notice(problem, warning: true); Button("Try again") { Task { await load() } } } }
-        }.navigationTitle("Import source").task { await load() }.refreshable { await load() }
+        }.navigationTitle("Import source").task(id: offset) { await load() }.refreshable { await load() }
     }
     private func load() async {
-        working = true; defer { working = false }
+        guard !working else { return }
+        working = true; item = nil; rows = []; defer { working = false }
         do {
-            let value = try await store.scopedValue("/imports/\(importID)")
+            let value = try await store.scopedValue("/imports/\(importID)?limit=20&offset=\(offset)")
             item = try JSONDecoder().decode(RecordItem.self, from: JSONEncoder().encode(value))
             rows = try JSONDecoder().decode([RecordItem].self, from: JSONEncoder().encode(value.object["rows"]?.object["items"] ?? .array([])))
+            if case .number(let n)? = value.object["rows"]?.object["total"] { rowTotal = Int(n) }
         } catch { problem = error.localizedDescription }
     }
 }
@@ -169,6 +223,7 @@ struct ImportMappingView: View {
         Binding(get: { columns[index][key] == .null ? fallback : columns[index][key]?.text ?? fallback }, set: { columns[index][key] = $0.isEmpty ? .null : .string($0) })
     }
     private func save() {
+        guard item.data["format_profile"] == nil || item.data["format_profile"] == .null else { problem = "Prepared source profiles cannot use generic column mapping. Open source-profile review instead."; return }
         working = true; problem = nil
         Task {
             do {
@@ -197,10 +252,16 @@ struct ImportPreviewView: View {
         List {
             Section { Notice("Check the original source row, mapped values and all warnings. Promoting a row creates a proposal, which still needs ordinary fact or work review.") }
             Section("Mapped rows") {
-                ForEach(Array(previews.enumerated()), id: \.offset) { _, preview in NavigationLink { ImportRowReview(importID: importID, importRevision: importRevision, preview: preview) } label: {
-                    VStack(alignment: .leading) { Text("Source row \(preview["row"]?.object["data"]?.object["row_number"]?.text ?? "")").font(.headline); Text(preview["data"]?.object["label"]?.text ?? preview["data"]?.object["title"]?.text ?? preview["target"]?.text ?? "Mapped record").font(.subheadline); if preview["can_save"] != .bool(true) { Text("Resolve source or mapping issues before promotion").font(.caption).foregroundStyle(.secondary) } }
+                ForEach(Array(previews.enumerated()), id: \.offset) { index, preview in NavigationLink { ImportRowReview(importID: importID, sourceOffset: offset + index, initial: preview) } label: {
+                    VStack(alignment: .leading) {
+                        Text("Source row \(preview["row"]?.object["data"]?.object["row_number"]?.text ?? "")").font(.headline)
+                        Text(preview["data"]?.object["label"]?.text ?? preview["data"]?.object["title"]?.text ?? preview["target"]?.text ?? "Mapped record").font(.subheadline)
+                        if let promoted = preview["row"]?.object["data"]?.object["promoted_record"], promoted != .null { Text("Existing record linked · inspect its separate review state").font(.caption).foregroundStyle(.secondary) }
+                        else if preview["can_save"] != .bool(true) { Text("Source or mapping checks need attention").font(.caption).foregroundStyle(.secondary) }
+                        Text("\(preview["issues"]?.array.count ?? 0) source checks to inspect").font(.caption).foregroundStyle(.secondary)
+                    }
                 } }
-                HStack { Button("Previous rows") { offset = max(0, offset - 50) }.disabled(offset == 0 || working); Spacer(); Button("Next rows") { offset += 50 }.disabled(offset + previews.count >= total || working) }
+                HStack { Button("Previous rows") { offset = max(0, offset - 20) }.disabled(offset == 0 || working); Spacer(); Button("Next rows") { offset += 20 }.disabled(offset + previews.count >= total || working) }
                 Text("\(previews.isEmpty ? 0 : offset + 1)–\(offset + previews.count) of \(total) rows").font(.caption).foregroundStyle(.secondary)
             }
             if working { Section { ProgressView("Loading current row previews…") } }
@@ -208,51 +269,15 @@ struct ImportPreviewView: View {
         }.navigationTitle("Review imported rows").task(id: offset) { await load() }.refreshable { await load() }
     }
     private func load() async {
+        guard !working else { return }
         working = true; problem = nil; defer { working = false }
         do {
-            let page = try await store.scopedValue("/imports/\(importID)/preview?limit=50&offset=\(offset)").object
+            previews = []
+            let page = try await store.scopedValue("/imports/\(importID)/preview?limit=20&offset=\(offset)").object
             previews = page["items"]?.array.map(\.object) ?? []
             if case .number(let number)? = page["total"] { total = Int(number) }
             if case .number(let number)? = page["import_revision"] { importRevision = Int(number) }
         } catch { problem = error.localizedDescription }
-    }
-}
-
-struct ImportRowReview: View {
-    @EnvironmentObject private var store: AppStore
-    let importID: String
-    let importRevision: Int
-    let preview: [String: JSONValue]
-    @State private var acknowledged: Set<String> = []
-    @State private var note = ""
-    @State private var working = false
-    @State private var result: JSONValue?
-    @State private var problem: String?
-    var body: some View {
-        List {
-            Section("Original source row") { Text(preview["row"]?.object["data"]?.object["original_row"]?.text ?? "Source row unavailable").textSelection(.enabled) }
-            Section("Proposed normalized values") { JSONFields(data: preview["normalized_data"]?.object ?? preview["data"]?.object ?? [:]) }
-            Section("Checks to review") {
-                let issues = preview["issues"]?.array ?? []
-                ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in Notice(issue.object["message"]?.text ?? issue.text, warning: issue.object["severity"]?.text == "error") }
-                ForEach((preview["requires_acknowledgement"]?.array ?? []).map(\.text), id: \.self) { code in Toggle(issues.first { $0.object["code"]?.text == code }?.object["message"]?.text ?? code, isOn: Binding(get: { acknowledged.contains(code) }, set: { if $0 { acknowledged.insert(code) } else { acknowledged.remove(code) } })) }
-                TextField("Source review note", text: $note, axis: .vertical)
-                Button("Create reviewed proposal from this row") { review() }.buttonStyle(.borderedProminent).disabled(working || result != nil || note.isEmpty || preview["can_save"] != .bool(true) || !Set((preview["requires_acknowledgement"]?.array ?? []).map(\.text)).isSubset(of: acknowledged) || importRevision <= 0)
-                if working { ProgressView("Recording row review…") }
-                if let result { JSONFields(data: result.object); Notice("Use the returned saved and failed counts above. A saved row is still a proposal until its fact or work review is confirmed.") }
-                if let problem { Notice(problem, warning: true) }
-            }
-        }.navigationTitle("Review source row")
-    }
-    private func review() {
-        let row = preview["row"]?.object ?? [:]
-        guard let rowNumber = row["data"]?.object["row_number"], let rowRevision = row["revision"], let token = preview["preview_token"] else { problem = "The current row token or revision is missing. Reload the preview before review."; return }
-        working = true; problem = nil
-        Task {
-            do { result = try await store.scopedValue("/imports/\(importID)/rows/review", method: "POST", body: ["expected_revision": .number(Double(importRevision)), "note": .string(note), "rows": .array([.object(["row_number": rowNumber, "expected_revision": rowRevision, "preview_token": token, "acknowledged_issues": .array(acknowledged.sorted().map(JSONValue.string))])])]); await store.refresh() }
-            catch { problem = error.localizedDescription }
-            working = false
-        }
     }
 }
 

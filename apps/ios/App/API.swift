@@ -3,6 +3,9 @@ import Foundation
 struct ServiceError: LocalizedError {
     let status: Int
     let message: String
+    let code: String?
+    let details: JSONValue?
+    init(status: Int, message: String, code: String? = nil, details: JSONValue? = nil) { self.status = status; self.message = message; self.code = code; self.details = details }
     var errorDescription: String? { message }
 }
 
@@ -75,7 +78,7 @@ struct FarmAPI {
         guard (200..<300).contains(http.statusCode) else {
             let json = (try? JSONDecoder().decode(JSONValue.self, from: bytes))?.object ?? [:]
             let message = json["error"]?.object["message"]?.text ?? "Request failed (\(http.statusCode)). Try again or review the record."
-            throw ServiceError(status: http.statusCode, message: message)
+            throw ServiceError(status: http.statusCode, message: message, code: json["error"]?.object["code"]?.text, details: json["error"]?.object["details"])
         }
         return bytes
     }

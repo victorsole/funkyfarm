@@ -22,7 +22,9 @@ import androidx.compose.ui.unit.dp
     Sheet(when (section) { "imports" -> "Bring your existing records"; "advisers" -> "Work with an adviser"; else -> "Country forms and connections" }, close) {
         when (section) {
             "imports" -> {
-                Text("Use the website to bring in work records, purchases or sales from your other farm software. It gives you room to compare columns, source units and proposed matches before saving anything.")
+                Text("Prepared source formats can be uploaded, checked and reviewed in this app. Choose your original file, its farm and source year; facts still need a separate confirmation.")
+                Button(onClick = { close(); model.sourceImports = obj() }) { Text("Bring in a prepared source file") }
+                Text("For other farm software, advanced column mapping for work records, purchases or sales continues on the website.")
                 Text("You can add photos, PDFs and notes directly in Documents here. A file import stays a proposal until you check its values.")
                 Button(onClick = { model.tab = "Documents"; close() }) { Text("Add a document in this app") }
                 WebLink(model, "/app/imports", "Open file imports on the website")
