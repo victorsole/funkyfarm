@@ -1,8 +1,8 @@
 {
   "fixture_id": "lpis-correction-2026-v1",
-  "version": 3,
+  "version": 4,
   "expected_record_count": 39,
-  "notice": "Demo dataset. Holdings, parcels, statements, notices and documents are examples, not official records or legal decisions. Drawn areas are approximate, not surveyed or CAP-eligible. No filing or acceptance is recorded; facts and changes require separate review. Adviser access is app permission, not an authority mandate.",
+  "notice": "TRAINING DATA ONLY. Six scenarios use authored examples. The Cáceres scenario uses selected public SIGPAC references, not one actual farm, ownership or verified declarations; its private D04 original deliberately fills three public inner holes as a staged mistake. Published references remain unchanged. Source campaign, imagery capture dates and actual legal deadlines are not inferred from retrieval or the app year. Every fact and private change requires separate human review; no actual filing, receipt, payment or acceptance is seeded.",
   "campaign_year": 2026,
   "scenarios": [
     {
@@ -61,62 +61,1584 @@
     },
     {
       "key": "es-protected-unknown",
-      "title": "A Cáceres pasture claim needs checking",
-      "summary": "A example Cáceres sheep holding has seven example fields, D01–D07, whose individual outline areas sum to 27.96 ha, not a surveyed or overlap-free holding total. Four have no additional seeded concern; the three demo concerns are D04's pasture claim, D05's overlap with another field in this same example holding, and D07's missing crop. D04 keeps its full 6.70 ha physical outline: the supplied 45% coefficient gives a rounded 3.02 ha claimable figure and 3.68 ha difference, not a contiguous excluded subpolygon, verified eligibility or payment decision.",
-      "country": "ES", "region": "Extremadura",
-      "farmer_goal": "Check the seven-field map, resolve D05's own-field overlap and D07's missing crop, and understand why D04's original 6.70 ha claim differs from the supplied 3.02 ha figure.",
-      "adviser_goal": "Review the original statement, the supplied pasture coefficient and evidence for any SIGPAC allegation; distinguish physical area, supplied claimable area and the authority's decision.",
+      "title": "Cáceres public-parcel demo: a staged claim and missing exclusions",
+      "summary": "Five complete public SIGPAC examples are shown for learning, not as one real holding. D04's published Polygon has three inner rings; the private demo intentionally fills those holes as an original-claim mistake. Published area 63.0449 ha and CSP 90 produce the calculated indicative figure 56.74041 ha, not an official supplied maximum, eligibility or payment decision.",
+      "country": "ES",
+      "region": "Extremadura",
+      "farmer_goal": "Compare the staged D04 private outline with the exact public reference, restore only the boundary actually checked, and separately review the proposed claim number.",
+      "adviser_goal": "Check public source provenance, all four proposed facts and the staged boundary error without treating neighboring public parcels as one client holding or a private correction as an official update.",
       "start_page": "correction",
-      "expected_actions": ["Open the seven-field map. D01, D02, D03 and D06 have no additional seeded concern, not an official all-clear. D05 intentionally overlaps D06, another field in this same example holding; inspect both outlines before choosing the intended boundary. No neighbour's private or official data is supplied.", "D07 has no crop recorded. Enter the actual crop only after checking its source; do not guess it from a map or copy a neighbouring field.", "Open the original statement and supplied reference for D04, the scrub-pasture field. All four prefilled facts are bound to D04 and remain unconfirmed until separately reviewed.", "Compare D04's 6.70 ha claimed figure with the supplied 3.02 ha maximum and 45% coefficient. The arithmetic is 6.70 × 45% = 3.015 ha, displayed as 3.02 ha; 6.70 − 3.02 = 3.68 ha is a rounded difference, not a mapped excluded area or a penalty.", "Option A: review a proposed future D04 claim of 3.02 ha separately from the original statement. The original claimed 6.70 ha remains intact; checking a proposal does not mean it has been filed.", "Option B: the example farmer says scrub was cleared last winter. Prepare a SIGPAC allegation only after checking dated geotagged photos, a lease or other actual land-use evidence and the current official route. No photos, lease or authority decision are seeded.", "Keep D04's physical 6.70 ha outline unchanged. A 45% coefficient is not a command to shrink it, nor proof of a contiguous 55% exclusion.", "Check any protected-area designation and applicable conditions separately. No real Natura 2000 intersection or automatic ineligibility is established.", "National amendment deadlines, AMS regime, control stage and official acceptance remain unknown. Review every prefilled answer and selected source before any manual handoff."],
+      "expected_actions": [
+        "Open the five public-reference examples. D01–D05 are selected neighboring public recintos, not evidence that one farmer owns, leases or claims all of them.",
+        "Inspect D04: the private original intentionally uses only the published outer ring, filling three actual inner exclusions. Compare it with the unchanged public reference, preserve all three holes in any proposal, save the proposal and apply it only after a separate human review.",
+        "Keep the published source unchanged. The staged private outline's geometry-derived area is larger than the reference because the holes were filled; published superficie 63.0449 ha is a different retained source attribute, not a measurement of that staged drawing.",
+        "Check the original demo claim of 63.0449 ha and the published admisibilidad/CSP 90. The product 63.0449 × 0.90 = 56.74041 ha is an app/example calculation, not a supplied official maximum, final eligible area, rounding rule, payment or penalty.",
+        "Review the proposed future claim of 56.74041 ha separately. All four facts start proposed; no real original filing, amendment, receipt or acceptance is seeded.",
+        "Retain raw incidence code 140 as uninterpreted source text. Do not invent its meaning or treat it as a verified protected-area designation or automatic disqualification.",
+        "If disputing the public source, check actual evidence and the current official route. No lease, dated geotagged photo, right to clear scrub or authority decision is supplied by this demo. National amendment deadlines, source campaign and imagery capture date remain unknown."
+      ],
       "records": [
         {
-          "alias": "es-farm", "kind": "farms",
+          "alias": "es-farm",
+          "kind": "farms",
           "data": {
-            "name": "Cáceres sheep holding", "country": "ES", "region": "Extremadura", "reporting_year": 2026, "farm_type": "livestock", "origin": "fictional_lpis_demo",
-            "notes": "Demo holding near Cáceres. Seven example fields have individual outline areas totalling 27.96 ha; D05 overlaps D06, so the unique footprint is smaller. This is not surveyed UAA or an eligible-area total. See the source records for D04's example SIGPAC reference and pasture figures.",
+            "name": "Cáceres parcel demo",
+            "country": "ES",
+            "region": "Extremadura",
+            "reporting_year": 2026,
+            "farm_type": "other",
+            "origin": "sigpac_public_demo_2026_10_17",
+            "notes": "Public SIGPAC examples, retrieved 2026-10-17; not one actual farm, ownership or a verified farmer declaration. Four fields preserve complete published geometry. D04 is a staged private claim error: its published outer ring is copied without the three inner holes. No public geometry is modified. Source campaign year and PNOA capture date are unknown. Recintos SIGPAC © Fondo Español de Garantía Agraria (FEGA), CC BY 4.0. https://creativecommons.org/licenses/by/4.0/",
             "parcels": [
-              {"alias": "es-d01", "name": "D01 — barley field", "crop": "Barley", "external_id": null, "revision": 1, "active": true, "notes": "Approximate outline area: 3.40 ha.", "geometry": {"type": "Polygon", "coordinates": [[[-6.37,39.47],[-6.3681683279,39.4699214315],[-6.3676086301,39.4705105775],[-6.3677612429,39.4713746761],[-6.3688806177,39.4716103546],[-6.3701526422,39.4712175892],[-6.3702035206,39.4704320476],[-6.37,39.47]]]}},
-              {"alias": "es-d02", "name": "D02 — olive field", "crop": "Olives", "external_id": null, "revision": 1, "active": true, "notes": "Approximate outline area: 4.25 ha.", "geometry": {"type": "Polygon", "coordinates": [[[-6.3670875329,39.4699999637],[-6.3647204827,39.4700433868],[-6.3642695662,39.4706524521],[-6.3647767137,39.4717401304],[-6.3663547775,39.4718707089],[-6.3672002039,39.4711311272],[-6.3670875329,39.4699999637]]]}},
-              {"alias": "es-d03", "name": "D03 — cereal field", "crop": "Oats", "external_id": null, "revision": 1, "active": true, "notes": "Approximate outline area: 3.60 ha.", "geometry": {"type": "Polygon", "coordinates": [[[-6.3637090792,39.4699098985],[-6.3616231994,39.4697859041],[-6.3611417506,39.4704877611],[-6.3613555825,39.471354821],[-6.3624787576,39.4715613377],[-6.3637624563,39.4711072476],[-6.3637090792,39.4699098985]]]}},
-              {"alias": "es-pasture", "name": "D04 — scrub pasture (PR)", "crop": "Scrub pasture (PR) — supplied category", "external_id": null, "revision": 1, "active": true, "notes": "Approximate physical outline: 6.70 ha. Check the supplied coefficient and claim figures separately; a coefficient does not locate an excluded subpolygon.", "geometry": {"type": "Polygon", "coordinates": [[[-6.37,39.472383199],[-6.3674418417,39.4722251928],[-6.3666743565,39.473015064],[-6.3668277973,39.4741209151],[-6.3680045675,39.47463437],[-6.3694371867,39.4745159021],[-6.3703069851,39.4736075289],[-6.3702046544,39.4728176386],[-6.37,39.472383199]]]}},
-              {"alias": "es-d05", "name": "D05 — overlap to review", "crop": "Fallow", "external_id": null, "revision": 1, "active": true, "notes": "Overlaps D06 in this holding. Check both outlines before changing a boundary.", "geometry": {"type": "Polygon", "coordinates": [[[-6.3659806525,39.4724730618],[-6.3637960289,39.4724297257],[-6.3631797845,39.4731215394],[-6.3636278183,39.4742025773],[-6.3650282492,39.4742891264],[-6.3660926313,39.4734243567],[-6.3659806525,39.4724730618]]]}},
-              {"alias": "es-d06", "name": "D06 — grass field", "crop": "Grass", "external_id": null, "revision": 1, "active": true, "notes": "D05 overlaps this outline; inspect both fields.", "geometry": {"type": "Polygon", "coordinates": [[[-6.3635923405,39.4725179212],[-6.3616435058,39.4724748161],[-6.361309344,39.4730765385],[-6.3615319605,39.4739791752],[-6.3628126358,39.4741511887],[-6.3637036172,39.4734635295],[-6.3635923405,39.4725179212]]]}},
-              {"alias": "es-d07", "name": "D07 — crop not recorded", "crop": "", "external_id": null, "revision": 1, "active": true, "notes": "Crop missing. Ask the farmer and check a source before entering it.", "geometry": {"type": "Polygon", "coordinates": [[[-6.3663882747,39.4751260702],[-6.3645743454,39.4750459898],[-6.3641078545,39.4756460435],[-6.3644187498,39.4764861657],[-6.3656107803,39.4766062318],[-6.3664918858,39.4759661802],[-6.3663882747,39.4751260702]]]}}
+              {
+                "alias": "es-d01",
+                "name": "D01 — scrub pasture (PR)",
+                "crop": "Scrub pasture (PR)",
+                "external_id": "10:50:0:0:13:18:1",
+                "revision": 1,
+                "active": true,
+                "notes": "Public reference 10:50:0:0:13:18:1; published superficie 4.878 ha; CSP/admisibilidad 100; uso_sigpac PR; incidencias null (meaning not inferred). https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/18.json Retrieved 2026-10-17. Complete public geometry and inner holes preserved. Published area differs from geometry-derived approximate area; neither proves ownership or eligibility.",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -6.460847376933538,
+                        39.500830261086236
+                      ],
+                      [
+                        -6.460873780768292,
+                        39.50084509705574
+                      ],
+                      [
+                        -6.462040829258611,
+                        39.501500981018005
+                      ],
+                      [
+                        -6.462438646979698,
+                        39.501728801159786
+                      ],
+                      [
+                        -6.463338303522813,
+                        39.50224412059749
+                      ],
+                      [
+                        -6.463098918030346,
+                        39.50249282006131
+                      ],
+                      [
+                        -6.463060612730569,
+                        39.50251813424859
+                      ],
+                      [
+                        -6.461771972992836,
+                        39.50335820216213
+                      ],
+                      [
+                        -6.461727548903379,
+                        39.503387204387025
+                      ],
+                      [
+                        -6.460980279559957,
+                        39.502978083668836
+                      ],
+                      [
+                        -6.46047458338586,
+                        39.502709612132435
+                      ],
+                      [
+                        -6.459349277614014,
+                        39.502055738988865
+                      ],
+                      [
+                        -6.459360509364933,
+                        39.502047523885075
+                      ],
+                      [
+                        -6.45944089265933,
+                        39.50198868124492
+                      ],
+                      [
+                        -6.459580199898344,
+                        39.50188205923927
+                      ],
+                      [
+                        -6.459763344493559,
+                        39.50172548024955
+                      ],
+                      [
+                        -6.45993483740448,
+                        39.50155280716659
+                      ],
+                      [
+                        -6.460086717499,
+                        39.501411734698664
+                      ],
+                      [
+                        -6.460183946743396,
+                        39.501271836535444
+                      ],
+                      [
+                        -6.46027204055098,
+                        39.50120930585768
+                      ],
+                      [
+                        -6.46044864809952,
+                        39.50111114957473
+                      ],
+                      [
+                        -6.460609917602535,
+                        39.50102221338584
+                      ],
+                      [
+                        -6.460730280901061,
+                        39.500919112617915
+                      ],
+                      [
+                        -6.460847376933538,
+                        39.500830261086236
+                      ]
+                    ],
+                    [
+                      [
+                        -6.46090012509153,
+                        39.50122424743916
+                      ],
+                      [
+                        -6.460789612206197,
+                        39.50127421531971
+                      ],
+                      [
+                        -6.460739809449154,
+                        39.501369621500054
+                      ],
+                      [
+                        -6.460777148315439,
+                        39.50137181672063
+                      ],
+                      [
+                        -6.46084937015023,
+                        39.50134582443734
+                      ],
+                      [
+                        -6.4608933550279355,
+                        39.50131232364475
+                      ],
+                      [
+                        -6.460909855643502,
+                        39.501250652112105
+                      ],
+                      [
+                        -6.46090012509153,
+                        39.50122424743916
+                      ]
+                    ],
+                    [
+                      [
+                        -6.460622386522435,
+                        39.50156001225099
+                      ],
+                      [
+                        -6.46056410714621,
+                        39.50159457922173
+                      ],
+                      [
+                        -6.460526842878869,
+                        39.501639255606484
+                      ],
+                      [
+                        -6.460519896795296,
+                        39.50168321533848
+                      ],
+                      [
+                        -6.4604850389725,
+                        39.501759649079865
+                      ],
+                      [
+                        -6.46041311720986,
+                        39.50187524894254
+                      ],
+                      [
+                        -6.460352154786269,
+                        39.50193457102758
+                      ],
+                      [
+                        -6.460331164823095,
+                        39.50197270952747
+                      ],
+                      [
+                        -6.460302978157429,
+                        39.5020616960078
+                      ],
+                      [
+                        -6.460367576650833,
+                        39.502049322641604
+                      ],
+                      [
+                        -6.460409405702913,
+                        39.50197717708213
+                      ],
+                      [
+                        -6.460444613889284,
+                        39.50189110079876
+                      ],
+                      [
+                        -6.460510090806192,
+                        39.501805686685785
+                      ],
+                      [
+                        -6.460557311098714,
+                        39.50173228048801
+                      ],
+                      [
+                        -6.460591867172978,
+                        39.50166411130363
+                      ],
+                      [
+                        -6.460615640766361,
+                        39.5015984625577
+                      ],
+                      [
+                        -6.460622386522435,
+                        39.50156001225099
+                      ]
+                    ]
+                  ]
+                }
+              },
+              {
+                "alias": "es-d02",
+                "name": "D02 — scrub pasture (PR)",
+                "crop": "Scrub pasture (PR)",
+                "external_id": "10:50:0:0:13:22:1",
+                "revision": 1,
+                "active": true,
+                "notes": "Public reference 10:50:0:0:13:22:1; published superficie 2.6493 ha; CSP/admisibilidad 100; uso_sigpac PR; incidencias null (meaning not inferred). https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/22.json Retrieved 2026-10-17. Complete public geometry and inner holes preserved. Published area differs from geometry-derived approximate area; neither proves ownership or eligibility.",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -6.470587314961095,
+                        39.500271055677295
+                      ],
+                      [
+                        -6.47070144212329,
+                        39.500327325911215
+                      ],
+                      [
+                        -6.471789733408525,
+                        39.500863905209386
+                      ],
+                      [
+                        -6.471715805856335,
+                        39.50096164155895
+                      ],
+                      [
+                        -6.470212184538674,
+                        39.502600272713615
+                      ],
+                      [
+                        -6.470084188678663,
+                        39.502518800609934
+                      ],
+                      [
+                        -6.4697198147532236,
+                        39.50223591052284
+                      ],
+                      [
+                        -6.469592657083581,
+                        39.50215644923785
+                      ],
+                      [
+                        -6.469473127784468,
+                        39.50209450780791
+                      ],
+                      [
+                        -6.469179166040818,
+                        39.50197305486191
+                      ],
+                      [
+                        -6.469436199631465,
+                        39.50166238379329
+                      ],
+                      [
+                        -6.470587314961095,
+                        39.500271055677295
+                      ]
+                    ],
+                    [
+                      [
+                        -6.46950507289574,
+                        39.50191265486405
+                      ],
+                      [
+                        -6.4694795935849605,
+                        39.50192645650664
+                      ],
+                      [
+                        -6.469432334735681,
+                        39.50198535195278
+                      ],
+                      [
+                        -6.469428299687255,
+                        39.50200773498835
+                      ],
+                      [
+                        -6.469455504832,
+                        39.50203516895906
+                      ],
+                      [
+                        -6.469518646550545,
+                        39.502071499482334
+                      ],
+                      [
+                        -6.4695717291464945,
+                        39.50209637613424
+                      ],
+                      [
+                        -6.469587785521167,
+                        39.50209797372508
+                      ],
+                      [
+                        -6.46961359424076,
+                        39.50209728724717
+                      ],
+                      [
+                        -6.469623414479101,
+                        39.50209313149933
+                      ],
+                      [
+                        -6.469676095581865,
+                        39.5020624445118
+                      ],
+                      [
+                        -6.469704668653289,
+                        39.502029983913445
+                      ],
+                      [
+                        -6.469701526277603,
+                        39.50200557078082
+                      ],
+                      [
+                        -6.469688722081555,
+                        39.501980948100595
+                      ],
+                      [
+                        -6.469637521222981,
+                        39.5019486224509
+                      ],
+                      [
+                        -6.469547743490949,
+                        39.50191358441717
+                      ],
+                      [
+                        -6.46950507289574,
+                        39.50191265486405
+                      ]
+                    ]
+                  ]
+                }
+              },
+              {
+                "alias": "es-d03",
+                "name": "D03 — scrub pasture (PR)",
+                "crop": "Scrub pasture (PR)",
+                "external_id": "10:50:0:0:13:25:1",
+                "revision": 1,
+                "active": true,
+                "notes": "Public reference 10:50:0:0:13:25:1; published superficie 11.0018 ha; CSP/admisibilidad 100; uso_sigpac PR; incidencias null (meaning not inferred). https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/25.json Retrieved 2026-10-17. Complete public geometry and inner holes preserved. Published area differs from geometry-derived approximate area; neither proves ownership or eligibility.",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -6.464511423864151,
+                        39.500754274938515
+                      ],
+                      [
+                        -6.464675210452838,
+                        39.50079316613335
+                      ],
+                      [
+                        -6.464903872975938,
+                        39.50081571093966
+                      ],
+                      [
+                        -6.465134211879772,
+                        39.50081486939653
+                      ],
+                      [
+                        -6.465472427560236,
+                        39.50077613997242
+                      ],
+                      [
+                        -6.465716428967054,
+                        39.50077412580097
+                      ],
+                      [
+                        -6.465968728458508,
+                        39.50077571500991
+                      ],
+                      [
+                        -6.466090436214384,
+                        39.50079239416002
+                      ],
+                      [
+                        -6.466868884563081,
+                        39.50108030836017
+                      ],
+                      [
+                        -6.468071552791241,
+                        39.501592522302566
+                      ],
+                      [
+                        -6.468078762066588,
+                        39.501595372149815
+                      ],
+                      [
+                        -6.468645645299294,
+                        39.50182000465363
+                      ],
+                      [
+                        -6.469010183510046,
+                        39.50195796911168
+                      ],
+                      [
+                        -6.469151674234967,
+                        39.50201387557098
+                      ],
+                      [
+                        -6.467070795402425,
+                        39.504329200440154
+                      ],
+                      [
+                        -6.463338303522813,
+                        39.50224412059749
+                      ],
+                      [
+                        -6.464506813817132,
+                        39.50076014227108
+                      ],
+                      [
+                        -6.464511423864151,
+                        39.500754274938515
+                      ]
+                    ],
+                    [
+                      [
+                        -6.468303949452427,
+                        39.50199356705657
+                      ],
+                      [
+                        -6.468166750262186,
+                        39.50205680768158
+                      ],
+                      [
+                        -6.468102279173719,
+                        39.50211762006909
+                      ],
+                      [
+                        -6.468146391456359,
+                        39.50218882517897
+                      ],
+                      [
+                        -6.46821744485378,
+                        39.50223252004281
+                      ],
+                      [
+                        -6.468302989724456,
+                        39.50223438417819
+                      ],
+                      [
+                        -6.468408718219173,
+                        39.502180492728534
+                      ],
+                      [
+                        -6.4684722429907175,
+                        39.502145750576005
+                      ],
+                      [
+                        -6.4684685868043355,
+                        39.50210352422169
+                      ],
+                      [
+                        -6.468408557286624,
+                        39.50204200691607
+                      ],
+                      [
+                        -6.468347653536358,
+                        39.5020045540559
+                      ],
+                      [
+                        -6.468303949452427,
+                        39.50199356705657
+                      ]
+                    ]
+                  ]
+                }
+              },
+              {
+                "alias": "es-pasture",
+                "name": "D04 — scrub pasture (PR)",
+                "crop": "Scrub pasture (PR)",
+                "external_id": "10:50:0:0:13:29:1",
+                "revision": 1,
+                "active": true,
+                "notes": "Public reference 10:50:0:0:13:29:1; published superficie 63.0449 ha; CSP/admisibilidad 90; uso_sigpac PR; incidencias 140 (meaning not inferred). https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/29.json Retrieved 2026-10-17. STAGED PRIVATE ORIGINAL: three reference inner holes were intentionally filled; this is a demo drawing error, not official geometry. Published area differs from geometry-derived approximate area; neither proves ownership or eligibility.",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -6.480872560363117,
+                        39.49841471463306
+                      ],
+                      [
+                        -6.481008687507879,
+                        39.498531308589506
+                      ],
+                      [
+                        -6.481582868864111,
+                        39.49903623865761
+                      ],
+                      [
+                        -6.482325784646767,
+                        39.49968927696358
+                      ],
+                      [
+                        -6.48241798893991,
+                        39.49977033081027
+                      ],
+                      [
+                        -6.48243584323292,
+                        39.49978600497013
+                      ],
+                      [
+                        -6.482330902637148,
+                        39.499884914786215
+                      ],
+                      [
+                        -6.482197630368777,
+                        39.50002749515861
+                      ],
+                      [
+                        -6.482134683110397,
+                        39.500107712491314
+                      ],
+                      [
+                        -6.482090598488039,
+                        39.50031869003586
+                      ],
+                      [
+                        -6.482026563258563,
+                        39.50049647524187
+                      ],
+                      [
+                        -6.481939141679653,
+                        39.500659926554405
+                      ],
+                      [
+                        -6.4817754456155265,
+                        39.50090384665676
+                      ],
+                      [
+                        -6.481597082896356,
+                        39.501228906101225
+                      ],
+                      [
+                        -6.48143188060414,
+                        39.50158908656026
+                      ],
+                      [
+                        -6.48129048124197,
+                        39.50188070053269
+                      ],
+                      [
+                        -6.481103066066836,
+                        39.502237360592176
+                      ],
+                      [
+                        -6.480866283155458,
+                        39.502702401180706
+                      ],
+                      [
+                        -6.480588091125375,
+                        39.50306576760133
+                      ],
+                      [
+                        -6.480196154986093,
+                        39.50349166637609
+                      ],
+                      [
+                        -6.47995844671255,
+                        39.50380432060312
+                      ],
+                      [
+                        -6.4798543484980975,
+                        39.50408855850032
+                      ],
+                      [
+                        -6.479790902516449,
+                        39.50437899816805
+                      ],
+                      [
+                        -6.479701807071376,
+                        39.50464060408715
+                      ],
+                      [
+                        -6.479622852053366,
+                        39.504844540832615
+                      ],
+                      [
+                        -6.479613383854978,
+                        39.5049806654628
+                      ],
+                      [
+                        -6.4796132162169044,
+                        39.50498250948161
+                      ],
+                      [
+                        -6.479354220422609,
+                        39.5054385822714
+                      ],
+                      [
+                        -6.4789818174716425,
+                        39.50598962454436
+                      ],
+                      [
+                        -6.478643528030426,
+                        39.506438824173145
+                      ],
+                      [
+                        -6.478314625483133,
+                        39.50688425194527
+                      ],
+                      [
+                        -6.478030233358903,
+                        39.50736387872257
+                      ],
+                      [
+                        -6.477824294176656,
+                        39.50775482076808
+                      ],
+                      [
+                        -6.477628664735923,
+                        39.50809798596266
+                      ],
+                      [
+                        -6.477464047500583,
+                        39.508403263276264
+                      ],
+                      [
+                        -6.4773192123960985,
+                        39.508696637448466
+                      ],
+                      [
+                        -6.477151827456166,
+                        39.508919855086944
+                      ],
+                      [
+                        -6.476932976789502,
+                        39.50912236858516
+                      ],
+                      [
+                        -6.4768429551440745,
+                        39.50920577104126
+                      ],
+                      [
+                        -6.476013821423878,
+                        39.51008564880628
+                      ],
+                      [
+                        -6.475580731813951,
+                        39.51060995280653
+                      ],
+                      [
+                        -6.475303880888455,
+                        39.51100030979516
+                      ],
+                      [
+                        -6.474937510393561,
+                        39.5114261239127
+                      ],
+                      [
+                        -6.474873891744697,
+                        39.51148220136283
+                      ],
+                      [
+                        -6.474833407988155,
+                        39.51152469845263
+                      ],
+                      [
+                        -6.4746288065577335,
+                        39.51176878786944
+                      ],
+                      [
+                        -6.474381290618705,
+                        39.51201840934267
+                      ],
+                      [
+                        -6.474021371675066,
+                        39.512351433272
+                      ],
+                      [
+                        -6.473712584020203,
+                        39.51266434063252
+                      ],
+                      [
+                        -6.473371442217168,
+                        39.51302066709225
+                      ],
+                      [
+                        -6.472986883829497,
+                        39.513525859513926
+                      ],
+                      [
+                        -6.472713049551132,
+                        39.513855698319865
+                      ],
+                      [
+                        -6.472265040152672,
+                        39.51438846888101
+                      ],
+                      [
+                        -6.472240312698651,
+                        39.514373800549585
+                      ],
+                      [
+                        -6.471433277867483,
+                        39.513896534954554
+                      ],
+                      [
+                        -6.4713051990266255,
+                        39.51384255549491
+                      ],
+                      [
+                        -6.471154991960078,
+                        39.513803162224036
+                      ],
+                      [
+                        -6.469262218971534,
+                        39.51286263300405
+                      ],
+                      [
+                        -6.468238423082288,
+                        39.512353936946624
+                      ],
+                      [
+                        -6.4681952554401905,
+                        39.512324181188596
+                      ],
+                      [
+                        -6.468181675918053,
+                        39.51231714038951
+                      ],
+                      [
+                        -6.468128870763115,
+                        39.51228962343795
+                      ],
+                      [
+                        -6.4680824316640155,
+                        39.51226542404386
+                      ],
+                      [
+                        -6.467443962783007,
+                        39.51193308323968
+                      ],
+                      [
+                        -6.467437592536217,
+                        39.511929646659176
+                      ],
+                      [
+                        -6.467497270013974,
+                        39.51181062027428
+                      ],
+                      [
+                        -6.467612687151145,
+                        39.511648844504286
+                      ],
+                      [
+                        -6.46767756308556,
+                        39.51158589473134
+                      ],
+                      [
+                        -6.4677483071907345,
+                        39.51155194634509
+                      ],
+                      [
+                        -6.468062714073819,
+                        39.51138228907107
+                      ],
+                      [
+                        -6.468111077658002,
+                        39.51132143393585
+                      ],
+                      [
+                        -6.46864348863548,
+                        39.510537954768566
+                      ],
+                      [
+                        -6.4693824272048435,
+                        39.50944986716359
+                      ],
+                      [
+                        -6.469518297025162,
+                        39.50931290266665
+                      ],
+                      [
+                        -6.469641762466238,
+                        39.50920586156582
+                      ],
+                      [
+                        -6.469748464099971,
+                        39.50911843579596
+                      ],
+                      [
+                        -6.469859775780724,
+                        39.509036876520476
+                      ],
+                      [
+                        -6.4699665620716855,
+                        39.50898188871783
+                      ],
+                      [
+                        -6.470739213495803,
+                        39.508659336300745
+                      ],
+                      [
+                        -6.470821775246964,
+                        39.50862488500028
+                      ],
+                      [
+                        -6.47123333090817,
+                        39.508453047593115
+                      ],
+                      [
+                        -6.471390806761581,
+                        39.50838727060406
+                      ],
+                      [
+                        -6.4713921713354985,
+                        39.50838670063461
+                      ],
+                      [
+                        -6.471585122758008,
+                        39.50830610527805
+                      ],
+                      [
+                        -6.471870026178362,
+                        39.50818715935944
+                      ],
+                      [
+                        -6.471881844662538,
+                        39.50817332921838
+                      ],
+                      [
+                        -6.473440447915521,
+                        39.50634660311619
+                      ],
+                      [
+                        -6.47409213589681,
+                        39.5055881841645
+                      ],
+                      [
+                        -6.4741314470250275,
+                        39.50555096767402
+                      ],
+                      [
+                        -6.474169668505768,
+                        39.50551852803043
+                      ],
+                      [
+                        -6.474295899975055,
+                        39.50541442143407
+                      ],
+                      [
+                        -6.474462700696302,
+                        39.505283071974404
+                      ],
+                      [
+                        -6.474635284092891,
+                        39.505156248742715
+                      ],
+                      [
+                        -6.476033215472592,
+                        39.503868660095705
+                      ],
+                      [
+                        -6.477560141835221,
+                        39.502388700892105
+                      ],
+                      [
+                        -6.4777310597475495,
+                        39.5027242335252
+                      ],
+                      [
+                        -6.477955034271927,
+                        39.50301525657343
+                      ],
+                      [
+                        -6.478300125627973,
+                        39.50308608114487
+                      ],
+                      [
+                        -6.478712019079896,
+                        39.50306646162295
+                      ],
+                      [
+                        -6.478767424301351,
+                        39.503053887929255
+                      ],
+                      [
+                        -6.479090802335936,
+                        39.50298037276673
+                      ],
+                      [
+                        -6.479279647463837,
+                        39.50284625727885
+                      ],
+                      [
+                        -6.479507634405501,
+                        39.50262915843005
+                      ],
+                      [
+                        -6.4797326860045015,
+                        39.50232907705853
+                      ],
+                      [
+                        -6.4798637722723935,
+                        39.50190326629375
+                      ],
+                      [
+                        -6.480010614004618,
+                        39.501382821321954
+                      ],
+                      [
+                        -6.480084446003106,
+                        39.50071745072111
+                      ],
+                      [
+                        -6.480267747339918,
+                        39.500087787029905
+                      ],
+                      [
+                        -6.480441586345678,
+                        39.4998562713068
+                      ],
+                      [
+                        -6.480586170831244,
+                        39.499588461940796
+                      ],
+                      [
+                        -6.480756066151325,
+                        39.49919173638175
+                      ],
+                      [
+                        -6.480872560363117,
+                        39.49841471463306
+                      ]
+                    ]
+                  ]
+                }
+              },
+              {
+                "alias": "es-d05",
+                "name": "D05 — scrub pasture (PR)",
+                "crop": "Scrub pasture (PR)",
+                "external_id": "10:50:0:0:13:26:1",
+                "revision": 1,
+                "active": true,
+                "notes": "Public reference 10:50:0:0:13:26:1; published superficie 71.8498 ha; CSP/admisibilidad 100; uso_sigpac PR; incidencias null (meaning not inferred). https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/26.json Retrieved 2026-10-17. Complete public geometry and inner holes preserved. Published area differs from geometry-derived approximate area; neither proves ownership or eligibility.",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -6.469151674234967,
+                        39.50201387557098
+                      ],
+                      [
+                        -6.469443036750289,
+                        39.5021342388695
+                      ],
+                      [
+                        -6.4695612249448144,
+                        39.502193498928456
+                      ],
+                      [
+                        -6.469684694576841,
+                        39.502277150327096
+                      ],
+                      [
+                        -6.469686622414686,
+                        39.50227865906975
+                      ],
+                      [
+                        -6.4700977698771815,
+                        39.5025977598189
+                      ],
+                      [
+                        -6.47029516957597,
+                        39.502731702639565
+                      ],
+                      [
+                        -6.470623080544059,
+                        39.50295415920119
+                      ],
+                      [
+                        -6.471734978622793,
+                        39.50379813727279
+                      ],
+                      [
+                        -6.472066913742834,
+                        39.50405009813533
+                      ],
+                      [
+                        -6.472158363664649,
+                        39.504114387336486
+                      ],
+                      [
+                        -6.472452662360827,
+                        39.50432125355728
+                      ],
+                      [
+                        -6.472783842271348,
+                        39.50456558688748
+                      ],
+                      [
+                        -6.47403731573223,
+                        39.505502352632725
+                      ],
+                      [
+                        -6.474040501693815,
+                        39.50553789274248
+                      ],
+                      [
+                        -6.474042514188887,
+                        39.50555968569202
+                      ],
+                      [
+                        -6.473389065169637,
+                        39.506320200119625
+                      ],
+                      [
+                        -6.4718270253361485,
+                        39.508151033354615
+                      ],
+                      [
+                        -6.4718259356886705,
+                        39.50815229064016
+                      ],
+                      [
+                        -6.470176361958764,
+                        39.50883570245046
+                      ],
+                      [
+                        -6.469937559008601,
+                        39.50893168027664
+                      ],
+                      [
+                        -6.469861870418451,
+                        39.50897962644203
+                      ],
+                      [
+                        -6.4697091512953735,
+                        39.509080381115105
+                      ],
+                      [
+                        -6.469586356406591,
+                        39.509172166313064
+                      ],
+                      [
+                        -6.469393907898302,
+                        39.509347438624346
+                      ],
+                      [
+                        -6.469330960639921,
+                        39.50942321270992
+                      ],
+                      [
+                        -6.468587412023539,
+                        39.510519598399526
+                      ],
+                      [
+                        -6.468566960178581,
+                        39.51051272523851
+                      ],
+                      [
+                        -6.464550165022919,
+                        39.509160327712316
+                      ],
+                      [
+                        -6.462586904415453,
+                        39.50845743049055
+                      ],
+                      [
+                        -6.461136042990448,
+                        39.507969778878675
+                      ],
+                      [
+                        -6.460446696792346,
+                        39.507717318454674
+                      ],
+                      [
+                        -6.458347478354573,
+                        39.50699950144437
+                      ],
+                      [
+                        -6.4585338063968,
+                        39.50676907620693
+                      ],
+                      [
+                        -6.458706303459782,
+                        39.506524317076014
+                      ],
+                      [
+                        -6.4588679032098,
+                        39.506224571818834
+                      ],
+                      [
+                        -6.459072754420951,
+                        39.505946201254204
+                      ],
+                      [
+                        -6.459151459658233,
+                        39.50583790370601
+                      ],
+                      [
+                        -6.459368299506205,
+                        39.50564075462614
+                      ],
+                      [
+                        -6.459549265644656,
+                        39.505505968585965
+                      ],
+                      [
+                        -6.459766357787929,
+                        39.50535835739498
+                      ],
+                      [
+                        -6.460143039700719,
+                        39.50499943254512
+                      ],
+                      [
+                        -6.460436656948128,
+                        39.504710246810184
+                      ],
+                      [
+                        -6.461727548903379,
+                        39.503387204387025
+                      ],
+                      [
+                        -6.461771972992836,
+                        39.50335820216213
+                      ],
+                      [
+                        -6.463060612730569,
+                        39.50251813424859
+                      ],
+                      [
+                        -6.463098918030346,
+                        39.50249282006131
+                      ],
+                      [
+                        -6.463338303522813,
+                        39.50224412059749
+                      ],
+                      [
+                        -6.467070795402425,
+                        39.504329200440154
+                      ],
+                      [
+                        -6.469151674234967,
+                        39.50201387557098
+                      ]
+                    ],
+                    [
+                      [
+                        -6.469268426609392,
+                        39.503376851059606
+                      ],
+                      [
+                        -6.469239265966521,
+                        39.50338634943285
+                      ],
+                      [
+                        -6.46922399162346,
+                        39.50339817546074
+                      ],
+                      [
+                        -6.469214409431184,
+                        39.50342161042521
+                      ],
+                      [
+                        -6.469216438690062,
+                        39.50343786628919
+                      ],
+                      [
+                        -6.469248640287587,
+                        39.503464913015954
+                      ],
+                      [
+                        -6.469298300552267,
+                        39.50346802186403
+                      ],
+                      [
+                        -6.469343647489318,
+                        39.50346968483372
+                      ],
+                      [
+                        -6.469381150640914,
+                        39.50344685839545
+                      ],
+                      [
+                        -6.469388914798285,
+                        39.50342541078034
+                      ],
+                      [
+                        -6.469376586694365,
+                        39.50340420121128
+                      ],
+                      [
+                        -6.469336744153454,
+                        39.50339522670703
+                      ],
+                      [
+                        -6.469300735495284,
+                        39.50337687871989
+                      ],
+                      [
+                        -6.469268426609392,
+                        39.503376851059606
+                      ]
+                    ],
+                    [
+                      [
+                        -6.469147505076081,
+                        39.50463872821711
+                      ],
+                      [
+                        -6.469003763810024,
+                        39.50479772119509
+                      ],
+                      [
+                        -6.46910574391742,
+                        39.50482696398061
+                      ],
+                      [
+                        -6.469232113688118,
+                        39.504713527487276
+                      ],
+                      [
+                        -6.469147505076081,
+                        39.50463872821711
+                      ]
+                    ],
+                    [
+                      [
+                        -6.470273178813498,
+                        39.507594063399374
+                      ],
+                      [
+                        -6.47022343221521,
+                        39.50761729803635
+                      ],
+                      [
+                        -6.4703137036413665,
+                        39.507728697727096
+                      ],
+                      [
+                        -6.470113413862193,
+                        39.507809451501636
+                      ],
+                      [
+                        -6.470049742407337,
+                        39.507735109045214
+                      ],
+                      [
+                        -6.4700070265498475,
+                        39.507757147584535
+                      ],
+                      [
+                        -6.4700771394976755,
+                        39.507846491133954
+                      ],
+                      [
+                        -6.470103552552525,
+                        39.50783786280232
+                      ],
+                      [
+                        -6.470158000560581,
+                        39.50791259585545
+                      ],
+                      [
+                        -6.470428229782178,
+                        39.50779739161863
+                      ],
+                      [
+                        -6.470273178813498,
+                        39.507594063399374
+                      ]
+                    ],
+                    [
+                      [
+                        -6.467673928692128,
+                        39.50832571725626
+                      ],
+                      [
+                        -6.4676142780364625,
+                        39.508381160196286
+                      ],
+                      [
+                        -6.467580364016018,
+                        39.50844932435151
+                      ],
+                      [
+                        -6.467592511909008,
+                        39.508499577216774
+                      ],
+                      [
+                        -6.467641994477332,
+                        39.508531729361074
+                      ],
+                      [
+                        -6.467711996784031,
+                        39.50852785105425
+                      ],
+                      [
+                        -6.467776736093416,
+                        39.50847657140577
+                      ],
+                      [
+                        -6.467828102075494,
+                        39.508408788627165
+                      ],
+                      [
+                        -6.467825689763616,
+                        39.508379013590755
+                      ],
+                      [
+                        -6.467673928692128,
+                        39.50832571725626
+                      ]
+                    ]
+                  ]
+                }
+              }
             ]
           }
         },
         {
-          "alias": "es-original-claim", "kind": "document", "links": {"farm_alias": "es-farm"},
-          "data": {"filename": "Spain-original-claim-2026.txt", "mime_type": "text/plain", "authored_text": "DEMO RECORD — NOT AN ACTUAL FILED APPLICATION\nScenario: example Cáceres sheep holding, campaign 2026\nSeven example fields D01–D07 have individual approximate outline areas totalling 27.96 ha. D05 overlaps another field in this holding, so that sum is not an overlap-free footprint, surveyed UAA or total claim.\nThis statement concerns D04 only.\nExample reference: DEMO-CAP-ES-2026\nExample SIGPAC code for D04: 10:999:0:0:12:34:1 — example, not a verified official identifier\nSupplied category: scrub pasture (PR)\nPhysical parcel area recorded in this example: 6.70 ha\nOriginal claimed area in this invented statement: 6.70 ha\nNo actual filing date, submission receipt, payment, official parcel match or authority acceptance is established. This is a literal demo source for separate human review, not evidence that a real farmer made a claim.\n"}
+          "alias": "es-original-claim",
+          "kind": "document",
+          "links": {
+            "farm_alias": "es-farm"
+          },
+          "data": {
+            "filename": "Spain-staged-original-claim-2026.txt",
+            "mime_type": "text/plain",
+            "authored_text": "DEMO RECORD — STAGED ORIGINAL CLAIM, NOT AN ACTUAL FILED APPLICATION\nApp selection year: 2026; actual source campaign unknown.\nDemo reference: DEMO-CAP-ES-2026\nMain public reference: 10:50:0:0:13:29:1\nThe private D04 original deliberately copies only the official outer ring, filling all three published inner holes. This is a staged drawing mistake; the public reference remains unchanged. Its geometry-derived area is not the published superficie.\nStaged original claimed figure: 63.0449 ha, copied from the published superficie for this exercise. No actual farmer claim or filing is established.\nThe other four displayed complete public recintos are neighboring examples, not one farm, ownership, lease or a combined claim.\nNo actual filing date, receipt, payment or authority acceptance exists in this example.\n\nPublic current-service retrieval: 2026-10-17\nProvider: Fondo Español de Garantía Agraria (FEGA) / SIGPAC\nOGC query: https://sigpac-hubcloud.es/ogcapi/collections/recintos/items?f=json&bbox=-6.47,39.50,-6.46,39.51&limit=100&crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FOGC%2F1.3%2FCRS84&bbox-crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FEPSG%2F0%2F4258\nCollection metadata: https://sigpac-hubcloud.es/ogcapi/collections/recintos?f=json\nGeometry CRS: OGC:CRS84; source campaign year unknown (null). App selection year 2026 is not a verified source campaign or imagery capture date.\nRaw OGC capture SHA256: 663cc9eb676850f15f4f8bdefcbac87a5d2f80bdf28df120bf92c578341086e4\nCaptured manifest: shared/spain-sigpac-demo.json, id es-caceres-sigpac-2026-10-17, SHA256 f61151ef4e77f0a16ee7874a8c6a14d5943300b5fca0ac130f397b4f12543d60.\nAttribution: Recintos SIGPAC © Fondo Español de Garantía Agraria (FEGA), CC BY 4.0.\nLicense: https://creativecommons.org/licenses/by/4.0/\n"
+          }
         },
         {
-          "alias": "es-supplied-reference", "kind": "document", "links": {"farm_alias": "es-farm"},
-          "data": {"filename": "Spain-supplied-pasture-reference-2026.txt", "mime_type": "text/plain", "authored_text": "DEMO RECORD — NOT A LIVE SIGPAC LOOKUP OR AUTHORITY NOTICE\nCampaign: 2026\nField: D04, one of seven example private fields in the example holding\nExample SIGPAC code: 10:999:0:0:12:34:1 — example\nSupplied category: scrub pasture (PR)\nPhysical parcel area: 6.70 ha\nSupplied pasture coefficient: 45%\nSupplied maximum claimable area: 3.02 ha, rounded from 6.70 × 0.45 = 3.015 ha\nRounded physical-minus-supplied-claimable difference: 3.68 ha. This is not a payment refusal, penalty or geographically identified exclusion.\nOption A in the exercise: review a proposed claim of 3.02 ha instead of blindly claiming the whole physical area.\nOption B in the exercise: the example farmer says scrub was cleared last winter. A draft SIGPAC allegation needs checked dated geotagged photos and a lease or other actual land-use evidence, followed by the authority's decision. None of that evidence or any decision is supplied here.\nDo not shrink the physical outline to 45%: a pasture coefficient does not identify a contiguous subpolygon. Protected-area designation and applicable restrictions remain unknown; no real Natura 2000 intersection or automatic ineligibility is established. National amendment deadlines, monitoring regime, control stage and actual filing route remain unverified.\nThe separate map concerns are D05's intentional overlap with own-field D06 and D07's blank crop. No neighbour's data or further official finding is supplied.\n"}
+          "alias": "es-supplied-reference",
+          "kind": "document",
+          "links": {
+            "farm_alias": "es-farm"
+          },
+          "data": {
+            "filename": "Spain-public-SIGPAC-reference-2026.txt",
+            "mime_type": "text/plain",
+            "authored_text": "DEMO RECORD — PUBLIC SOURCE TRANSCRIPTION AND LABELLED CALCULATION, NOT AN AUTHORITY NOTICE\nPublic current-service retrieval: 2026-10-17\nProvider: Fondo Español de Garantía Agraria (FEGA) / SIGPAC\nOGC query: https://sigpac-hubcloud.es/ogcapi/collections/recintos/items?f=json&bbox=-6.47,39.50,-6.46,39.51&limit=100&crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FOGC%2F1.3%2FCRS84&bbox-crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FEPSG%2F0%2F4258\nCollection metadata: https://sigpac-hubcloud.es/ogcapi/collections/recintos?f=json\nGeometry CRS: OGC:CRS84; source campaign year unknown (null). App selection year 2026 is not a verified source campaign or imagery capture date.\nRaw OGC capture SHA256: 663cc9eb676850f15f4f8bdefcbac87a5d2f80bdf28df120bf92c578341086e4\nCaptured manifest: shared/spain-sigpac-demo.json, id es-caceres-sigpac-2026-10-17, SHA256 f61151ef4e77f0a16ee7874a8c6a14d5943300b5fca0ac130f397b4f12543d60.\nAttribution: Recintos SIGPAC © Fondo Español de Garantía Agraria (FEGA), CC BY 4.0.\nLicense: https://creativecommons.org/licenses/by/4.0/\n\nRetained published attributes:\nD01: 10:50:0:0:13:18:1; published superficie 4.878 ha; admisibilidad 100; uso_sigpac PR; incidencias null; attributes https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/18.json\nD02: 10:50:0:0:13:22:1; published superficie 2.6493 ha; admisibilidad 100; uso_sigpac PR; incidencias null; attributes https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/22.json\nD03: 10:50:0:0:13:25:1; published superficie 11.0018 ha; admisibilidad 100; uso_sigpac PR; incidencias null; attributes https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/25.json\nD04: 10:50:0:0:13:29:1; published superficie 63.0449 ha; admisibilidad 90; uso_sigpac PR; incidencias 140; attributes https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/29.json\nD05: 10:50:0:0:13:26:1; published superficie 71.8498 ha; admisibilidad 100; uso_sigpac PR; incidencias null; attributes https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/26.json\n\nD04 published admisibilidad/CSP: 90\nD04 public geometry has one outer ring and three inner rings, all preserved in the retained public manifest. Only the private staged original drops the inner rings. Geometry and source attributes remain separate.\nCALCULATED INDICATIVE AREA: 63.0449 ha × 90 / 100 = 56.74041 ha. This figure is calculated here, NOT a supplied official maximum-area attribute, verified eligibility, payable area, a rounding rule or an authority decision. Source CSP alone may not establish all declaration deductions or applicable conditions.\nProposed future demo claim: 56.74041 ha, subject to separate source review. Do not overwrite the staged original claim or infer that a correction was filed.\nRaw incidencia 140 is retained without interpreting its meaning. No protected-area designation, satellite detection, official outcome or actual farmer ownership is established by these records.\nIf the source is disputed, prepare evidence and verify the current official process. No actual clearance date, geotagged photo, lease, legal deadline, source campaign or PNOA capture date is established here.\n"
+          }
         },
         {
-          "alias": "es-claimed-area", "kind": "facts", "links": {"farm_alias": "es-farm", "parcel_alias": "es-pasture", "source_aliases": [{"alias": "es-original-claim", "locator": "Original claimed area in this invented statement: 6.70 ha"}]},
-          "data": {"key": "cap.claimed_area_ha", "label": "original claimed area — check source", "value": 6.70, "unit": "ha", "period": "2026", "temporal_basis": "campaign_year", "review_status": "proposed", "notes": "Unconfirmed original claim in a example statement, not official receipt, eligibility or payable area. The source retains literal 6.70 ha. A future claim proposal must not overwrite this original statement."}
+          "alias": "es-claimed-area",
+          "kind": "facts",
+          "links": {
+            "farm_alias": "es-farm",
+            "parcel_alias": "es-pasture",
+            "source_aliases": [
+              {
+                "alias": "es-original-claim",
+                "locator": "Staged original claimed figure: 63.0449 ha"
+              }
+            ]
+          },
+          "data": {
+            "key": "cap.claimed_area_ha",
+            "label": "Staged original claimed figure — not an actual filing",
+            "value": 63.0449,
+            "unit": "ha",
+            "period": "2026",
+            "temporal_basis": "campaign_year",
+            "review_status": "proposed",
+            "notes": "Demo original figure copied from the published attribute, not a measurement of the intentionally hole-filled private drawing or evidence of a real filing."
+          }
         },
         {
-          "alias": "es-eligible-area", "kind": "facts", "links": {"farm_alias": "es-farm", "parcel_alias": "es-pasture", "source_aliases": [{"alias": "es-supplied-reference", "locator": "Supplied maximum claimable area: 3.02 ha, rounded from 6.70 × 0.45 = 3.015 ha"}]},
-          "data": {"key": "cap.supplied_max_eligible_area_ha", "label": "supplied maximum claimable area — not verified eligibility", "value": 3.02, "unit": "ha", "period": "2026", "temporal_basis": "campaign_year", "review_status": "proposed", "notes": "Supplied example value only. Confirmation would mean a person checked this literal demo source, not that the app or authority certified actual eligibility or payment."}
+          "alias": "es-eligible-area",
+          "kind": "facts",
+          "links": {
+            "farm_alias": "es-farm",
+            "parcel_alias": "es-pasture",
+            "source_aliases": [
+              {
+                "alias": "es-supplied-reference",
+                "locator": "CALCULATED INDICATIVE AREA: 63.0449 ha × 90 / 100 = 56.74041 ha"
+              }
+            ]
+          },
+          "data": {
+            "key": "cap.supplied_max_eligible_area_ha",
+            "label": "Calculated indicative area — NOT a supplied official maximum",
+            "value": 56.74041,
+            "unit": "ha",
+            "period": "2026",
+            "temporal_basis": "campaign_year",
+            "review_status": "proposed",
+            "notes": "Compatibility fact key retained. The value is a clearly labelled calculation from published area and CSP, not a supplied official maximum, verified eligibility, payment or rounding rule."
+          }
         },
         {
-          "alias": "es-coefficient", "kind": "facts", "links": {"farm_alias": "es-farm", "parcel_alias": "es-pasture", "source_aliases": [{"alias": "es-supplied-reference", "locator": "Supplied pasture coefficient: 45%"}]},
-          "data": {"key": "cap.pasture_coefficient_percent", "label": "supplied pasture coefficient", "value": 45, "unit": "%", "period": "2026", "temporal_basis": "campaign_year", "review_status": "proposed", "notes": "Unconfirmed supplied percentage. It does not locate an excluded area, update a physical boundary or establish an official SIGPAC value."}
+          "alias": "es-coefficient",
+          "kind": "facts",
+          "links": {
+            "farm_alias": "es-farm",
+            "parcel_alias": "es-pasture",
+            "source_aliases": [
+              {
+                "alias": "es-supplied-reference",
+                "locator": "D04 published admisibilidad/CSP: 90"
+              }
+            ]
+          },
+          "data": {
+            "key": "cap.pasture_coefficient_percent",
+            "label": "Published CSP/admisibilidad — check the captured source",
+            "value": 90,
+            "unit": "%",
+            "period": "2026",
+            "temporal_basis": "campaign_year",
+            "review_status": "proposed",
+            "notes": "Literal current-service public attribute, unconfirmed until checked. Retrieval date does not establish the source campaign, land use on a real farm, or final declaration eligibility."
+          }
         },
         {
-          "alias": "es-corrected-area", "kind": "facts", "links": {"farm_alias": "es-farm", "parcel_alias": "es-pasture", "source_aliases": [{"alias": "es-supplied-reference", "locator": "Option A in the exercise: review a proposed claim of 3.02 ha instead of blindly claiming the whole physical area."}]},
-          "data": {"key": "cap.proposed_claim_area_ha", "label": "proposed future claim — 3.02 ha, not filed", "value": 3.02, "unit": "ha", "period": "2026", "temporal_basis": "campaign_year", "review_status": "proposed", "notes": "Unconfirmed proposal for a future response, not a new filing or replacement of the original statement. The distinct key preserves original claimed 6.70 ha unchanged. No supersedes_id or automatic approval applies. The physical 6.70 ha outline stays intact."}
+          "alias": "es-corrected-area",
+          "kind": "facts",
+          "links": {
+            "farm_alias": "es-farm",
+            "parcel_alias": "es-pasture",
+            "source_aliases": [
+              {
+                "alias": "es-supplied-reference",
+                "locator": "Proposed future demo claim: 56.74041 ha"
+              }
+            ]
+          },
+          "data": {
+            "key": "cap.proposed_claim_area_ha",
+            "label": "Proposed future claim — separate from boundary correction",
+            "value": 56.74041,
+            "unit": "ha",
+            "period": "2026",
+            "temporal_basis": "campaign_year",
+            "review_status": "proposed",
+            "notes": "Unconfirmed proposal for a future response; distinct key preserves the staged original 63.0449 ha. No automatic filing, supersession, approval or geometry resizing."
+          }
         },
         {
-          "alias": "es-lease-evidence", "kind": "tasks", "links": {"farm_alias": "es-farm"},
-          "data": {"title": "Option B — check lease and dated geotagged photos", "status": "open", "description": "The example farmer says scrub was cleared last winter. No actual clearance date, geotagged photo, lease, land-use right, updated coefficient or authority decision is seeded. Before preparing a SIGPAC allegation, ask for the relevant actual evidence and verify the current route and any protected-area conditions. The authority decides; the app does not promise a higher coefficient or claim.", "notes": "Demo evidence gap. No document attachment, exact clearing date or completed official action is implied."}
+          "alias": "es-lease-evidence",
+          "kind": "tasks",
+          "links": {
+            "farm_alias": "es-farm"
+          },
+          "data": {
+            "title": "Check evidence before disputing the public reference",
+            "status": "open",
+            "description": "No actual land-use right, scrub-clearance date, lease, geotagged photo or authority decision is seeded. If disputing SIGPAC rather than correcting the staged private drawing, verify the relevant evidence, protected-area conditions and actual official route. Public neighboring parcel examples are not one holding.",
+            "notes": "Evidence gap remains open. No automatic SIGPAC allegation, authority update or promise of a higher coefficient."
+          }
         },
         {
-          "alias": "es-case", "kind": "admin_cases",
-          "links": {"farm_alias": "es-farm", "references_aliases": [{"alias": "es-original-claim", "role": "original"}, {"alias": "es-supplied-reference", "role": "notice"}, {"alias": "es-claimed-area", "role": "original"}, {"alias": "es-eligible-area", "role": "evidence"}, {"alias": "es-coefficient", "role": "evidence"}, {"alias": "es-corrected-area", "role": "change"}, {"alias": "es-lease-evidence", "role": "evidence"}], "items": [{"kind": "action", "title": "Review the original claim and supplied pasture figures", "description": "All four facts are proposed. Check exact values and sources; physical area, supplied claimable area and payment eligibility are different concepts."}, {"kind": "action", "title": "Choose Option A or evidence-led Option B", "description": "Option A is a separately reviewed proposed future claim of 3.02 ha, not an actual filing or a replacement of the original 6.70 ha statement. Option B needs checked evidence and a draft SIGPAC allegation; an authority decides any change."}, {"kind": "requested_record", "title": "Keep missing lease, photo and protected-area checks visible", "description": "Evidence is deliberately absent. Resolve or explicitly set aside the relevant demo item with a reason; do not infer an actual Natura designation, permission to clear scrub, amendment deadline or authority acceptance."}]},
-          "data": {"title": "Cáceres D04 pasture claim correction", "job_type": "correction", "reporting_year": 2026, "authority": "Demo Spanish demo reviewer — no actual authority notice", "scheme": "Demo CAP pasture example", "original_reference": "DEMO-CAP-ES-2026", "original_submitted_at": null, "original_statement": "Demo statement, not actual filing: the Cáceres holding has seven example fields with individual outline areas summing to 27.96 ha, including an intentional own-field overlap. This correction concerns D04 only: original claimed 6.70 ha for example scrub-pasture (PR) parcel 10:999:0:0:12:34:1. The supplied example reference uses 45% and a rounded 3.02 ha figure. Actual filing date, official parcel match, eligibility, payment and acceptance are unknown.", "cap_context": {"regime": "unknown", "filed_on": null, "national_deadline": null, "national_deadline_source": null, "first_instalment_on": null, "check_announced_on": null, "check_scope": "unknown", "finding_channel": "unknown", "non_monitorable_breach": null, "fictional": true}, "focused_review_required": true, "reason": "Demo D04 exercise: original claimed 6.70 ha exceeds the supplied rounded 3.02 ha by 3.68 ha, subject to checking all proposed values. Keep D04 physical geometry intact. Option A reviews a claim correction; Option B needs evidence for a SIGPAC allegation after claimed winter scrub clearance. Separately inspect D05's overlap with own-field D06 and D07's missing crop. Neither option is an automatic eligibility or authority decision; national dates and monitoring status remain unknown."}
+          "alias": "es-case",
+          "kind": "admin_cases",
+          "links": {
+            "farm_alias": "es-farm",
+            "references_aliases": [
+              {
+                "alias": "es-original-claim",
+                "role": "original"
+              },
+              {
+                "alias": "es-supplied-reference",
+                "role": "notice"
+              },
+              {
+                "alias": "es-claimed-area",
+                "role": "original"
+              },
+              {
+                "alias": "es-eligible-area",
+                "role": "evidence"
+              },
+              {
+                "alias": "es-coefficient",
+                "role": "evidence"
+              },
+              {
+                "alias": "es-corrected-area",
+                "role": "change"
+              },
+              {
+                "alias": "es-lease-evidence",
+                "role": "evidence"
+              }
+            ],
+            "items": [
+              {
+                "kind": "action",
+                "title": "Compare D04 and separately apply a private outline proposal",
+                "description": "Inspect the staged outer-ring-only original against the exact public geometry with three holes. Save a real private proposal, check the complete answers and apply it through separate human field approval. The public reference stays unchanged."
+              },
+              {
+                "kind": "action",
+                "title": "Review the original figure, published CSP and labelled calculation",
+                "description": "Check all four proposed facts and exact source documents. Published superficie 63.0449 ha, CSP 90 and calculated 56.74041 ha are not interchangeable with drawn area, a supplied official maximum or a payment decision."
+              },
+              {
+                "kind": "requested_record",
+                "title": "Keep actual evidence and official process unknowns visible",
+                "description": "No actual lease, geotagged photo, source campaign, imagery capture date, legal amendment deadline or authority response is established. A reviewed private preparation is not a filing."
+              }
+            ]
+          },
+          "data": {
+            "title": "Cáceres D04: staged boundary and claim review",
+            "job_type": "correction",
+            "reporting_year": 2026,
+            "authority": "Demo reviewer — no actual authority notice",
+            "scheme": "CAP training example using public SIGPAC references",
+            "original_reference": "DEMO-CAP-ES-2026",
+            "original_submitted_at": null,
+            "original_statement": "Staged demo, not an actual filing: D04 uses public reference 10:50:0:0:13:29:1 and an original claimed figure 63.0449 ha. The private drawing deliberately filled three public inner exclusions. Four other public recintos are neighboring examples, not one farm. Current-service CSP is 90; calculated 56.74041 ha is not a supplied official maximum or payment decision. Actual filing, ownership and source campaign remain unknown.",
+            "cap_context": {
+              "regime": "unknown",
+              "filed_on": null,
+              "national_deadline": null,
+              "national_deadline_source": null,
+              "first_instalment_on": null,
+              "check_announced_on": null,
+              "check_scope": "unknown",
+              "finding_channel": "unknown",
+              "non_monitorable_breach": null,
+              "fictional": true
+            },
+            "focused_review_required": true,
+            "reason": "Correct the staged private outline only after comparing the unchanged published geometry and saving a separately reviewed field proposal. Separately review the original demo claimed 63.0449 ha, published CSP 90 and calculated proposed 56.74041 ha. No automatic 90% resizing, SIGPAC update, eligibility certification or filing. Incidence 140 and national deadlines remain uninterpreted or unknown."
+          }
         }
       ]
     },

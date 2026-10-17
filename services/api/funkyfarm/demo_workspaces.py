@@ -72,7 +72,7 @@ def _fixture(identifier):
         _fail("The fictional training fixture could not be read.", "demo_fixture_unavailable", 503)
     scenarios = fixture.get("scenarios", [])
     expected_count = fixture.get("expected_record_count")
-    if fixture.get("fixture_id") != identifier or type(fixture.get("version")) is not int or fixture["version"] not in {1, 2, 3} or fixture.get("campaign_year") != 2026 or len(scenarios) != 7 or type(expected_count) is not int or not 20 <= expected_count <= 50:
+    if fixture.get("fixture_id") != identifier or type(fixture.get("version")) is not int or fixture["version"] not in {1, 2, 3, 4} or fixture.get("campaign_year") != 2026 or len(scenarios) != 7 or type(expected_count) is not int or not 20 <= expected_count <= 50:
         _fail("The saved fictional fixture has an unsupported version.", "demo_fixture_unavailable", 503)
     records, aliases = [], set()
     for scenario in scenarios:

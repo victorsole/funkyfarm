@@ -1,0 +1,17 @@
+SIGPAC parcel references and PNOA background
+
+Recintos SIGPAC: © Fondo Español de Garantía Agraria (FEGA).
+Official catalog: https://datos.gob.es/es/catalogo/e0dat0002-recintos-del-sistema-de-informacion-geografica-de-parcelas-agricolas-sigpac-espana
+Source collection: https://sigpac-hubcloud.es/ogcapi/collections/recintos?f=json
+
+Ortofoto PNOA: © Instituto Geográfico Nacional (IGN) / Sistema Cartográfico Nacional (SCNE).
+Source WMS: https://www.ign.es/wms-inspire/pnoa-ma?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities
+
+Both sources: Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+
+Retrieved 17 October 2026. The retrieval date is not an image capture date or a confirmed SIGPAC campaign year; both are unknown here. The image filename records retrieval year only.
+
+The GeoJSON selects five complete public recintos and joins official attributes by their seven-part SIGPAC references. Coordinates and holes are unchanged; source links and retrieval metadata were added. Attribute WKT declares EPSG:4258, while the selected GeoJSON geometry was explicitly returned as OGC:CRS84. The manifest retains source and image checksums.
+
+Public references and background images do not establish ownership, membership of one farm, actual declarations, eligible area or payment. Any private demo claim or drawing is separate from these official source records. No official submission or acceptance is represented. Image capture date and incidence-code meanings are not inferred.

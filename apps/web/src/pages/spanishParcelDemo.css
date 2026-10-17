@@ -1,0 +1,10 @@
+.spanish-parcel-demo { display: grid; gap: 24px; padding-block: 24px; border-top: 1px solid var(--line); min-width: 0; }
+.spanish-parcel-demo > section { display: grid; gap: 12px; justify-items: start; }
+.spanish-parcel-demo h3, .spanish-parcel-demo p { margin: 0; }
+.spanish-parcel-demo-notice { color: var(--muted); font-size: .78rem; line-height: 1.6; }
+.spanish-parcel-demo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; }
+.spanish-parcel-demo form { display: grid; gap: 16px; width: 100%; }
+.spanish-parcel-demo form > label { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.spanish-parcel-demo input[type=checkbox] { flex: 0 0 auto; margin-top: 5px; }
+.spanish-parcel-demo a, .spanish-parcel-demo li { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .spanish-parcel-demo-actions { align-items: flex-start; flex-direction: column; } .spanish-parcel-demo .button { white-space: normal; max-width: 100%; } }

@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "checked_date": "2026-10-17",
   "country": "ES",
   "region": "Extremadura",
-  "purpose": "Source notes for a fictional Caceres sheep-farm pasture review; not an eligibility decision or filing connector.",
+  "purpose": "Source notes for a staged Cáceres parcel and claim review using selected public SIGPAC references, not one actual holding, an eligibility decision or a filing connector.",
   "sources": [
     {
       "id": "extremadura-sigpac-2026-resolution",
@@ -13,14 +13,35 @@
       "checked_date": "2026-10-17",
       "retrieval": "Official HTML opened; relevant returned sections read. Not a complete amendment audit.",
       "supports": [
-        {"section": "Primero", "fact": "SIGPAC does not establish ownership or legally recognised property boundaries."},
-        {"section": "Segundo.1", "fact": "The declarant checks graphical boundaries and land use against reality, and separately checks that pasture CSP reflects the admissible percentage."},
-        {"section": "Tercero", "fact": "PR means pasto arbustivo: naturally producing forage with notable shrubs. Shrubs alone do not establish ineligibility."},
-        {"section": "Cuarto.1", "fact": "A discrepancy needs a reasoned, documented modification request to the competent regional SIGPAC authority."},
-        {"section": "Quinto", "fact": "CSP determines maximum admissible pasture area. Temporary unproductive elements may require further deductions from the declaration."},
-        {"section": "Septimo", "fact": "Type 7 concerns whole-recinto CSP change; type 8 concerns splitting a recinto to change CSP on part."}
+        {
+          "section": "Primero",
+          "fact": "SIGPAC does not establish ownership or legally recognised property boundaries."
+        },
+        {
+          "section": "Segundo.1",
+          "fact": "The declarant checks graphical boundaries and land use against reality, and separately checks that pasture CSP reflects the admissible percentage."
+        },
+        {
+          "section": "Tercero",
+          "fact": "PR means pasto arbustivo: naturally producing forage with notable shrubs. Shrubs alone do not establish ineligibility."
+        },
+        {
+          "section": "Cuarto.1",
+          "fact": "A discrepancy needs a reasoned, documented modification request to the competent regional SIGPAC authority."
+        },
+        {
+          "section": "Quinto",
+          "fact": "CSP determines maximum admissible pasture area. Temporary unproductive elements may require further deductions from the declaration."
+        },
+        {
+          "section": "Septimo",
+          "fact": "Type 7 concerns whole-recinto CSP change; type 8 concerns splitting a recinto to change CSP on part."
+        }
       ],
-      "unknowns": ["Later amendments not exhaustively checked.", "No scheme eligibility certification or official rounding rule established."]
+      "unknowns": [
+        "Later amendments not exhaustively checked.",
+        "No scheme eligibility certification or official rounding rule established."
+      ]
     },
     {
       "id": "extremadura-sigpac-allegations-service",
@@ -30,26 +51,129 @@
       "checked_date": "2026-10-17",
       "retrieval": "Official search excerpts read and official page opened; response exposed page metadata rather than its complete body.",
       "supports": [
-        {"section": "Documentacion", "fact": "Evidence depends on allegation type; listed categories include dated georeferenced photographs, technical report, use-right documentation and livestock-use report. They are not all mandatory for every case."},
-        {"section": "Lugar y forma de presentacion", "fact": "Electronic submission uses SGA, by the person, a representative or an authorised collaborating entity."}
+        {
+          "section": "Documentacion",
+          "fact": "Evidence depends on allegation type; listed categories include dated georeferenced photographs, technical report, use-right documentation and livestock-use report. They are not all mandatory for every case."
+        },
+        {
+          "section": "Lugar y forma de presentacion",
+          "fact": "Electronic submission uses SGA, by the person, a representative or an authorised collaborating entity."
+        }
       ],
-      "unknowns": ["SGA App-specific evidence capture or submission functionality not verified.", "No API, import format, prefill access or successful authority acceptance verified.", "Service text describes the resolution by its publication date; the original legal act is dated 30 January 2026."]
+      "unknowns": [
+        "SGA App-specific evidence capture or submission functionality not verified.",
+        "No API, import format, prefill access or successful authority acceptance verified.",
+        "Service text describes the resolution by its publication date; the original legal act is dated 30 January 2026."
+      ]
+    },
+    {
+      "id": "fega-current-sigpac-caceres-public-demo",
+      "title": "FEGA SIGPAC current-service recintos and attribute records, explicit CRS84 capture",
+      "url": "https://sigpac-hubcloud.es/ogcapi/collections/recintos/items?f=json&bbox=-6.47,39.50,-6.46,39.51&limit=100&crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FOGC%2F1.3%2FCRS84&bbox-crs=http%3A%2F%2Fwww.opengis.net%2Fdef%2Fcrs%2FEPSG%2F0%2F4258",
+      "collection_url": "https://sigpac-hubcloud.es/ogcapi/collections/recintos?f=json",
+      "catalog_url": "https://datos.gob.es/es/catalogo/e0dat0002-recintos-del-sistema-de-informacion-geografica-de-parcelas-agricolas-sigpac-espana",
+      "checked_date": "2026-10-17",
+      "edition": "Current-service capture on 17 October 2026; source campaign not established.",
+      "retrieval": "Five complete public recintos from the locally retained explicit OGC:CRS84 response, with attribute records joined by the seven reference components. No private farmer account, ownership lookup or claim submission.",
+      "raw_sha256": "663cc9eb676850f15f4f8bdefcbac87a5d2f80bdf28df120bf92c578341086e4",
+      "manifest": {
+        "id": "es-caceres-sigpac-2026-10-17",
+        "path": "shared/spain-sigpac-demo.json",
+        "sha256": "f61151ef4e77f0a16ee7874a8c6a14d5943300b5fca0ac130f397b4f12543d60"
+      },
+      "attribution": "Recintos SIGPAC © Fondo Español de Garantía Agraria (FEGA), CC BY 4.0.",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "supports": [
+        {
+          "section": "Retained public features",
+          "fact": "Five neighboring reference recintos 18, 22, 25, 29 and 26 preserve exact CRS84 coordinates and all holes; their selection does not establish one holding or ownership."
+        },
+        {
+          "section": "Main D04 attribute record",
+          "fact": "Reference 10:50:0:0:13:29:1 has published superficie 63.0449 ha, admisibilidad/CSP 90, uso_sigpac PR and raw incidencias 140. The incidence meaning has not been established."
+        },
+        {
+          "section": "Calculation provenance",
+          "fact": "56.74041 ha is calculated from 63.0449 × 90 / 100. It is not a supplied official maximum-area field, final eligible area, payment decision or verified rounding rule."
+        }
+      ],
+      "unknowns": [
+        "Source campaign year is null; retrieval is not campaign or survey date.",
+        "No ownership, tenancy, actual claim, private farmer or combined holding established.",
+        "No incidence-140 interpretation, final scheme eligibility or payment certification.",
+        "Current legal deadlines and authority acceptance remain unverified."
+      ]
     }
   ],
   "demo_limits": {
-    "fictional": true,
-    "sigpac_reference": "10:999:0:0:12:34:1",
-    "physical_area_ha": "6.70",
-    "csp_percent": "45",
-    "illustrative_product_ha": "3.015",
-    "displayed_maximum_ha": "3.02",
-    "displayed_difference_ha": "3.68",
-    "arithmetic_note": "3.68 is the physical area minus the displayed rounded maximum, not an established authority rounding rule or exact legal overclaim. These values and reference are authored fiction, not retrieved SIGPAC data.",
+    "training": true,
+    "fictional_claim": true,
+    "public_reference_geometry": true,
+    "not_one_actual_holding": true,
+    "source_manifest_id": "es-caceres-sigpac-2026-10-17",
+    "origin": "sigpac_public_demo_2026_10_17",
+    "selected_references": [
+      {
+        "label": "D01",
+        "reference": "10:50:0:0:13:18:1",
+        "published_area_ha": 4.878,
+        "csp_percent": 100,
+        "use_code": "PR",
+        "incidences": null,
+        "attributes_url": "https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/18.json"
+      },
+      {
+        "label": "D02",
+        "reference": "10:50:0:0:13:22:1",
+        "published_area_ha": 2.6493,
+        "csp_percent": 100,
+        "use_code": "PR",
+        "incidences": null,
+        "attributes_url": "https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/22.json"
+      },
+      {
+        "label": "D03",
+        "reference": "10:50:0:0:13:25:1",
+        "published_area_ha": 11.0018,
+        "csp_percent": 100,
+        "use_code": "PR",
+        "incidences": null,
+        "attributes_url": "https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/25.json"
+      },
+      {
+        "label": "D04",
+        "reference": "10:50:0:0:13:29:1",
+        "published_area_ha": 63.0449,
+        "csp_percent": 90,
+        "use_code": "PR",
+        "incidences": "140",
+        "attributes_url": "https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/29.json"
+      },
+      {
+        "label": "D05",
+        "reference": "10:50:0:0:13:26:1",
+        "published_area_ha": 71.8498,
+        "csp_percent": 100,
+        "use_code": "PR",
+        "incidences": null,
+        "attributes_url": "https://sigpac-hubcloud.es/servicioconsultassigpac/query/recinfoparc/10/50/0/0/13/26.json"
+      }
+    ],
+    "main_reference": "10:50:0:0:13:29:1",
+    "published_area_ha": "63.0449",
+    "csp_percent": "90",
+    "calculated_indicative_area_ha": "56.74041",
+    "calculated_not_supplied_official_maximum": true,
+    "private_original": "Staged D04 original uses only the official outer ring, deliberately filling all three actual inner holes. It is not the official geometry; its drawn approximate area differs from the published superficie. Other four private examples preserve their complete public geometry.",
+    "correction": "Compare the exact published reference, save a private boundary proposal and separately apply it through human review. The published source is never rewritten; the claim-number proposal is a separate action.",
+    "arithmetic_note": "The product of the published area and CSP is labelled as a calculation. It does not spatially locate exclusions, decide all declaration deductions, establish ownership or imply a payment or penalty.",
+    "source_campaign_year": null,
+    "imagery_capture_date": null,
     "filing_deadline": null,
     "correction_deadline": null,
     "official_submission_enabled": false,
     "eligibility_certified": false
   },
-  "recommendation": "Demonstrate reviewing the outline, then the independently supplied CSP and other eligibility evidence. If the reference data is disputed, prepare a reasoned evidence packet for the competent SGA route; do not relabel a local edit as an official correction or completed submission.",
-  "research_limits": "Two searches and two official-page opens only; Firecrawl quota exhausted, authorised web fallback used. No farmer account, live parcel lookup, provider call or form submission. Current national or regional deadlines were not established for this fictional case."
+  "recommendation": "Compare the staged private outline with the unchanged complete public reference, explicitly save and review a real private proposal, and separately check the proposed claim number and every source. If disputing SIGPAC, prepare a reasoned evidence packet for the applicable official route. No private edit, model calculation or reviewed folder is an official update, submitted correction or authority acceptance.",
+  "research_limits": "The two earlier legal-source notes remain a limited review, not an exhaustive amendment or national-deadline audit. The public parcel data comes from the separately retained current-service capture and exact joined attribute records. PNOA capture date and source campaign remain unknown. No private farmer account, ownership verification, form submission or authority acceptance was performed."
 }

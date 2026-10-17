@@ -1,9 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 const logoPath = '/assets/funkyfarmers-logo.png';
 const logoHash = '5d6dfd5f04195567b0de6c0bc7e4b6d7f9a1f6ed333b84a7c6f5c29d6a8d7b6b';
+const sigpacBytes = readFileSync(new URL('../../shared/spain-sigpac-demo.json', import.meta.url));
+const sigpac = JSON.parse(sigpacBytes.toString('utf8'));
+const official = sigpac.fields.find(field => field.reference === sigpac.main_reference);
+const claimed = official.area_ha;
+const coefficient = official.csp_percent;
+const calculated = Number((claimed * coefficient / 100).toFixed(5));
+const excess = Number((claimed - calculated).toFixed(5));
+const stagedGeometry = { type: 'Polygon', coordinates: [official.geometry.coordinates[0]] };
 const responseFor = (page, path, method = 'GET') => page.waitForResponse(response =>
   new URL(response.url()).pathname === `/api/v1${path}` && response.request().method() === method);
 async function checked(response) {
@@ -84,11 +93,11 @@ async function comparison(page, status) {
   await expect(region).toBeVisible();
   await expect(region.getByText(status, { exact: true })).toBeVisible();
   for (const [label, value] of [
-    ['Area in the saved claim', '6.70 ha'],
-    ['Maximum area supplied by the source', '3.02 ha'],
-    ['Pasture coefficient supplied', '45%'],
-    ['Claim above the supplied maximum', '3.68 ha'],
-    ['Proposed corrected claim — not sent', '3.02 ha'],
+    ['Area in the saved claim', `${claimed.toFixed(2)} ha`],
+    ['Published area × pasture coefficient (calculated)', `${calculated.toFixed(2)} ha`],
+    ['Pasture coefficient supplied', `${coefficient}%`],
+    ['Claim above the calculated comparison', `${excess.toFixed(2)} ha`],
+    ['Proposed corrected claim — not sent', `${calculated.toFixed(2)} ha`],
   ]) {
     const metric = region.locator('dl > div').filter({ has: page.getByText(label, { exact: true }) });
     await expect(metric.locator('dd')).toHaveText(value);
@@ -98,6 +107,9 @@ async function comparison(page, status) {
 
 test('hackathon demo separates a Spanish pasture claim from the physical parcel and missing evidence', async ({ page }) => {
   test.setTimeout(240_000);
+  expect(createHash('sha256').update(sigpacBytes).digest('hex')).toBe('f61151ef4e77f0a16ee7874a8c6a14d5943300b5fca0ac130f397b4f12543d60');
+  expect(official).toMatchObject({ reference: '10:50:0:0:13:29:1', feature_id: 1315957919, area_ha: 63.0449, csp_percent: 90 });
+  expect(official.geometry.coordinates).toHaveLength(4); expect(calculated).toBe(56.74041); expect(excess).toBe(6.30449);
   const errors = []; const external = []; const writes = []; const starts = []; const expectedWrites = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => {
@@ -136,7 +148,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const created = responseFor(page, '/examples/workspace', 'POST'); await start.click();
   const response = await created;
   expect(response.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
-  const example = await checked(response); expect(example.fixture_record_count).toBe(39);
+  const example = await checked(response); expect(example.fixture_record_count).toBe(39); expect(example.fixture_version).toBe(4);
   const scenario = example.scenarios.find(item => item.key === 'es-protected-unknown'); expect(scenario).toBeTruthy();
   const own = example.records.filter(item => scenario.record_ids.includes(item.id));
   const farm = own.find(item => item.kind === 'farms'); const savedCase = own.find(item => item.kind === 'admin_cases');
@@ -145,14 +157,20 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await expect(page.getByLabel('Switch workspace', { exact: true })).toHaveValue(example.workspace.id);
   await expect(page.getByRole('heading', { name: 'From field to paperwork.', exact: true })).toBeVisible();
   const demoURL = page.url(); const before = await read(page, `/farms/${farm.id}`, example.workspace.id);
+  expect(before.data.origin).toBe(sigpac.origin);
+  const stagedParcel = before.data.parcels.find(item => item.external_id === official.reference); expect(stagedParcel).toBeTruthy();
+  expect(stagedParcel.geometry).toEqual(stagedGeometry);
+  for (const field of sigpac.fields) {
+    const saved = before.data.parcels.find(item => item.external_id === field.reference); expect(saved).toBeTruthy();
+    expect(saved.geometry).toEqual(field === official ? stagedGeometry : field.geometry);
+  }
   const checkPath = `/farms/${farm.id}/parcel-check?expected_farm_revision=${before.revision}&reporting_year=2026`;
   await page.getByRole('link', { name: 'Open the field map and checks', exact: true }).click();
   const firstCheck = await read(page, checkPath, example.workspace.id);
-  expect(firstCheck.fields).toHaveLength(7);
-  expect(firstCheck.fields.reduce((total, item) => total + item.outline_area_ha, 0)).toBeCloseTo(27.96, 2);
-  const pasture = firstCheck.fields.find(item => item.claim_context?.declared === 6.7); expect(pasture).toBeTruthy();
-  expect(pasture.outline_area_ha).toBeCloseTo(6.70, 2);
-  expect(pasture.claim_context).toMatchObject({ status: 'unconfirmed', declared: 6.7, max: 3.02, coefficient: 45, excess: 3.68, proposed_claim: 3.02, proposed_claim_is_draft: true });
+  expect(firstCheck.fields).toHaveLength(5);
+  const pasture = firstCheck.fields.find(item => item.id === stagedParcel.id); expect(pasture).toBeTruthy();
+  expect(pasture.outline_area_ha).toBeCloseTo(63.15637, 4);
+  expect(pasture.claim_context).toMatchObject({ status: 'unconfirmed', declared: claimed, max: calculated, coefficient, excess, proposed_claim: calculated, proposed_claim_is_draft: true });
   await page.getByLabel('Field to look at', { exact: true }).selectOption(String(firstCheck.fields.indexOf(pasture)));
   const map = page.getByRole('group', { name: 'Field boundary map', exact: true });
   await expect(map).toHaveClass(/leaflet-container/);
@@ -160,14 +178,29 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const savedOutline = await outline.getAttribute('d');
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect(outline).not.toHaveAttribute('d', savedOutline);
+  const aerial = map.getByRole('img', { name: 'Retained PNOA aerial photograph of the public Spanish demo area', exact: true });
+  await expect(aerial).toBeVisible(); await expect(aerial).toHaveJSProperty('naturalWidth', 2048); await expect(aerial).toHaveJSProperty('naturalHeight', 1840);
+  const photograph = await page.request.get(sigpac.image.path); expect(photograph.status()).toBe(200);
+  const photographBytes = await photograph.body(); expect(photographBytes.length).toBe(683069);
+  expect(createHash('sha256').update(photographBytes).digest('hex')).toBe(sigpac.image.sha256);
+  const publicReference = await page.request.get('/data/spain-sigpac-caceres.geojson'); expect(publicReference.status()).toBe(200);
+  const publicReferenceBytes = await publicReference.body();
+  expect(createHash('sha256').update(publicReferenceBytes).digest('hex')).toBe('e00c590351e6bb8ee3e4d631f7d0944c091931a0a324b95ae7aff00305d0920b');
+  const publicFeature = JSON.parse(publicReferenceBytes.toString('utf8')).features.find(feature => feature.id === official.feature_id);
+  expect(publicFeature.geometry).toEqual(official.geometry);
+  expect(publicFeature.properties).toMatchObject({ superficie: claimed, admisibilidad: coefficient, uso_sigpac: 'PR', incidencias: '140' });
+  await page.getByText('Photo, reference and date details', { exact: true }).click();
+  await expect(page.getByRole('link', { name: `SIGPAC source for ${official.reference}`, exact: true })).toHaveAttribute('href', official.attributes_url);
+  await expect(page.getByText(/Photo capture date: not established/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^(Draw excluded area|Close boundary|Save for comparison|Use my location)$/ })).toHaveCount(0);
-  await page.getByText('Choose an optional background map', { exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).not.toBeChecked();
+  await expect(page.getByText('Choose an optional background map', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toHaveCount(0);
   expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(before);
   expect(writes).toEqual([]);
   const unconfirmed = await comparison(page, 'Proposed values — not yet checked');
   await unconfirmed.getByText('Original sources and limits of this comparison', { exact: true }).click();
+  await expect(unconfirmed).toContainText(`Unrounded saved values: claim ${claimed} ha; calculated comparison ${calculated} ha; difference ${excess} ha; proposed correction ${calculated} ha`);
   const originals = unconfirmed.getByRole('link', { name: 'Open the original document', exact: true });
   await expect(originals).toHaveCount(2);
   await originals.first().click();
@@ -177,7 +210,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const chunks = []; let size = 0;
   for await (const chunk of await original.createReadStream()) { size += chunk.length; expect(size).toBeLessThan(100_000); chunks.push(chunk); }
   const sourceText = Buffer.concat(chunks).toString('utf8');
-  expect(sourceText).toContain('DEMO RECORD'); expect(sourceText).toContain('6.70 ha');
+  expect(sourceText).toContain('DEMO RECORD'); expect(sourceText).toContain(String(claimed));
   await page.getByRole('link', { name: 'Hackathon demo', exact: true }).click();
   const steps = page.getByRole('navigation', { name: 'Demo chapters', exact: true });
   await expect(steps.getByRole('button')).toHaveCount(3);
@@ -187,7 +220,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await page.getByRole('link', { name: 'Open the evidence task', exact: true }).click();
   const evidenceTask = own.find(item => item.alias === 'es-lease-evidence'); expect(evidenceTask).toBeTruthy();
   await expect(page.getByRole('heading', { name: evidenceTask.label, exact: true })).toBeVisible();
-  await expect(page.getByText(/No actual clearance date, geotagged photo, lease/)).toBeVisible();
+  await expect(page.getByText(/No actual land-use right, scrub-clearance date, lease, geotagged photo or authority decision is seeded/)).toBeVisible();
   await page.goto(demoURL);
   await steps.getByRole('button', { name: /^Check my fields\b/ }).click();
   await page.getByRole('link', { name: 'Review D04’s saved figures', exact: true }).click();
@@ -207,11 +240,11 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   expect(after).toEqual(before);
   expect((await read(page, `/farms/${farm.id}/field-proposals`, example.workspace.id)).total).toBe(0);
   const checkedClaim = await read(page, checkPath, example.workspace.id);
-  expect(checkedClaim.fields.find(item => item.id === pasture.id).claim_context).toMatchObject({ status: 'confirmed', declared: 6.7, max: 3.02, coefficient: 45, excess: 3.68, proposed_claim: 3.02, proposed_claim_is_draft: true });
+  expect(checkedClaim.fields.find(item => item.id === pasture.id).claim_context).toMatchObject({ status: 'confirmed', declared: claimed, max: calculated, coefficient, excess, proposed_claim: calculated, proposed_claim_is_draft: true });
   await page.goto(`/app/fields/${farm.id}/check?parcel_id=${pasture.id}`);
   await comparison(page, 'Values checked by a person — not an authority decision');
   const savedFacts = await read(page, `/facts?farm_id=${farm.id}`, example.workspace.id);
-  const missingCrop = before.data.parcels.find(item => !item.crop); expect(missingCrop).toBeTruthy();
+  const cropTarget = before.data.parcels.find(item => item.external_id === sigpac.fields.find(field => field.label === 'D02').reference); expect(cropTarget).toBeTruthy();
   await page.goto(demoURL);
   await steps.getByRole('button', { name: /^Check my fields\b/ }).click();
   await expect(page.getByRole('link', { name: 'Easy form: fill it in step by step', exact: true })).toHaveAttribute('href', `/app/easy-form?farm_id=${farm.id}`);
@@ -222,17 +255,17 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await questions.getByRole('button', { name: 'Yes, this is right', exact: true }).click();
   await questions.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(questions.getByRole('heading', { name: 'Do these fields look right?', exact: true })).toBeFocused();
-  await expect(questions.getByRole('group', { name: 'Choose a field to see on the map', exact: true }).getByRole('button')).toHaveCount(7);
+  await expect(questions.getByRole('group', { name: 'Choose a field to see on the map', exact: true }).getByRole('button')).toHaveCount(5);
   await questions.getByRole('button', { name: 'Yes, this is right', exact: true }).click();
   await questions.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(questions.getByRole('heading', { name: 'What is growing here?', exact: true })).toBeFocused();
   const crops = questions.getByRole('group', { name: 'Choose a field to check its crop', exact: true });
-  for (const field of before.data.parcels.filter(item => item.crop)) {
+  for (const field of before.data.parcels.filter(item => item.id !== cropTarget.id)) {
     await crops.getByRole('button').filter({ hasText: field.name }).click();
     await questions.getByRole('button', { name: 'Yes, this is right', exact: true }).click();
   }
-  await crops.getByRole('button').filter({ hasText: missingCrop.name }).click();
-  await expect(questions.locator('article.easy-form-crop')).toContainText('No crop recorded');
+  await crops.getByRole('button').filter({ hasText: cropTarget.name }).click();
+  await expect(questions.locator('article.easy-form-crop')).toContainText(cropTarget.crop || 'No crop recorded');
   await questions.getByRole('button', { name: 'I need to change this', exact: true }).click();
   await questions.getByLabel('Crop', { exact: true }).selectOption('other');
   await questions.getByLabel('Other crop name', { exact: true }).fill('Spring field beans — farmer-supplied');
@@ -245,15 +278,15 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await questions.getByRole('button', { name: 'Save crop change for review', exact: true }).click();
   const cropResponse = await cropSaved; expect(cropResponse.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
   const cropProposal = await checked(cropResponse);
-  expect(cropProposal.data).toMatchObject({ status: 'proposed', farm_id: farm.id, parcel: { id: missingCrop.id, crop: 'Spring field beans — farmer-supplied', geometry: missingCrop.geometry } });
+  expect(cropProposal.data).toMatchObject({ status: 'proposed', farm_id: farm.id, parcel: { id: cropTarget.id, crop: 'Spring field beans — farmer-supplied', geometry: cropTarget.geometry } });
   expectedWrites.push(`POST /api/v1/farms/${farm.id}/field-proposals`);
   await expect(questions.getByRole('link', { name: 'Review and apply this crop change', exact: true })).toBeVisible();
   await page.reload();
   await expect(questions.getByRole('heading', { name: 'What is growing here?', exact: true })).toBeFocused();
-  await crops.getByRole('button').filter({ hasText: missingCrop.name }).click();
+  await crops.getByRole('button').filter({ hasText: cropTarget.name }).click();
   await expect(questions.getByLabel('Other crop name', { exact: true })).toHaveValue('Spring field beans — farmer-supplied');
   await expect(questions.getByRole('link', { name: 'Review and apply this crop change', exact: true })).toBeVisible();
-  await expect(questions.getByText('7 of 7 fields answered.', { exact: true })).toBeVisible();
+  await expect(questions.getByText('5 of 5 fields answered.', { exact: true })).toBeVisible();
   await questions.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(questions.getByRole('heading', { name: 'What else is on the land?', exact: true })).toBeFocused();
   await questions.getByRole('button', { name: 'I am not sure', exact: true }).click();
@@ -268,6 +301,54 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(before);
   expect(await read(page, `/facts?farm_id=${farm.id}`, example.workspace.id)).toEqual(savedFacts);
   expect((await read(page, `/field-proposals/${cropProposal.id}`, example.workspace.id)).data.status).toBe('proposed');
+  expect(writes).toEqual(expectedWrites);
+  await page.goto(`/app/fields/${farm.id}/check?parcel_id=${pasture.id}&expected_farm_revision=${before.revision}`);
+  const guided = page.getByRole('region', { name: 'Guided public parcel correction', exact: true });
+  await expect(guided).toContainText('has 3 holes. The current private outline has 0');
+  const referenceDownload = page.waitForEvent('download');
+  await guided.getByRole('button', { name: 'Download the retained source GeoJSON', exact: true }).click();
+  const referenceFile = await referenceDownload; expect(await referenceFile.failure()).toBeNull();
+  const referenceChunks = [];
+  for await (const chunk of await referenceFile.createReadStream()) referenceChunks.push(chunk);
+  const retainedReferenceBytes = Buffer.concat(referenceChunks);
+  const retainedReference = JSON.parse(retainedReferenceBytes.toString('utf8'));
+  expect(retainedReference.geometry).toEqual(official.geometry);
+  expect(retainedReference.properties).toMatchObject({ reference: official.reference, source_year: null, area_ha: claimed, csp_percent: coefficient });
+  const geometrySaved = responseFor(page, `/farms/${farm.id}/field-proposals`, 'POST');
+  await guided.getByRole('button', { name: 'Save the boundary correction', exact: true }).click();
+  const geometryResponse = await geometrySaved; expect(geometryResponse.request().headers()['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/i);
+  const geometryProposal = await checked(geometryResponse);
+  expect(geometryProposal.data).toMatchObject({ status: 'proposed', farm_id: farm.id, base_farm_revision: before.revision, parcel: { id: pasture.id, crop: stagedParcel.crop, geometry: official.geometry }, reference: { external_id: official.reference, year: null, geometry: official.geometry } });
+  expectedWrites.push(`POST /api/v1/farms/${farm.id}/field-proposals`);
+  expect(await read(page, `/farms/${farm.id}`, example.workspace.id)).toEqual(before);
+  const apply = guided.getByRole('button', { name: 'Apply the reviewed private correction', exact: true });
+  await expect(apply).toBeDisabled();
+  await guided.getByLabel('Review note', { exact: true }).fill('Compared all retained coordinates, three original holes and the unchanged crop. This applies only the private staged correction, not a government update.');
+  await guided.getByRole('checkbox', { name: 'I compared the current outline, proposed holes, crop and retained reference.', exact: true }).check();
+  const overlap = guided.getByRole('checkbox', { name: 'I checked the listed overlaps and want to retain them.', exact: true });
+  if (await overlap.count()) await overlap.check();
+  const appliedResponse = responseFor(page, `/field-proposals/${geometryProposal.id}/approve`, 'POST');
+  await apply.click();
+  const applied = await checked(await appliedResponse); expect(applied.proposal.data.status).toBe('approved');
+  expectedWrites.push(`POST /api/v1/field-proposals/${geometryProposal.id}/approve`);
+  expect(applied.farm.revision).toBe(before.revision + 1);
+  const changedFarm = await read(page, `/farms/${farm.id}`, example.workspace.id);
+  expect(changedFarm.revision).toBe(applied.farm.revision);
+  expect(changedFarm.data.parcels.find(item => item.id === pasture.id).geometry).toEqual(official.geometry);
+  expect(changedFarm.data.parcels.find(item => item.id === cropTarget.id)).toEqual(cropTarget);
+  const staleCropProposal = await read(page, `/field-proposals/${cropProposal.id}`, example.workspace.id);
+  expect(staleCropProposal.data.status).toBe('proposed'); expect(staleCropProposal.data.base_farm_revision).toBeLessThan(changedFarm.revision);
+  await expect(guided.getByText('The current saved outline matches the retained source geometry.', { exact: true })).toBeVisible();
+  const secondReferenceDownload = page.waitForEvent('download');
+  await guided.getByRole('button', { name: 'Download the retained source GeoJSON', exact: true }).click();
+  const secondReferenceFile = await secondReferenceDownload; const secondChunks = [];
+  for await (const chunk of await secondReferenceFile.createReadStream()) secondChunks.push(chunk);
+  expect(Buffer.concat(secondChunks)).toEqual(retainedReferenceBytes);
+  expect(await (await page.request.get('/data/spain-sigpac-caceres.geojson')).body()).toEqual(publicReferenceBytes);
+  const correctedCheck = await read(page, `/farms/${farm.id}/parcel-check?expected_farm_revision=${changedFarm.revision}&reporting_year=2026`, example.workspace.id);
+  expect(correctedCheck.fields.find(item => item.id === pasture.id).outline_area_ha).toBeCloseTo(62.96257, 4);
+  expect(await read(page, `/facts?farm_id=${farm.id}`, example.workspace.id)).toEqual(savedFacts);
+  expect((await read(page, `/facts/${facts.find(item => item.alias === 'es-claimed-area').id}`, example.workspace.id)).data.value).toBe(claimed);
   expect(writes).toEqual(expectedWrites);
   await page.goto(demoURL);
   const refreshed = responseFor(page, `/examples/workspace/${example.run_id}`);
@@ -307,7 +388,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   const checkedCase = responseFor(page, `/cases/${savedCase.id}/checks`);
   await page.getByRole('button', { name: 'Check the saved case', exact: true }).click();
   const result = await checked(await checkedCase); expect(result.can_review).toBe(false);
-  expect(result.issues.some(issue => issue.code === 'case_item_open' && /lease|photo|protected/i.test(issue.message))).toBe(true);
+  expect(result.issues.some(issue => issue.code === 'case_item_open' && /actual evidence.*official process unknowns/i.test(issue.message))).toBe(true);
   await expect(page.getByRole('button', { name: 'Review this version for sending', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Open handoff and downloads', exact: true })).toBeDisabled();
   await page.goto(demoURL);

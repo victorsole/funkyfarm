@@ -3,7 +3,7 @@
   "name": "FunkyFarm",
   "locked_on": "2026-10-16",
   "purpose": "Check parcel outlines before filing, prepare corrections after filing, and explicitly review reused answers without repeated entry.",
-  "current_focus": ["Private LPIS parcel drawing and checks", "Source-backed after-filing correction preparation", "Explicit review of every reused answer", "Seven-field Spain pasture demo", "Real record import and source-linked extraction review", "Guided easy form with typed crop changes", "Seven isolated sample farm scenarios with 39 editable records", "Simple farmer steps and a permission-scoped adviser worklist"],
+  "current_focus": ["Private LPIS parcel drawing and checks", "Source-backed after-filing correction preparation", "Explicit review of every reused answer", "Real SIGPAC parcel and PNOA aerial demo with a staged private claim mistake", "Real record import and source-linked extraction review", "Guided easy form with typed crop changes", "Seven isolated sample farm scenarios with 39 editable records", "Simple farmer steps and a permission-scoped adviser worklist"],
   "farmer_pages": ["Home", "Record work", "My fields", "Paperwork", "Documents"],
   "adviser_flow": ["Get permission", "Review allowed farms", "Ask only for missing details", "Prepare and review", "Complete authorised work and keep confirmation"],
   "modules": ["Support applications", "Land and field corrections", "Farm records", "Animals", "Purchases and sales", "Inspections and certificates", "Letters and corrections", "Obligations and sustainability checklists", "Changes to requirements", "Private adviser questions and public knowledge sharing", "Connected assistants and optional in-app help"],

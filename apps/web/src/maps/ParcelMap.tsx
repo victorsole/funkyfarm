@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { Button, Field, Notice } from '../components';
 import type { FieldGeometry, FieldPoint } from '../pages/FieldsMap';
 import { mapSources, type MapSource } from './sources';
+import { getSpanishDemoSnapshot, type SpanishDemoSelection } from './spanishDemo';
 import './parcel-map.css';
 
 export type ParcelMapBounds = [west: number, south: number, east: number, north: number];
@@ -19,6 +20,8 @@ export type ParcelMapProps = {
   readOnly?: boolean;
   /** Other private saved fields, displayed only in read-only mode. */
   contextOutlines?: { id: string; label: string; geometry: FieldGeometry }[];
+  /** Resolves only a retained code-owned public demo image and reference. */
+  snapshot?: SpanishDemoSelection | null;
   onGeometry: (geometry: FieldGeometry) => void;
   onSketch: (positions: number[][]) => void;
   onSplitLine: (positions: number[][]) => void;
@@ -56,7 +59,8 @@ function position(value: L.LatLng): number[] {
   return [Number(wrapped.lng.toFixed(8)), Number(Math.max(-85.05112878, Math.min(85.05112878, wrapped.lat)).toFixed(8))];
 }
 function positionsOf(props: ParcelMapProps): number[][] {
-  const points = [props.geometry, props.reference, ...contextOutlinesOf(props).map(item => item.geometry)].flatMap(geometry => partsOf(geometry).flat(2));
+  const snapshot = props.readOnly ? getSpanishDemoSnapshot(props.snapshot) : null;
+  const points = [props.geometry, props.reference, snapshot?.field.geometry ?? null, ...contextOutlinesOf(props).map(item => item.geometry)].flatMap(geometry => partsOf(geometry).flat(2));
   if (props.point) points.push([props.point.longitude, props.point.latitude]);
   return [...points, ...props.sketch, ...props.splitLine].filter(validPosition);
 }
@@ -110,6 +114,7 @@ export function ParcelMap(props: ParcelMapProps) {
   const handles = useRef<L.LayerGroup | null>(null);
   const outline = useRef<L.Polygon | null>(null);
   const tiles = useRef<L.TileLayer | null>(null);
+  const snapshotImage = useRef<L.ImageOverlay | null>(null);
   const deviceLocation = useRef<L.LayerGroup | null>(null);
   const partRef = useRef(0);
   const ringRef = useRef(0);
@@ -139,11 +144,14 @@ export function ParcelMap(props: ParcelMapProps) {
   const [zoom, setZoom] = useState(4);
   const [locating, setLocating] = useState(false);
   const [locationMessage, setLocationMessage] = useState('');
+  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const alive = useRef(false);
   const locationRequest = useRef(0);
   const sources = mapSources(props.country, props.region);
   const source = sources.find(item => item.id === sourceId);
   const sourceSignature = JSON.stringify(source ?? null);
+  const snapshot = props.readOnly ? getSpanishDemoSnapshot(props.snapshot) : null;
+  const snapshotBinding = snapshot ? `${snapshot.id}:${snapshot.field.reference}:${snapshot.image.sha256}` : '';
   const instructionId = useId();
   const parts = partsOf(props.geometry);
   const selectedPart = Math.min(part, Math.max(0, parts.length - 1));
@@ -164,6 +172,15 @@ export function ParcelMap(props: ParcelMapProps) {
     instance.fitBounds(L.latLngBounds(points.map(latLng)), { padding: [36, 36], maxZoom: 19, animate: false });
     fitted.current = true;
     setMessage('Showing your supplied locations. The view did not change any field coordinates.');
+  }
+  function focusSelected() {
+    const current = latest.current;
+    const retained = current.readOnly ? getSpanishDemoSnapshot(current.snapshot) : null;
+    const points = [current.geometry, retained?.field.geometry ?? null].flatMap(geometry => partsOf(geometry).flat(2)).filter(validPosition);
+    if (current.point && validPosition([current.point.longitude, current.point.latitude])) points.push([current.point.longitude, current.point.latitude]);
+    if (!map.current || !points.length) return;
+    map.current.fitBounds(L.latLngBounds(points.map(latLng)), { padding: [42, 42], maxZoom: 19, animate: false });
+    fitted.current = true;
   }
   function rememberEdit() {
     const previous = latest.current.geometry;
@@ -296,6 +313,7 @@ export function ParcelMap(props: ParcelMapProps) {
     if (!host.current) return;
     const instance = L.map(host.current, {
       crs: L.CRS.EPSG3857, center: [54, 15], zoom: 4, minZoom: 2, maxZoom: 22,
+      zoomSnap: snapshot ? 0.1 : 1,
       zoomControl: false, attributionControl: true, scrollWheelZoom: false,
       doubleClickZoom: false, worldCopyJump: false, maxBounds: [[-85.05112878, -180], [85.05112878, 180]],
       zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false,
@@ -336,14 +354,27 @@ export function ParcelMap(props: ParcelMapProps) {
     observer.observe(host.current);
     announceView();
     setReady(true);
-    return () => { alive.current = false; locationRequest.current += 1; observer.disconnect(); instance.remove(); map.current = null; outlines.current = null; handles.current = null; outline.current = null; tiles.current = null; deviceLocation.current = null; fitted.current = false; movedByUser.current = false; };
+    return () => { alive.current = false; locationRequest.current += 1; observer.disconnect(); instance.remove(); map.current = null; outlines.current = null; handles.current = null; outline.current = null; tiles.current = null; snapshotImage.current = null; deviceLocation.current = null; fitted.current = false; movedByUser.current = false; };
   }, []);
+
+  useEffect(() => {
+    snapshotImage.current?.remove(); snapshotImage.current = null;
+    if (!ready || !map.current || !snapshot) return;
+    let active = true; setSnapshotStatus('loading');
+    const [west, south, east, north] = snapshot.image.bbox_3857;
+    const bounds = L.latLngBounds(L.CRS.EPSG3857.unproject(L.point(west, south)), L.CRS.EPSG3857.unproject(L.point(east, north)));
+    const layer = L.imageOverlay(snapshot.image.path, bounds, { pane: 'tilePane', interactive: false, opacity: 1, alt: 'Retained PNOA aerial photograph of the public Spanish demo area' });
+    layer.on('load', () => { if (active) setSnapshotStatus('ready'); });
+    layer.on('error', () => { if (active) { layer.remove(); setSnapshotStatus('failed'); } });
+    snapshotImage.current = layer; layer.addTo(map.current);
+    return () => { active = false; layer.off(); layer.remove(); if (snapshotImage.current === layer) snapshotImage.current = null; };
+  }, [ready, snapshotBinding]);
 
   useEffect(() => {
     const instance = map.current;
     tiles.current?.remove(); tiles.current = null;
     setMapError(''); setOutsideCoverage(false);
-    if (!ready || !instance || !backgroundAllowed || !source) { setBackgroundStatus('off'); return; }
+    if (!ready || !instance || snapshot || !backgroundAllowed || !source) { setBackgroundStatus('off'); return; }
     const reviewed: MapSource = source;
     let failed = false;
     setBackgroundStatus('loading');
@@ -372,8 +403,9 @@ export function ParcelMap(props: ParcelMapProps) {
     return () => { instance.off('moveend', coverage); layer.off(); layer.remove(); if (tiles.current === layer) tiles.current = null; instance.attributionControl.removeAttribution(reviewed.attribution); };
     // Metadata identity, not array/object creation on each geometry render, keeps
     // the tile layer stable while a corner is dragged or a draft is updated.
-  }, [ready, backgroundAllowed, sourceSignature, backgroundAttempt]);
+  }, [ready, backgroundAllowed, sourceSignature, backgroundAttempt, snapshotBinding]);
   useEffect(() => { hideBackground(); }, [props.country, props.region]);
+  useEffect(() => { hideBackground(); }, [snapshotBinding]);
 
   useEffect(() => {
     const current = JSON.stringify(props.geometry);
@@ -393,8 +425,8 @@ export function ParcelMap(props: ParcelMapProps) {
 
   useEffect(() => {
     if (!ready || fitted.current || movedByUser.current || !positionsOf(props).length) return;
-    fitSupplied();
-  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.contextOutlines, props.readOnly]);
+    if (snapshot) focusSelected(); else fitSupplied();
+  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.contextOutlines, props.readOnly, snapshotBinding]);
 
   useEffect(() => {
     if (!ready || !outlines.current || !handles.current || !map.current) return;
@@ -429,8 +461,25 @@ export function ParcelMap(props: ParcelMapProps) {
       const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: '#466e98', weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false, interactive: !props.readOnly && props.mode === 'edit' && !drawingHole }).addTo(layers);
       candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); if (!latest.current.readOnly) latest.current.onReferenceSelect?.(candidate.id); });
     }
-    addShape(props.reference, true);
-    outline.current = addShape(props.geometry, false);
+    if (snapshot && isDisplayableFieldGeometry(snapshot.field.geometry)) {
+      L.polygon(partsOf(snapshot.field.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
+        color: '#194d36', weight: 4, fillColor: '#487f55', fillOpacity: .08, fillRule: 'evenodd', interactive: false,
+      }).addTo(layers);
+      if (isDisplayableFieldGeometry(props.geometry)) {
+        outline.current = L.polygon(partsOf(props.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
+          color: '#c87524', weight: 3, dashArray: '8 5', fillColor: '#e4aa61', fillOpacity: .07, fillRule: 'evenodd', interactive: false,
+        }).addTo(layers);
+        const signature = (edge: number[][]) => edge.slice(0, -1).map(point => `${point[0]},${point[1]}`).sort().join(';');
+        const privateHoles = new Set(partsOf(props.geometry).flatMap(polygon => polygon.slice(1)).map(signature));
+        for (const hole of partsOf(snapshot.field.geometry).flatMap(polygon => polygon.slice(1))) {
+          if (privateHoles.has(signature(hole))) continue;
+          L.polygon(hole.map(latLng), { color: '#a73f32', weight: 3, fillColor: '#c9614e', fillOpacity: .3, interactive: false }).addTo(layers);
+        }
+      }
+    } else {
+      addShape(props.reference, true);
+      outline.current = addShape(props.geometry, false);
+    }
     if (props.point && validPosition([props.point.longitude, props.point.latitude])) L.circleMarker([props.point.latitude, props.point.longitude], { radius: 5, color: '#294c38', fillOpacity: 1, interactive: false }).addTo(layers);
     if ((props.mode === 'draw' || props.mode === 'edit') && props.sketch.length) {
       const color = props.mode === 'edit' ? '#984b35' : '#21543b';
@@ -487,12 +536,13 @@ export function ParcelMap(props: ParcelMapProps) {
       if (focusedCorner.current === index) element.focus({ preventScroll: true });
     });
     return () => { cleanups.forEach(cleanup => cleanup()); };
-  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.disabled, props.readOnly, props.contextOutlines, props.referenceCandidates, selectedPart, ringIndex, drawingHole]);
+  }, [ready, props.geometry, props.reference, props.point?.latitude, props.point?.longitude, props.sketch, props.splitLine, props.mode, props.disabled, props.readOnly, props.contextOutlines, props.referenceCandidates, selectedPart, ringIndex, drawingHole, snapshotBinding]);
 
   return <div className="parcel-map-editor" inert={props.disabled}>
     <div className="parcel-map-toolbar" aria-label="Map view controls">
       <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; map.current?.zoomIn(undefined, { animate: false }); }}>Zoom in</Button>
       <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; map.current?.zoomOut(undefined, { animate: false }); }}>Zoom out</Button>
+      {snapshot && <Button variant="secondary" disabled={!ready} onClick={() => { movedByUser.current = true; focusSelected(); }}>Focus selected field</Button>}
       <Button variant="secondary" disabled={!ready} onClick={fitSupplied}>Fit supplied outlines</Button>
       {!props.readOnly && <Button variant="secondary" disabled={!ready || locating} onClick={useLocation}>{locating ? 'Finding my location…' : 'Use my location'}</Button>}
       {!props.readOnly && parts.length > 1 && <Field label="Part to edit"><select value={selectedPart} disabled={drawingHole} onChange={event => { focusedCorner.current = null; setPart(Number(event.target.value)); setSelectedRing(0); setConfirmation(null); }}>{parts.map((_, index) => <option value={index} key={index}>Part {index + 1}</option>)}</select></Field>}
@@ -514,7 +564,8 @@ export function ParcelMap(props: ParcelMapProps) {
       {!drawingHole && !props.sketch.length && ringIndex > 0 && <Button variant="secondary" onClick={() => requestConfirmation('remove')}>Remove excluded area</Button>}
     </div>{props.sketch.length > 0 && <p>{props.sketch.length} unfinished excluded-area corners kept in your private draft. {!drawingHole && 'Check the selected part and these points before resuming; the target part is not retained when the editor is reopened.'}</p>}{parts[selectedPart].length >= 20 && <p>This part already has the maximum 19 excluded areas.</p>}{confirmation && confirmation.binding === binding && <div className="parcel-map-confirmation" role="group" aria-label="Confirm excluded-area change"><p>{confirmation.kind === 'close' ? 'Add this closed excluded area to the selected part? The rest of the boundary stays as drawn.' : confirmation.kind === 'cancel' ? 'Discard these unfinished excluded-area points? The boundary stays unchanged. Undo can restore the points.' : 'Remove the selected excluded area from this draft? This fills its hole in the draft, without changing the retained original.'}</p><div className="parcel-map-toolbar"><Button onClick={confirmChange}>{confirmation.kind === 'close' ? 'Confirm excluded area' : confirmation.kind === 'cancel' ? 'Discard unfinished excluded area' : 'Confirm removal of excluded area'}</Button><Button variant="secondary" onClick={() => setConfirmation(null)}>Keep editing</Button></div></div>}</fieldset>}
     </>}
-    <details className="parcel-map-background-options" open={props.readOnly ? undefined : true}><summary hidden={!props.readOnly}>Choose an optional background map</summary>
+    {snapshot && <div className="parcel-map-snapshot-source"><p><strong>PNOA aerial photograph · cached public demo area</strong><br />{snapshot.image.attribution}<br />{snapshot.source.attribution}</p><p className="parcel-map-snapshot-legend"><span>Green: retained SIGPAC reference</span><span>Orange dashed: private staged outline</span><span>Red: reference holes missing from that outline</span></p><details><summary>Photo, reference and date details</summary><p>The photograph covers a fixed public demo area. The image is served by this app; viewing it sends no farm coordinates to an outside map provider. Photo capture date: {snapshot.image.capture_date || 'not established'}. Reference retrieval date: {snapshot.retrieved_at}; source campaign year: {snapshot.source.campaign_year ?? 'not established'}.</p><p><a href={snapshot.image.source_url} target="_blank" rel="noopener noreferrer">Original PNOA source</a> · <a href={snapshot.image.license_url} target="_blank" rel="noopener noreferrer">Image licence</a> · <a href={snapshot.field.attributes_url} target="_blank" rel="noopener noreferrer">SIGPAC source for {snapshot.field.reference}</a></p><p>The red marks follow actual holes in the retained reference. They are an outline comparison, not a pasture coefficient drawn onto the field, an eligibility decision or a completed official correction.</p></details>{snapshotStatus === 'failed' && <Notice kind="warning">The cached aerial photograph could not load. The saved outlines remain on the neutral grid. No external map was requested as a fallback.</Notice>}{snapshotStatus === 'loading' && <p role="status">Opening the cached aerial photograph…</p>}</div>}
+    {!snapshot && <details className="parcel-map-background-options" open={props.readOnly ? undefined : true}><summary hidden={!props.readOnly}>Choose an optional background map</summary>
     <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
       <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
       <p>The map provider receives the area you view and your IP address, but not your private farm records. Nothing is requested until you turn the background on.</p>
@@ -524,7 +575,7 @@ export function ParcelMap(props: ParcelMapProps) {
       {backgroundStatus === 'failed' && <Button variant="secondary" onClick={() => setBackgroundAttempt(value => value + 1)}>Try background again</Button>}
       {!backgroundAllowed && <p className="parcel-map-caption">{props.readOnly ? 'Background off. Your supplied outline is still shown.' : 'Background off. You can still draw, edit and save your outline.'}</p>}
     </div>
-    </details>
+    </details>}
     {locationMessage && <p role="status">{locationMessage}</p>}
     {!props.readOnly && !!props.referenceCandidates?.length && <details className="parcel-map-candidates"><summary>Reference parcels on this map</summary><p>Blue dashed outlines are public references, not your fields. Choose one to compare it with your draft; your saved boundary will not change.</p><ul>{props.referenceCandidates.map(candidate => <li key={candidate.id}><Button variant="ghost" onClick={() => props.onReferenceSelect?.(candidate.id)} disabled={!props.onReferenceSelect}>{candidate.label}</Button></li>)}</ul></details>}
     {message && <p className="parcel-map-message" role="status">{message}</p>}

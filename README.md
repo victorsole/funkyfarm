@@ -8,7 +8,7 @@ Check fields, import records and prepare paperwork one step at a time. Keep the 
 
 Create an account, add your farm and open **Easy form** on Home. Check saved details, type any crop and save changes for review. Use **Check my fields** or **Fix a filed mistake** when needed. You choose whether to give an adviser access.
 
-Open the [Hackathon demo](https://funkyfarm.elfeel.me/demo) for the seven-field Spain case: check the map, import a record through the actual reader, then review checks before and after filing. Deadline references include their sources and conditions. Seven sample situations contain 39 editable records in a separate workspace. **Start again** keeps your previous work. Official sending stays with you.
+Open the [Hackathon demo](https://funkyfarm.elfeel.me/demo) to compare a staged claim mistake with five real SIGPAC parcels and an official PNOA aerial photo near Cáceres. Save and review a private correction, import a record, then check the paperwork and sourced date conditions. The public parcels do not establish farm ownership or payment eligibility. Seven sample situations contain 39 editable records in a separate workspace. **Start again** keeps your previous work. Official sending stays with you.
 
 The web app uses a private PostgreSQL API. Connected assistants can suggest changes; people approve them.
 

@@ -6,12 +6,14 @@ permission to amend, an official LPIS change or authority filing.
 """
 
 from datetime import date
+from decimal import Decimal
+import hashlib
 import json
 from uuid import uuid4
 
 import httpx
 
-from conftest import farm_data, human_browser
+from conftest import PROJECT, farm_data, human_browser
 from test_guided_cases_journey import call, packet_href, reviewed_packet
 
 
@@ -21,6 +23,23 @@ SCENARIOS = {"nl-overlap", "cz-area-crop", "es-protected-unknown", "nl-missing-d
 
 
 def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, service_url):
+    source_path = PROJECT / "shared/spain-sigpac-demo.json"
+    source_bytes = source_path.read_bytes()
+    assert hashlib.sha256(source_bytes).hexdigest() == "f61151ef4e77f0a16ee7874a8c6a14d5943300b5fca0ac130f397b4f12543d60"
+    sigpac = json.loads(source_bytes)
+    official = next(field for field in sigpac["fields"] if field["reference"] == sigpac["main_reference"])
+    assert official["reference"] == "10:50:0:0:13:29:1" and official["feature_id"] == 1315957919
+    assert sigpac["source"]["geometry_crs"] == "OGC:CRS84" and sigpac["source"]["campaign_year"] is None
+    assert official["area_ha"] == 63.0449 and official["csp_percent"] == 90
+    claimed = float(Decimal(str(official["area_ha"])))
+    coefficient = official["csp_percent"]
+    calculated = Decimal(str(official["area_ha"])) * Decimal(coefficient) / Decimal(100)
+    derived_max = float(calculated)
+    excess = float(Decimal(str(official["area_ha"])) - calculated)
+    assert derived_max == 56.74041 and excess == 6.30449
+    official_geometry = official["geometry"]
+    assert official_geometry["type"] == "Polygon" and len(official_geometry["coordinates"]) == 4
+    staged_geometry = {"type": "Polygon", "coordinates": [official_geometry["coordinates"][0]]}
     owner, outsider, reader, adviser = (farmers(name) for name in (
         "Focused fictional farmer", "Unrelated parcel reader", "Read-only parcel adviser", "Reviewing parcel adviser"))
     start = {"fixture_id": FIXTURE, "acknowledged": True}
@@ -34,7 +53,7 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         assert replay["run_id"] == demo["run_id"] and replay["workspace"]["id"] == demo["workspace"]["id"]
         assert demo["workspace"]["id"] != owner.workspace_id and demo["workspace"]["role"] == "owner"
         assert "demo" in demo["notice"].lower() and demo["fixture_record_count"] == 39
-        assert demo["fixture_version"] == 3
+        assert demo["fixture_version"] == 4
         base = [record for record in demo["records"] if record["kind"] not in {"admin_case_events", "demo_runs"}]
         assert len(base) == 39 and len({record["id"] for record in base}) == 39
         assert demo["record_count"] == len(demo["records"]) == sum(item["count"] for item in demo["inventory"])
@@ -62,18 +81,23 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
                 originals[record["id"]] = response.content
         assert len(originals) == 6
 
-        # Spain's supplied figures are not a command to resize a physical
-        # pasture. The proposed claim is separate from the original claim.
+        # Published superficie and CSP are distinct from both the app's
+        # approximate geometry area and this explicitly calculated proposal.
         es_farm = call(browser, "GET", f"/farms/{records['es-farm']['id']}")
-        assert len(es_farm["data"]["parcels"]) == 7
-        es_parcel = next(parcel for parcel in es_farm["data"]["parcels"] if parcel["name"].startswith("D04"))
+        assert es_farm["data"]["origin"] == sigpac["origin"]
+        assert len(es_farm["data"]["parcels"]) == 5
+        es_parcel = next(parcel for parcel in es_farm["data"]["parcels"] if parcel["external_id"] == official["reference"])
+        assert es_parcel["geometry"] == staged_geometry and es_parcel["id"] != str(official["feature_id"])
+        for field in sigpac["fields"]:
+            saved = next(parcel for parcel in es_farm["data"]["parcels"] if parcel["external_id"] == field["reference"])
+            assert saved["geometry"] == (staged_geometry if field == official else field["geometry"])
         es_facts = {}
         for summary in base:
             if summary["kind"] == "facts" and summary["farm_id"] == es_farm["id"]:
                 fact = call(browser, "GET", f"/facts/{summary['id']}")
                 es_facts[fact["data"]["key"]] = fact
-        expected_figures = {"cap.claimed_area_ha": (6.7, "ha"), "cap.supplied_max_eligible_area_ha": (3.02, "ha"),
-                            "cap.pasture_coefficient_percent": (45, "%"), "cap.proposed_claim_area_ha": (3.02, "ha")}
+        expected_figures = {"cap.claimed_area_ha": (claimed, "ha"), "cap.supplied_max_eligible_area_ha": (derived_max, "ha"),
+                            "cap.pasture_coefficient_percent": (coefficient, "%"), "cap.proposed_claim_area_ha": (derived_max, "ha")}
         assert set(es_facts) == set(expected_figures)
         for key, (value, unit) in expected_figures.items():
             fact = es_facts[key]
@@ -82,22 +106,28 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
             assert fact["data"]["period"] == "2026" and fact["data"]["temporal_basis"] == "campaign_year"
             assert fact["data"]["sources"] and all(source["document_id"] in originals and source["document_revision"] == 1
                                                    for source in fact["data"]["sources"])
+            source_alias = "es-original-claim" if key == "cap.claimed_area_ha" else "es-supplied-reference"
+            assert {source["document_id"] for source in fact["data"]["sources"]} == {records[source_alias]["id"]}
+            assert all(source["location"] in originals[source["document_id"]].decode("utf-8") for source in fact["data"]["sources"])
         assert "supersedes_id" not in es_facts["cap.proposed_claim_area_ha"]["data"]
-        assert b"6.70 ha" in originals[records["es-original-claim"]["id"]]
+        assert str(claimed).encode() in originals[records["es-original-claim"]["id"]]
+        assert b"56.74041" in originals[records["es-supplied-reference"]["id"]]
 
         def spanish_check():
             result = call(browser, "GET", f"/farms/{es_farm['id']}/parcel-check", params={
                 "expected_farm_revision": es_farm["revision"], "reporting_year": 2026, "limit": 100})
-            assert result["field_count"] == 7
+            assert result["field_count"] == 5
             return result, next(field for field in result["fields"] if field["id"] == es_parcel["id"])
 
         es_initial, es_field = spanish_check()
-        assert 6.69 < es_field["outline_area_ha"] < 6.71
+        # Independent numerical oracle from retained coordinates, not an
+        # official area: spherical equal-area outer ring alone is 63.15637 ha.
+        assert abs(es_field["outline_area_ha"] - 63.15637) < 0.00002
         assert es_field["claimed_area_ha"] is None and es_field["eligible_area_ha"] is None
         context = es_field["claim_context"]
         assert context["status"] == "unconfirmed"
         assert {key: context[key] for key in ("declared", "max", "coefficient", "proposed_claim", "excess")} == {
-            "declared": 6.7, "max": 3.02, "coefficient": 45, "proposed_claim": 3.02, "excess": 3.68}
+            "declared": claimed, "max": derived_max, "coefficient": coefficient, "proposed_claim": derived_max, "excess": excess}
         assert context["proposed_claim_is_draft"] is True and all(source["status"] == "current" for source in context["sources"])
         assert {issue["code"] for issue in es_initial["issues"]} >= {"claim_context_needs_review", "claimed_above_supplied_maximum"}
         for key, fact in es_facts.items():
@@ -106,23 +136,23 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         es_confirmed, es_field = spanish_check()
         assert es_confirmed["fingerprint"] != es_initial["fingerprint"]
         assert es_field["claim_context"]["status"] == "confirmed"
-        assert es_field["claimed_area_ha"] == 6.7 and es_field["eligible_area_ha"] == 3.02
+        assert es_field["claimed_area_ha"] == claimed and es_field["eligible_area_ha"] == derived_max
         assert es_field["eligible_area_basis"] == "user_supplied_maximum_not_certified"
-        assert es_field["claim_context"]["proposed_claim"] == 3.02 and es_field["claim_context"]["proposed_claim_is_draft"] is True
-        assert es_field["claim_context"]["excess"] == 3.68 and 6.69 < es_field["outline_area_ha"] < 6.71
-        assert call(browser, "GET", f"/facts/{es_facts['cap.claimed_area_ha']['id']}")["data"]["value"] == 6.7
+        assert es_field["claim_context"]["proposed_claim"] == derived_max and es_field["claim_context"]["proposed_claim_is_draft"] is True
+        assert es_field["claim_context"]["excess"] == excess and abs(es_field["outline_area_ha"] - 63.15637) < 0.00002
+        assert call(browser, "GET", f"/facts/{es_facts['cap.claimed_area_ha']['id']}")["data"]["value"] == claimed
 
         # Contradictory maxima must not become a latest-value-wins result.
         maximum = es_facts["cap.supplied_max_eligible_area_ha"]
         conflicting = call(browser, "POST", "/facts", expected=201, json={"data": {
             "farm_id": es_farm["id"], "parcel_id": es_parcel["id"], "key": "cap.supplied_max_eligible_area_ha",
-            "label": "FICTIONAL contradictory supplied maximum", "value": 3.5, "unit": "ha", "period": "2026",
+            "label": "FICTIONAL contradictory supplied maximum", "value": derived_max + 1, "unit": "ha", "period": "2026",
             "temporal_basis": "campaign_year", "sources": maximum["data"]["sources"], "review_status": "proposed"}})
         conflict_check, es_field = spanish_check()
         assert conflict_check["fingerprint"] != es_confirmed["fingerprint"]
         assert es_field["claim_context"]["status"] == "needs_review"
         assert es_field["claim_context"]["max"] is None and es_field["claim_context"]["excess"] is None
-        assert es_field["eligible_area_ha"] is None and es_field["claimed_area_ha"] == 6.7
+        assert es_field["eligible_area_ha"] is None and es_field["claimed_area_ha"] == claimed
         assert {maximum["id"], conflicting["id"]} <= set(es_field["claim_context"]["fact_ids"])
         conflicting = call(browser, "POST", f"/facts/{conflicting['id']}/review", json={"expected_revision": conflicting["revision"],
             "decision": "confirmed", "note": "Explicitly checked this competing source statement; its conflict still requires a separate choice."})
@@ -136,7 +166,7 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         def choose_original(conflict):
             return call(browser, "POST", f"/reconciliation/{conflict['id']}/resolve", expected=201, json={
                 "farm_id": es_farm["id"], "expected_revision": conflict["revision"], "chosen_fact_id": maximum["id"],
-                "note": "Compared the two exact confirmed sources and explicitly chose the original supplied 3.02 ha, not the latest value."})
+                "note": "Compared the exact sources and chose the original calculated value, not the latest value or a certified eligible maximum."})
 
         conflict = maximum_conflict()
         assert conflict["data"]["status"] == "needs_review" and conflict["data"]["resolution"] is None
@@ -144,7 +174,7 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         choose_original(conflict)
         resolved_check, es_field = spanish_check()
         assert resolved_check["fingerprint"] != confirmed_conflict["fingerprint"]
-        assert es_field["claim_context"]["max"] == 3.02 and es_field["eligible_area_ha"] == 3.02
+        assert es_field["claim_context"]["max"] == derived_max and es_field["eligible_area_ha"] == derived_max
         assert es_field["claim_context"]["status"] == "confirmed" and conflicting["id"] not in es_field["claim_context"]["fact_ids"]
         # A confirmed fact cannot be edited in place. Explicitly reopen its
         # review, change the cited source location, and confirm it separately.
@@ -163,7 +193,7 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         assert es_field["eligible_area_ha"] is None
         choose_original(changed_conflict)
         restored, es_field = spanish_check()
-        assert es_field["eligible_area_ha"] == 3.02 and es_field["claim_context"]["status"] == "confirmed"
+        assert es_field["eligible_area_ha"] == derived_max and es_field["claim_context"]["status"] == "confirmed"
         call(browser, "POST", f"/facts/{conflicting['id']}/review", json={"expected_revision": conflicting["revision"],
             "decision": "rejected", "note": "Explicitly set aside the competing statement after the renewed source choice."})
 
@@ -171,16 +201,16 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         # different farm, its ID and metadata must disappear from this context,
         # even though the source fact remains readable on the original farm.
         foreign_source = call(browser, "POST", "/documents", expected=201,
-            files={"file": ("private-moved-maximum.txt", b"FICTIONAL separately supplied maximum 3.02 ha.\n", "text/plain")})
+            files={"file": ("private-moved-maximum.txt", f"FICTIONAL separate calculated value {derived_max} ha, not a published maximum.\n".encode(), "text/plain")})
         moved_fact = call(browser, "POST", "/facts", expected=201, json={"data": {
             "farm_id": es_farm["id"], "parcel_id": es_parcel["id"], "key": "cap.supplied_max_eligible_area_ha",
-            "label": "FICTIONAL second supplied maximum with an initially unassigned original", "value": 3.02, "unit": "ha",
+            "label": "FICTIONAL second supplied maximum with an initially unassigned original", "value": derived_max, "unit": "ha",
             "period": "2026", "temporal_basis": "campaign_year", "review_status": "proposed",
             "sources": [{"document_id": foreign_source["id"], "document_revision": foreign_source["revision"]}]}})
         call(browser, "POST", f"/facts/{moved_fact['id']}/review", json={"expected_revision": moved_fact["revision"],
             "decision": "confirmed", "note": "Checked the exact current unassigned original before choosing this additional supplied statement."})
         _, es_field = spanish_check()
-        assert es_field["eligible_area_ha"] == 3.02
+        assert es_field["eligible_area_ha"] == derived_max
         call(browser, "PATCH", f"/documents/{foreign_source['id']}", json={"expected_revision": foreign_source["revision"],
             "data": {"farm_id": records["overlap-farm"]["id"]}})
         masked_check, masked_field = spanish_check()
@@ -197,11 +227,41 @@ def test_focused_parcels_demo_scope_answer_checks_and_sealed_handoff(farmers, se
         stale_check, es_field = spanish_check()
         assert stale_check["fingerprint"] != masked_check["fingerprint"]
         assert es_field["claim_context"]["status"] == "needs_review" and es_field["eligible_area_ha"] is None
-        assert es_field["claimed_area_ha"] == 6.7 and es_field["claim_context"]["max"] == 3.02
+        assert es_field["claimed_area_ha"] == claimed and es_field["claim_context"]["max"] == derived_max
         source = next(source for source in es_field["claim_context"]["sources"] if source["document_id"] == supplied["id"])
         assert source["status"] == "stale" and source["document_revision"] == supplied["revision"]
         assert source["current_revision"] == changed_supplied["revision"]
         assert call(browser, "GET", f"/farms/{es_farm['id']}") == es_farm, "Claim review must not shrink or otherwise mutate physical pasture geometry."
+
+        # Correct the explicitly staged omission, not the immutable SIGPAC
+        # reference: all three real inner rings must return, without scaling.
+        correction = call(browser, "POST", f"/farms/{es_farm['id']}/field-proposals", expected=200, json={
+            "expected_revision": es_farm["revision"],
+            "parcel": {"id": es_parcel["id"], "name": es_parcel["name"], "crop": es_parcel.get("crop"),
+                       "external_id": official["reference"], "geometry": official_geometry},
+            "reference": {"source": sigpac["source"]["query_url"], "year": None,
+                          "external_id": official["reference"], "geometry": official_geometry},
+            "note": "Restore the three exact retained SIGPAC holes omitted only in this staged private drawing. No official boundary, claim or status is changed."})
+        assert correction["data"]["status"] == "proposed"
+        assert correction["data"]["parcel"]["geometry"] == official_geometry
+        assert correction["data"]["reference"]["geometry"] == official_geometry
+        assert correction["data"]["reference"]["year"] is None
+        assert call(browser, "GET", f"/farms/{es_farm['id']}") == es_farm
+        applied = call(browser, "POST", f"/field-proposals/{correction['id']}/approve", json={
+            "expected_revision": correction["revision"], "expected_farm_revision": es_farm["revision"],
+            "note": "Separately compared all original coordinates and three holes, then approved this private correction only."})
+        assert applied["proposal"]["data"]["status"] == "approved"
+        assert applied["farm"]["revision"] == es_farm["revision"] + 1
+        corrected = next(parcel for parcel in applied["farm"]["data"]["parcels"] if parcel["id"] == es_parcel["id"])
+        assert corrected["geometry"] == official_geometry and corrected["crop"] == es_parcel.get("crop")
+        corrected_check = call(browser, "GET", f"/farms/{es_farm['id']}/parcel-check", params={
+            "expected_farm_revision": applied["farm"]["revision"], "reporting_year": 2026, "limit": 100})
+        corrected_field = next(field for field in corrected_check["fields"] if field["id"] == es_parcel["id"])
+        assert abs(corrected_field["outline_area_ha"] - 62.96257) < 0.00002
+        assert corrected_field["outline_area_ha"] < es_field["outline_area_ha"]
+        assert call(browser, "GET", f"/facts/{es_facts['cap.claimed_area_ha']['id']}")["data"]["value"] == claimed
+        assert call(browser, "GET", f"/cases/{records['es-case']['id']}")["data"]["status"] == "draft"
+        assert source_path.read_bytes() == source_bytes
 
         # Independently authored intersecting rectangles: one crop is absent,
         # reported area is not the drawn area, and an inactive row is ignored.
