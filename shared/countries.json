@@ -5062,7 +5062,7 @@
       "coverage": {
         "common_workflows": "available",
         "official_mapping": "selected_fields_only",
-        "official_import_schema": "documented_geometry_route_no_generated_file",
+        "official_import_schema": "documented_kml_file_handoff_not_account_tested",
         "official_api": "documented_service_specific_not_configured",
         "adviser_authorisation": "documented_scoped_authorisation"
       },
