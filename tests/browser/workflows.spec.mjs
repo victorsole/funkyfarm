@@ -665,7 +665,7 @@ test('Slovak greenhouse grower separates profile review, actual facility use and
   const concurrent = await secondClient.json();
   expect(concurrent.revision).toBe(ordinary.revision + 1);
   await page.reload();
-  if (await page.locator('#facts').getAttribute('open') === null) await page.getByText('Check answers saved about this farm', { exact: true }).click();
+  await expect(page.locator('#facts')).toHaveAttribute('open', '');
   await editableFact.getByText('Edit this proposal', { exact: true }).click();
   await expect(ordinaryDraft.getByLabel('Value', { exact: true })).toHaveValue('yes');
   await expect(ordinaryDraft).toContainText('Latest saved answer: No');
