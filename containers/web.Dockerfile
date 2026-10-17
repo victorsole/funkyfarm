@@ -7,7 +7,7 @@ COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts ./
 COPY apps/web/src ./src
 COPY apps/web/public ./public
 COPY locales /project/locales
-COPY shared/spain-sigpac-demo.json /project/shared/spain-sigpac-demo.json
+COPY shared/spain-sigpac-demo.json shared/mapped-demo-references.json shared/nl-demo-references.json /project/shared/
 RUN npm run build
 
 # Official library/nginx stable-alpine metadata resolved 2026-10-16.
