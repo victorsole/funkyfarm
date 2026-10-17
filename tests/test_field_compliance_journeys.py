@@ -22,6 +22,80 @@ def _planar_area(geometry):
 
 
 def test_private_field_drafts_overlap_split_merge_and_export_keep_parent_history(farmers):
+    import httpx
+    from xml.etree import ElementTree
+
+    def check_kml(response, proposal):
+        assert response.headers["content-type"].split(";")[0] == "application/vnd.google-earth.kml+xml"
+        assert 'filename="field-correction-draft.kml"' in response.headers["content-disposition"]
+        assert "no-store" in response.headers["cache-control"]
+        root = ElementTree.fromstring(response.content.decode("utf-8"))
+        ns = {"k": "http://www.opengis.net/kml/2.2"}
+        assert root.tag == "{http://www.opengis.net/kml/2.2}kml"
+        assert not any(root.findall(".//k:" + tag, ns) for tag in ("NetworkLink", "Icon", "href", "Style", "script", "Point"))
+        descriptions = root.findall(".//k:description", ns)
+        assert descriptions and len({item.text for item in descriptions}) == 1
+        assert "Private farmer-supplied boundary snapshot" in descriptions[0].text
+        assert "No submission has been made." in descriptions[0].text
+        parcels = proposal["data"].get("parcels") or [proposal["data"]["parcel"]]
+        placemarks = root.findall(".//k:Placemark", ns)
+        assert len(placemarks) == len(parcels)
+        by_id = {parcel["id"]: parcel for parcel in parcels}
+        seen = set()
+
+        def coordinates(ring):
+            result = []
+            for token in ring.find("k:LinearRing/k:coordinates", ns).text.split():
+                point = tuple(Decimal(value) for value in token.split(","))
+                assert len(point) in (2, 3) and (len(point) == 2 or point[2] == 0)
+                result.append(point[:2])  # KML order is longitude, latitude.
+            assert len(result) >= 4 and result[0] == result[-1]
+            return result
+
+        def vertex_key(points):
+            return frozenset(tuple(Decimal(str(value)) for value in p[:2]) for p in points[:-1])
+
+        def check_ring(boundary, expected, positive):
+            actual = coordinates(boundary)
+            expected = [tuple(Decimal(str(value)) for value in p[:2]) for p in expected]
+            assert len(actual) == len(expected) and vertex_key(actual) == vertex_key(expected)
+            assert {frozenset((a, b)) for a, b in zip(actual, actual[1:])} == {frozenset((a, b)) for a, b in zip(expected, expected[1:])}
+            signed = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(actual, actual[1:]))
+            assert signed > 0 if positive else signed < 0
+
+        for placemark in placemarks:
+            values = {item.attrib["name"]: item.findtext("k:value", default="", namespaces=ns)
+                      for item in placemark.findall("k:ExtendedData/k:Data", ns)}
+            parcel = by_id[values["parcel_id"]]
+            assert values["parcel_id"] not in seen
+            seen.add(values["parcel_id"])
+            assert placemark.findtext("k:name", namespaces=ns) == parcel["name"] == values["name"]
+            assert values["proposal_id"] == proposal["id"] and values["proposal_revision"] == str(proposal["revision"])
+            assert values["status"] == proposal["data"]["status"] and values["crop"] == (parcel.get("crop") or "")
+            assert values["external_id"] == (parcel.get("external_id") or "")
+            reference = proposal["data"].get("reference") or {}
+            for key in ("source", "external_id", "crop", "year"):
+                expected_reference = str(reference[key]) if reference.get(key) is not None else ""
+                assert values["reference_" + key] == expected_reference
+            geometry = parcel["geometry"]
+            parts = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+            assert (placemark.find("k:MultiGeometry", ns) is not None) == (geometry["type"] == "MultiPolygon")
+            polygons = placemark.findall(".//k:Polygon", ns)
+            assert len(polygons) == len(parts)
+            parts_by_ring = {vertex_key(part[0]): part for part in parts}
+            for polygon in polygons:
+                outer = polygon.find("k:outerBoundaryIs", ns)
+                part = parts_by_ring.pop(vertex_key(coordinates(outer)))
+                check_ring(outer, part[0], True)
+                holes = polygon.findall("k:innerBoundaryIs", ns)
+                assert len(holes) == len(part) - 1
+                holes_by_ring = {vertex_key(points): points for points in part[1:]}
+                for hole in holes:
+                    check_ring(hole, holes_by_ring.pop(vertex_key(coordinates(hole))), False)
+                assert not holes_by_ring
+            assert not parts_by_ring
+        assert seen == set(by_id)
+
     owner = farmers("Fictional field editor")
     outsider = farmers("Unrelated map account")
     farm = owner.create("farms", farm_data("Authored map holding"))
@@ -63,7 +137,7 @@ def test_private_field_drafts_overlap_split_merge_and_export_keep_parent_history
     assert sum(_planar_area(item["geometry"]) for item in children) == pytest.approx(_planar_area(outline), rel=1e-6)
     assert split["data"]["lineage"]["parents"] == [{"id": parent["id"], "revision": parent["revision"]}]
     assert {item["id"] for item in owner.get(f"/farms/{farm['id']}/fields").json()["items"]} == {item["id"] for item in farm["data"]["parcels"]}
-    for format in ("geojson", "correction"):
+    for format in ("geojson", "correction", "kml"):
         exported = owner.get(f"/field-proposals/{split['id']}/export", params={"format": format})
         assert "attachment" in exported.headers["content-disposition"] and "no-store" in exported.headers["cache-control"]
         outsider.get(f"/field-proposals/{split['id']}/export", params={"format": format}, expected=404)
@@ -71,10 +145,16 @@ def test_private_field_drafts_overlap_split_merge_and_export_keep_parent_history
             assert exported.json()["type"] == "FeatureCollection"
             assert {item["id"] for item in exported.json()["features"]} == {item["id"] for item in children}
             assert all(item["properties"]["status"] == "proposed" for item in exported.json()["features"])
-        else:
+        elif format == "correction":
             assert exported.json()["previous_parcels"][0]["id"] == parent["id"]
             assert "not been submitted" in exported.json()["handoff"]
-    farm = owner.post(f"/field-proposals/{split['id']}/approve", json={"expected_revision": split["revision"], "expected_farm_revision": farm["revision"]}).json()["farm"]
+        else:
+            check_kml(exported, split)
+            with httpx.Client(base_url=owner.client.base_url, timeout=10, trust_env=False) as anonymous:
+                assert anonymous.get(f"/field-proposals/{split['id']}/export", params={"format": "kml"}).status_code == 401
+    assert owner.get(f"/farms/{farm['id']}").json() == farm
+    approved_split = owner.post(f"/field-proposals/{split['id']}/approve", json={"expected_revision": split["revision"], "expected_farm_revision": farm["revision"]}).json()
+    farm = approved_split["farm"]
     active = owner.get(f"/farms/{farm['id']}/fields").json()["items"]
     assert parent["id"] not in {item["id"] for item in active}
     history = owner.get(f"/farms/{farm['id']}/fields", params={"include_retired": "true"}).json()["items"]
@@ -89,6 +169,32 @@ def test_private_field_drafts_overlap_split_merge_and_export_keep_parent_history
     assert len(owner.get(f"/farms/{farm['id']}/fields").json()["items"]) == 2
     retained = owner.get(f"/farms/{farm['id']}/fields", params={"include_retired": "true"}).json()["items"]
     assert {item["id"] for item in retained if item.get("active") is False} == {parent["id"], *(item["id"] for item in children)}
+    check_kml(owner.get(f"/field-proposals/{split['id']}/export", params={"format": "kml"}), approved_split["proposal"])
+    # Reversing KML winding is an export-only representation change. Preserve
+    # multipart outlines, excluded inner rings, Unicode and literal XML text.
+    multipart = {"type": "MultiPolygon", "coordinates": [
+        [[[12, 49], [12, 49.004], [12.004, 49.004], [12.004, 49], [12, 49]],
+         [[12.001, 49.001], [12.003, 49.001], [12.003, 49.003], [12.001, 49.003], [12.001, 49.001]]],
+        [[[12.006, 49], [12.006, 49.002], [12.008, 49.002], [12.008, 49], [12.006, 49]]],
+    ]}
+    special = owner.post(f"/farms/{farm['id']}/field-proposals", json={"expected_revision": farm["revision"],
+        "parcel": {"name": 'Žluťoučký & <NetworkLink> "Průhon"', "crop": "Žito & oves <2026>", "external_id": 'LOCAL<&"007', "geometry": multipart},
+        "reference": {"external_id": 'REFERENCE<&"007', "crop": "Oves & žito", "year": 2025,
+            "source": "Authored map & notebook <not a service>\nChecked by farmer"},
+        "note": "Private multipart draft; the excluded inner area must remain excluded, with no register submission."}).json()
+    original_geojson = owner.get(f"/field-proposals/{special['id']}/export", params={"format": "geojson"}).json()
+    original_history = owner.get(f"/farms/{farm['id']}/fields", params={"include_retired": "true"}).json()
+    check_kml(owner.get(f"/field-proposals/{special['id']}/export", params={"format": "kml"}), special)
+    assert owner.get(f"/field-proposals/{special['id']}/export", params={"format": "geojson"}).json() == original_geojson
+    assert owner.get(f"/farms/{farm['id']}/fields", params={"include_retired": "true"}).json() == original_history
+    assert original_geojson["features"][0]["geometry"] == multipart
+    point_only = owner.post(f"/farms/{farm['id']}/field-proposals", json={"expected_revision": farm["revision"],
+        "parcel": {"name": "Only a known location, not a boundary", "point": {"latitude": 49, "longitude": 12}}}).json()
+    assert owner.get(f"/field-proposals/{point_only['id']}/export", params={"format": "kml"}, expected=422).json()["error"]["code"] == "boundary_required"
+    for parcel, reference in (({"name": "Invalid XML control\u0001", "geometry": multipart}, None),
+                              ({"name": "Valid outline with unreadable source text", "geometry": multipart}, {"source": "Never silently strip source control\u0001"})):
+        invalid_text = owner.post(f"/farms/{farm['id']}/field-proposals", json={"expected_revision": farm["revision"], "parcel": parcel, "reference": reference}).json()
+        assert owner.get(f"/field-proposals/{invalid_text['id']}/export", params={"format": "kml"}, expected=422).json()["error"]["code"] == "invalid_export_text"
     assert owner.get("/reports").json()["total"] == 0
 
 

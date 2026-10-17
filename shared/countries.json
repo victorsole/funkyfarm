@@ -4988,24 +4988,26 @@
           "mode": "file_handoff",
           "availability": "handoff_only",
           "evidence_status": "documented_operation_not_account_tested",
-          "checked_date": "2026-10-16",
+          "checked_date": "2026-10-17",
           "reporting_year": null,
           "setup_requirements": [
             "Use Mijn percelen with the required RVO access.",
             "Check the authority's current supported format and coordinate requirements."
           ],
           "supported_operations": [
-            "Upload supported parcel GPS geometry such as shapefile, GPX or KML in the official service."
+            "Download a private KML snapshot of every proposed or retained field outline from the boundary editor.",
+            "Manually upload the KML in Mijn percelen using GPS and Uploaden GPS-bestand, inspect it under Zoom naar geüploade GPS-vlakken and separately select GPS-vlakken when adopting an outline."
           ],
           "limitations": [
-            "No geometry converter or authority upload is implemented in FunkyFarm.",
+            "The KML contains saved outlines and review status; it is not evidence of current registration, ownership, eligible area or an accepted authority format for every field.",
+            "No authenticated RVO upload has been tested. Portal access, field selection, crop/use/dates and any final saving or sending remain separate human steps.",
             "Geometry upload is not final aid-application filing."
           ],
           "sources": [
             {
               "url": "https://www.rvo.nl/onderwerpen/percelen-registreren/aan-de-slag",
               "title": "RVO — Mijn percelen: aan de slag",
-              "edition": "Current parcel registration instructions; GPS file types listed by RVO."
+              "edition": "Page checked by RVO on 19 August 2026; GPS-upload section lists Keyhole Markup Language. Retrieved 17 October 2026."
             }
           ]
         }

@@ -6,6 +6,7 @@ import json
 import math
 from typing import Literal
 from uuid import UUID, uuid4
+from xml.etree import ElementTree
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import Response
@@ -17,6 +18,8 @@ from .security import Session, require_roles, require_session
 
 router = APIRouter(tags=["fields"])
 EPS = 1e-12
+KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
+ElementTree.register_namespace("", KML_NAMESPACE)
 
 
 def invalid(message):
@@ -439,12 +442,76 @@ def edit_proposal(proposal_id: str, body: ProposalEdit, session: Session = Depen
         return update_record(conn, "field_change_proposals", proposal_id, body.expected_revision, updated)
 
 
+def kml_proposal(record, parcels):
+    """Serialize a private polygon snapshot without altering saved outlines."""
+    data = record["data"]
+    normalized = []
+    if not parcels:
+        raise ApiError(422, "boundary_required", "Add a polygon boundary for every exported field before downloading KML.")
+    for parcel in parcels:
+        try:
+            geometry = validate_geometry(parcel.get("geometry"))
+        except ApiError as exc:
+            raise ApiError(422, "boundary_required", "Every exported field needs a valid polygon boundary; a location point is not a boundary. " + exc.message,
+                           {"parcel_id": parcel.get("id")}) from exc
+        normalized.append((parcel, geometry))
+
+    def element(parent, tag, text=None):
+        node = ElementTree.SubElement(parent, f"{{{KML_NAMESPACE}}}{tag}")
+        if text is not None:
+            text = str(text)
+            if any(not (ord(char) in (9, 10, 13) or 0x20 <= ord(char) <= 0xD7FF
+                        or 0xE000 <= ord(char) <= 0xFFFD or 0x10000 <= ord(char) <= 0x10FFFF) for char in text):
+                raise ApiError(422, "invalid_export_text", "A field name, crop or reference contains text that XML cannot represent. Correct that text before exporting KML.")
+            node.text = text
+        return node
+
+    def polygon(parent, rings):
+        shape = element(parent, "Polygon")
+        element(shape, "altitudeMode", "clampToGround")
+        for index, original in enumerate(rings):
+            signed_area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(original, original[1:]))
+            # KML's exterior is counterclockwise and holes are clockwise.
+            ring = original if (signed_area > 0) == (index == 0) else list(reversed(original))
+            boundary = element(shape, "outerBoundaryIs" if index == 0 else "innerBoundaryIs")
+            linear = element(boundary, "LinearRing")
+            element(linear, "coordinates", " ".join(f"{lon},{lat}" for lon, lat in ring))
+
+    root = ElementTree.Element(f"{{{KML_NAMESPACE}}}kml")
+    document = element(root, "Document")
+    element(document, "name", "Private field boundary snapshot")
+    description = "Private farmer-supplied boundary snapshot for manual review. Not a filing, official LPIS update, ownership proof or eligible-area decision. No submission has been made."
+    element(document, "description", description)
+    reference = data.get("reference") or {}
+    for parcel, geometry in normalized:
+        placemark = element(document, "Placemark")
+        element(placemark, "name", parcel.get("name") or parcel.get("id"))
+        element(placemark, "description", description)
+        extended = element(placemark, "ExtendedData")
+        metadata = {"parcel_id": parcel.get("id"), "name": parcel.get("name"), "crop": parcel.get("crop"),
+                    "external_id": parcel.get("external_id"), "proposal_id": record["id"],
+                    "proposal_revision": record["revision"], "status": data.get("status"),
+                    "reference_source": reference.get("source"), "reference_external_id": reference.get("external_id"),
+                    "reference_crop": reference.get("crop"), "reference_year": reference.get("year")}
+        for key, value in metadata.items():
+            entry = element(extended, "Data")
+            entry.set("name", key)
+            element(entry, "value", "" if value is None else value)
+        parent = element(placemark, "MultiGeometry") if geometry["type"] == "MultiPolygon" else placemark
+        for part in polygons(geometry):
+            polygon(parent, part)
+    return ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 @router.get("/field-proposals/{proposal_id}/export")
-def export_proposal(proposal_id: str, format: Literal["geojson", "correction"] = "geojson", session: Session = Depends(require_session)):
+def export_proposal(proposal_id: str, format: Literal["geojson", "correction", "kml"] = "geojson", session: Session = Depends(require_session)):
     with transaction(session) as conn:
         record = fetch_record(conn, "field_change_proposals", proposal_id)
         data = record["data"]
         parcels = data.get("parcels", [data["parcel"]])
+        if format == "kml":
+            return Response(kml_proposal(record, parcels), media_type="application/vnd.google-earth.kml+xml",
+                headers={"Content-Disposition": 'attachment; filename="field-correction-draft.kml"', "Cache-Control": "private, no-store"})
         if format == "geojson":
             result = {"type": "FeatureCollection", "name": "Private field correction draft", "features": [
                 {"type": "Feature", "id": p["id"], "geometry": p.get("geometry"), "properties": {"name": p.get("name"),

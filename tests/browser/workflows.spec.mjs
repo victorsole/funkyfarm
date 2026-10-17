@@ -797,6 +797,49 @@ test('Czech mixed farmer keeps animal records, source alerts and human help unde
 
 test('Dutch arable farmer compares historical LPIS evidence, exports a draft and reviews a private split', async ({ page }) => {
   const tiles = await authoredMapTiles(page);
+  async function checkKmlDownload(download, proposal) {
+    expect(download.suggestedFilename()).toBe('field-correction-draft.kml');
+    const stream = await download.createReadStream();
+    expect(stream).toBeTruthy();
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const xml = Buffer.concat(chunks).toString('utf8');
+    const parsed = await page.evaluate(source => {
+      const document = new DOMParser().parseFromString(source, 'application/xml');
+      const ns = 'http://www.opengis.net/kml/2.2';
+      return {
+        error: document.getElementsByTagName('parsererror').length,
+        root: document.documentElement.localName,
+        namespace: document.documentElement.namespaceURI,
+        external: ['NetworkLink', 'Icon', 'href'].flatMap(tag => [...document.getElementsByTagNameNS(ns, tag)]).length,
+        descriptions: [...document.getElementsByTagNameNS(ns, 'description')].map(node => node.textContent),
+        placemarks: [...document.getElementsByTagNameNS(ns, 'Placemark')].map(node => ({
+          name: node.getElementsByTagNameNS(ns, 'name')[0]?.textContent,
+          values: Object.fromEntries([...node.getElementsByTagNameNS(ns, 'Data')].map(item => [item.getAttribute('name'), item.getElementsByTagNameNS(ns, 'value')[0]?.textContent || ''])),
+          polygons: node.getElementsByTagNameNS(ns, 'Polygon').length,
+          rings: [...node.getElementsByTagNameNS(ns, 'coordinates')].map(ring => ring.textContent.trim().split(/\s+/)),
+        })),
+      };
+    }, xml);
+    expect(parsed.error).toBe(0);
+    expect(parsed.root).toBe('kml');
+    expect(parsed.namespace).toBe('http://www.opengis.net/kml/2.2');
+    expect(parsed.external).toBe(0);
+    expect(parsed.descriptions.length).toBeGreaterThan(0);
+    expect(parsed.descriptions.every(text => text.includes('No submission has been made.'))).toBe(true);
+    const parcels = proposal.data.parcels || [proposal.data.parcel];
+    expect(parsed.placemarks).toHaveLength(parcels.length);
+    expect(parsed.placemarks.map(item => item.values.parcel_id).sort()).toEqual(parcels.map(parcel => parcel.id).sort());
+    for (const item of parsed.placemarks) {
+      const parcel = parcels.find(candidate => candidate.id === item.values.parcel_id);
+      expect(item.name).toBe(parcel.name);
+      expect(item.values.proposal_id).toBe(proposal.id);
+      expect(item.values.proposal_revision).toBe(String(proposal.revision));
+      expect(item.values.status).toBe(proposal.data.status);
+      expect(item.polygons).toBe(parcel.geometry.type === 'Polygon' ? 1 : parcel.geometry.coordinates.length);
+      expect(item.rings.every(ring => ring.length >= 4 && ring[0] === ring.at(-1))).toBe(true);
+    }
+  }
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await signIn(page, 'land');
@@ -917,10 +960,18 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   const savedDraft = workspace.locator('article.boundary-proposal').filter({ hasText: note });
   await expect(savedDraft.getByRole('heading', { name: 'Supplied comparison', exact: true })).toBeVisible();
   await expect(savedDraft).toContainText('Historical rye');
-  for (const [label, filename] of [['Download boundary file', 'field-correction-draft.geojson'], ['Download correction draft', 'field-correction-handoff.json']]) {
+  const guide = workspace.locator('details').filter({ has: page.getByText('Use this file in Mijn percelen', { exact: true }) });
+  await expect(guide).not.toHaveAttribute('open', '');
+  await guide.getByText('Use this file in Mijn percelen', { exact: true }).click();
+  await expect(guide.getByRole('link', { name: "Read RVO's parcel instructions", exact: true })).toHaveAttribute('href', 'https://www.rvo.nl/onderwerpen/percelen-registreren/aan-de-slag');
+  await expect(guide).toContainText('Uploaden GPS-bestand');
+  await expect(guide).toContainText('A live RVO upload has not been verified.');
+  for (const [label, filename] of [['Download boundary file', 'field-correction-draft.geojson'], ['Download correction draft', 'field-correction-handoff.json'], ['Download KML boundary', 'field-correction-draft.kml']]) {
     const download = page.waitForEvent('download');
     await savedDraft.getByRole('button', { name: label, exact: true }).click();
-    expect((await download).suggestedFilename()).toBe(filename);
+    const file = await download;
+    expect(file.suggestedFilename()).toBe(filename);
+    if (filename.endsWith('.kml')) await checkKmlDownload(file, edited);
   }
   expect((await (await page.request.get(`/api/v1/farms/${farm.id}`)).json()).data.parcels).toEqual(farm.data.parcels);
   await savedDraft.getByRole('button', { name: 'Set this draft aside', exact: true }).click();
@@ -946,12 +997,20 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   const splitCard = workspace.locator('article.boundary-proposal').filter({ hasText: splitNote });
   await expect(splitCard).toBeVisible();
   await splitCard.getByRole('checkbox', { name: 'I compared the field names, crops, outlines and reference details.', exact: true }).check();
+  const splitApprovalResponse = page.waitForResponse(response => response.url().endsWith(`/field-proposals/${split.id}/approve`) && response.request().method() === 'POST');
   await splitCard.getByRole('button', { name: 'Confirm private field change', exact: true }).click();
+  const approvedSplit = await (await splitApprovalResponse).json();
   await expect(workspace.getByText('Your farm fields were updated and their earlier outlines retained in history. No official register was changed.', { exact: true })).toBeVisible();
   let fields = (await (await page.request.get(`/api/v1/farms/${farm.id}/fields`)).json()).items;
   expect(fields.map(item => item.id).sort()).toEqual(split.data.parcels.map(item => item.id).sort());
   const retained = (await (await page.request.get(`/api/v1/farms/${farm.id}/fields?include_retired=true`)).json()).items;
   expect(retained.find(item => item.id === originalField.id).active).toBe(false);
+  const boundaryHistory = workspace.locator('details.boundary-history').filter({ has: page.getByText('Earlier boundary changes', { exact: true }) });
+  if (await boundaryHistory.getAttribute('open') === null) await boundaryHistory.getByText('Earlier boundary changes', { exact: true }).click();
+  const retainedSplit = boundaryHistory.locator('li').filter({ hasText: split.data.parcels[0].name });
+  const retainedDownload = page.waitForEvent('download');
+  await retainedSplit.getByRole('button', { name: 'Download retained KML boundary', exact: true }).click();
+  await checkKmlDownload(await retainedDownload, approvedSplit.proposal);
   await workspace.getByRole('button', { name: 'Open boundary tools', exact: true }).click();
   await workspace.getByRole('button', { name: 'Join fields', exact: true }).click();
   const neighbours = workspace.getByRole('group', { name: 'Choose neighbouring fields to join', exact: true }).getByRole('checkbox');
