@@ -516,3 +516,11 @@ details:is(.panel, .card, .paper-section) { padding: 18px 24px; box-shadow: var(
 .form-submit > p { margin: 0; }
 .actions.pager { align-items: center; margin-block: 16px; }
 .button.button-start { justify-self: start; align-self: flex-start; }
+/* Breathing room where Feel's stacked blocks met edge to edge (found by the all-routes spacing scan). */
+.connections-page > .paper-section + .paper-section { margin-top: 20px; }
+:where(fieldset, form, .stack, section, .card, div:not(.actions, .dash-picker, .form-grid, .toolbar)) > .field + .button { margin-top: 16px; }
+:where(ul, ol) + .actions { margin-top: 16px; }
+.badge + .badge { margin-inline-start: 4px; }
+.button + .card, .button + section.card { margin-top: 20px; }
+.form-grid + .button, .form-grid + .notice + .button { margin-top: 16px; }
+.boundary-heading { margin-bottom: 20px; }

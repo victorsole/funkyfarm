@@ -248,6 +248,7 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   await page.goto(`/app/fields/${farm.id}/check`);
   await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await page.getByLabel('Background map', { exact: true }).selectOption('eox-satellite-2016');
   await expect(page.locator('.leaflet-control-attribution')).toContainText('Contains modified Copernicus Sentinel data 2016 & 2017');
   await expect(page.getByText('This satellite mosaic combines 2016–2017 images.', { exact: false })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Show background map', exact: true }).uncheck();

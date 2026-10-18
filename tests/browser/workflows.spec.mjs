@@ -919,6 +919,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
   await expect(workspace.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
+  await workspace.getByLabel('Background map', { exact: true }).selectOption('nl-pdok-aerial');
   await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(0);
   await expect(workspace.getByText('The chosen background is enabled. Its imagery date may be unknown.', { exact: true })).toBeVisible();
   await workspace.getByRole('checkbox', { name: 'Show background map', exact: true }).uncheck();
@@ -1149,6 +1150,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await expect(page.getByRole('button', { name: 'Bring in records', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('group', { name: 'Field boundary map', exact: true })).toHaveClass(/leaflet-container/);
   await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
+  await page.getByLabel('Background map', { exact: true }).selectOption('nl-pdok-aerial');
   await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(tileRequestsBeforeConnections);
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   const connectionReadResponse = page.waitForResponse(response => /\/api\/v1\/connections\/[^/]+\/read$/.test(response.url()) && response.request().method() === 'POST');

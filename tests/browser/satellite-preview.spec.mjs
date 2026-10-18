@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
+import { isEOXTile, isOSMTile, backgroundTile } from './map-fixtures.mjs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
 
@@ -35,7 +35,7 @@ test('satellite scenes open one field image with retry and keep metadata separat
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (!['127.0.0.1', 'localhost'].includes(url.hostname)) {
-      if (isEOXTile(url)) return backgroundTile(route);
+      if (isEOXTile(url) || isOSMTile(url)) return backgroundTile(route);
       await route.abort('blockedbyclient');
       throw new Error(`The image UI journey must not contact a public provider: ${url.origin}${url.pathname}`);
     }

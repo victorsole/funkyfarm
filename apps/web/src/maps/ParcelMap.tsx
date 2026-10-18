@@ -414,7 +414,8 @@ export function ParcelMap(props: ParcelMapProps) {
     layer.on('load', () => { if (active) setSnapshotStatus('ready'); });
     layer.on('error', () => { if (active) { layer.remove(); setSnapshotStatus('failed'); } });
     snapshotImage.current = layer; layer.addTo(map.current);
-    return () => { active = false; layer.off(); layer.remove(); if (snapshotImage.current === layer) snapshotImage.current = null; };
+    // Remove first: Leaflet detaches a layer's map listeners from the layer's own 'remove' event.
+    return () => { active = false; layer.remove(); layer.off(); if (snapshotImage.current === layer) snapshotImage.current = null; };
   }, [ready, snapshotBinding]);
 
   useEffect(() => {
@@ -447,7 +448,7 @@ export function ParcelMap(props: ParcelMapProps) {
     });
     instance.on('moveend', coverage); coverage();
     tiles.current = layer; layer.addTo(instance);
-    return () => { instance.off('moveend', coverage); layer.off(); layer.remove(); if (tiles.current === layer) tiles.current = null; instance.attributionControl.removeAttribution(reviewed.attribution); };
+    return () => { instance.off('moveend', coverage); layer.remove(); layer.off(); if (tiles.current === layer) tiles.current = null; instance.attributionControl.removeAttribution(reviewed.attribution); };
     // Metadata identity, not array/object creation on each geometry render, keeps
     // the tile layer stable while a corner is dragged or a draft is updated.
   }, [ready, backgroundAllowed, sourceSignature, backgroundAttempt, snapshotBinding]);

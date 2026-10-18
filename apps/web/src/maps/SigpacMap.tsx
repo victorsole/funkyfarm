@@ -50,6 +50,17 @@ function sourceAt(point: L.LatLng | null): Source | null {
   return (Object.keys(registers) as Source[]).find(key => { const [w, s, e, n] = registers[key].bounds; return point.lng >= w && point.lng <= e && point.lat >= s && point.lat <= n; }) ?? null;
 }
 const isBrp = (recinto: Recinto) => recinto.properties.uso_sigpac === undefined && recinto.properties.category !== undefined;
+// A parcel's name in words a farmer recognises: the Dutch crop name for BRP, and polígono, parcela
+// and recinto for SIGPAC (the full 7-part code stays available as the official reference).
+function parcelName(recinto: Recinto) {
+  const p = recinto.properties;
+  if (isBrp(recinto)) {
+    const crop = (p.gewas ?? p.category ?? '').trim();
+    return crop ? crop.charAt(0).toUpperCase() + crop.slice(1) : 'Dutch crop parcel';
+  }
+  const parts = p.reference.split(':');
+  return parts.length === 7 ? `Polígono ${parts[4]} · Parcela ${parts[5]} · Recinto ${parts[6]}` : p.reference;
+}
 const groupOf = (recinto: Recinto): LandUseGroup => isBrp(recinto) ? brpGroup(recinto.properties.category, recinto.properties.gewas) : landUseGroup(recinto.properties.uso_sigpac);
 const MIN_ZOOM_FOR_PARCELS = 12; // Below this, parcels are too small to read; the tile count also caps the area.
 const TILE_LIMIT = 64;
@@ -116,7 +127,7 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
     if (fieldBounds) instance.fitBounds(fieldBounds, { padding: [12, 12], maxZoom: 16 });
     else instance.setView(fallbackCenter, 15);
     changed();
-    return () => { instance.off(); instance.remove(); map.current = null; shapes.current.clear(); };
+    return () => { instance.remove(); map.current = null; shapes.current.clear(); };
   }, []);
 
   // Refit when the set of fields changes (another farm chosen) or one group is focused.
@@ -209,7 +220,7 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
       polygon.on('mouseover', lift);
       polygon.on('mouseout', () => { if (selectedRef.current !== recinto.properties.reference) polygon.setStyle(rest); });
       polygon.on('click', () => setSelected(recinto.properties.reference));
-      polygon.bindTooltip(`${isBrp(recinto) ? recinto.properties.gewas ?? group.label : group.label} · ${recinto.properties.reference}`, { sticky: true, direction: 'top', className: 'sigpac-tooltip' });
+      polygon.bindTooltip(`${parcelName(recinto)} · ${group.label}`, { sticky: true, direction: 'top', className: 'sigpac-tooltip' });
       (polygon as L.Polygon & { restStyle?: L.PathOptions; lift?: () => void }).restStyle = rest;
       (polygon as L.Polygon & { lift?: () => void }).lift = lift;
       polygon.addTo(layer);
@@ -338,9 +349,10 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
         {status === 'zoom' && `Zoom in to see ${register?.name ?? 'official'} parcels.`}
         {status === 'outside' && 'No official parcel register connected here yet.'}
       </div>
-      {chosen && <aside className="sigpac-card" aria-label={`Parcel ${chosen.properties.reference}`}>
+      {chosen && <aside className="sigpac-card" aria-label={`Parcel ${parcelName(chosen)}`}>
         <div className="sigpac-card-head" style={{ '--chip': landUseGroup(chosen.properties.uso_sigpac).color } as CSSProperties}>
-          <span className="eyebrow">{isBrp(chosen) ? 'BRP crop parcel' : 'SIGPAC recinto'}</span><h3>{chosen.properties.reference}</h3>
+          <span className="eyebrow">{isBrp(chosen) ? 'BRP crop parcel' : 'SIGPAC recinto'}</span><h3>{parcelName(chosen)}</h3>
+          {!isBrp(chosen) && <span className="sigpac-card-ref">Official reference {chosen.properties.reference}</span>}
           <button type="button" className="text-button" onClick={() => setSelected(null)}>Close</button>
         </div>
 {isBrp(chosen) ? <>
@@ -373,7 +385,7 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
     </div>
     <details className="sigpac-list"><summary>Parcels in view ({inView.length}){highlight.length ? ', yours first' : ''}, then smallest first</summary>
       <ul>{[...inView.filter(recinto => highlight.includes(recinto.properties.reference)), ...[...inView].reverse().filter(recinto => !highlight.includes(recinto.properties.reference))].slice(0, 300).map(recinto => { const group = groupOf(recinto); return <li key={recinto.properties.reference}>
-        <button type="button" onClick={() => focusRecinto(recinto.properties.reference)} style={{ '--chip': group.color } as CSSProperties}><i aria-hidden="true"/><span>{recinto.properties.reference}</span><small>{group.label} · about {hectares(recinto.properties.approximate_area_ha)}</small></button></li>; })}</ul>
+        <button type="button" onClick={() => focusRecinto(recinto.properties.reference)} style={{ '--chip': group.color } as CSSProperties}><i aria-hidden="true"/><span>{parcelName(recinto)}</span><small>{group.label} · about {hectares(recinto.properties.approximate_area_ha)}</small></button></li>; })}</ul>
       {fields.some(field => field.href) && <><h4>Fields on this map</h4><ul>{fields.filter(field => field.href).map(field => <li key={field.id}><Link to={field.href!}>{field.label}</Link>{field.detail ? ` · ${field.detail}` : ''}</li>)}</ul></>}
     </details>
   </section>;

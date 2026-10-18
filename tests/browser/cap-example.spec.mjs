@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
+import { isEOXTile, isOSMTile, backgroundTile } from './map-fixtures.mjs';
 import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 
@@ -89,7 +89,7 @@ test(title, async ({ page }) => {
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
     if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue();
-    if (isEOXTile(url)) return backgroundTile(route);
+    if (isEOXTile(url) || isOSMTile(url)) return backgroundTile(route);
     if (url.origin === 'https://service.pdok.nl' && !url.search && !url.hash
       && /^\/hwh\/luchtfotorgb\/wmts\/v1_0\/Actueel_ortho25\/EPSG:3857\/(?:0\d|1\d|2[01])\/\d+\/\d+\.jpeg$/.test(url.pathname)) return backgroundTile(route);
     external.push(`${url.origin}${url.pathname}`); return route.abort('blockedbyclient');
