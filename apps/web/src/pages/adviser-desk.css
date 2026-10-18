@@ -2,11 +2,11 @@
 .adviser-client:first-of-type { margin-top: 20px; }
 .adviser-selected { scroll-margin-top: 24px; }
 .adviser-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-block: 24px 12px; }
-.adviser-summary > div { display: grid; gap: 4px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--lime-soft); }
-.adviser-summary strong { font-size: 1.8rem; line-height: 1.1; color: var(--forest); }
+.adviser-summary > div { display: grid; gap: 4px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); border-top: 5px solid var(--farm); }
+.adviser-summary strong { font-size: 2rem; line-height: 1.1; color: var(--ink); font-family: var(--display); font-weight: 800; }
 .adviser-summary span { font-size: .85rem; }
-.adviser-summary .is-urgent { border-color: #a84928; background: #fff0e9; }
-.adviser-summary .is-urgent strong, .adviser-date.is-urgent { color: #8b351c; }
+.adviser-summary .is-urgent { border-color: var(--line); background: var(--alert-soft); border-top-color: var(--alert); }
+.adviser-summary .is-urgent strong, .adviser-date.is-urgent { color: var(--alert-text); }
 .adviser-next, .adviser-reviews { padding-block: 20px; border-top: 1px solid var(--line); }
 .adviser-next ol { list-style: none; margin: 0; padding: 0; }
 .adviser-next li { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding-block: 12px; border-bottom: 1px solid var(--line); }

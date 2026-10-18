@@ -1,5 +1,6 @@
 import { Children, cloneElement, isValidElement, useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronRight, CircleAlert, CircleCheck, Flag, Handshake, Info, Landmark, Plus, Sprout, TriangleAlert } from 'lucide-react';
 import type { RecordItem } from './types';
 export { useRecords } from './hooks';
 export { useSession } from './auth';
@@ -13,8 +14,17 @@ export function Button({ variant = 'primary', loading, children, className = '',
   return <button {...props} type={type} className={`button button-${variant} ${className}`} disabled={disabled || loading} aria-busy={loading || undefined}>{loading && <span className="spinner" aria-hidden="true" />}{children}</button>;
 }
 
+const noticeIcons = { info: Info, error: CircleAlert, success: CircleCheck, warning: TriangleAlert };
 export function Notice({ children, kind = 'info' }: { children: ReactNode; kind?: 'info' | 'error' | 'success' | 'warning' }) {
-  return <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>{children}</div>;
+  const Icon = noticeIcons[kind];
+  return <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}><Icon className="notice-icon" aria-hidden="true"/><div className="notice-body">{children}</div></div>;
+}
+
+// Who acts on a step, in the colours the tour uses: paying agency, EU rules, assisting office or the farmer.
+const deciders = { agency: Landmark, eu: Flag, office: Handshake, farmer: Sprout };
+export function WhoDecides({ who, children }: { who: keyof typeof deciders; children: ReactNode }) {
+  const Icon = deciders[who];
+  return <span className={`who-decides who-${who}`}><Icon aria-hidden="true"/>{children}</span>;
 }
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
@@ -29,11 +39,11 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 }
 
 export function RecordList({ items, basePath, empty = 'No records yet. Add the first one when you are ready.' }: { items: RecordItem[]; basePath: string; empty?: ReactNode }) {
-  if (!items.length) return <div className="empty-state"><span className="empty-mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"><path d="M9 2v14M2 9h14"/></svg></span><p>{empty}</p></div>;
-  return <ul className="record-list">{items.map((item, index) => <li key={item.id}><Link to={`${basePath}/${item.id}`}><span className="record-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><div className="record-main"><strong>{String(item.data.title ?? item.data.name ?? item.data.label ?? item.data.filename ?? 'Untitled record')}</strong><span className="muted">{String(item.data.description ?? item.data.recipient ?? item.data.country ?? `Updated ${new Date(item.updated_at).toLocaleDateString()}`)}</span></div>{item.data.status && <span className="badge">{String(item.data.status).replaceAll('_', ' ')}</span>}<svg className="record-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 3 5 5-5 5"/></svg></Link></li>)}</ul>;
+  if (!items.length) return <div className="empty-state"><span className="empty-mark" aria-hidden="true"><Plus/></span><p>{empty}</p></div>;
+  return <ul className="record-list">{items.map((item, index) => <li key={item.id}><Link to={`${basePath}/${item.id}`}><span className="record-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><div className="record-main"><strong>{String(item.data.title ?? item.data.name ?? item.data.label ?? item.data.filename ?? 'Untitled record')}</strong><span className="muted">{String(item.data.description ?? item.data.recipient ?? item.data.country ?? `Updated ${new Date(item.updated_at).toLocaleDateString()}`)}</span></div>{item.data.status && <span className="badge">{String(item.data.status).replaceAll('_', ' ')}</span>}<ChevronRight className="record-chevron" aria-hidden="true"/></Link></li>)}</ul>;
 }
 
-export function Loading({ children = 'Opening your farm folio…' }: { children?: ReactNode }) {
+export function Loading({ children = 'Opening your farm records…' }: { children?: ReactNode }) {
   return <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><p>{children}</p></div>;
 }
 

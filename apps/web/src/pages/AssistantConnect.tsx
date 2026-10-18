@@ -150,7 +150,7 @@ function ConnectionPage() {
 
     {!pending && <section className="card assistant-help-start"><p className="eyebrow">Start with a conversation</p><h2>Give your assistant one instruction</h2>
       <p>Copy the instruction, paste it into ChatGPT, Claude or another assistant you use, and ask it to open this website. You do not need to write a settings file.</p>
-      <div className="actions"><Button disabled={loading} onClick={() => void copyInstruction()}>Copy instruction</Button>{chatAvailable && <Link to="/app/help#in-app-help">Ask inside FunkyFarm instead</Link>}</div>
+      <div className="actions"><Button disabled={loading} onClick={() => void copyInstruction()}>Copy instruction</Button>{chatAvailable && <Link to="/app/help#in-app-help">Ask inside Funkyfarm instead</Link>}</div>
       {copyMessage && <p role="status" className="assistant-copy-status">{copyMessage}</p>}
       <p className="muted">Not every assistant or browser can use website tools or connect to farm records. Copying this instruction does not link accounts or grant access. Your assistant may need to guide you through the website instead.</p>
       <details className="assistant-help-details"><summary>Read or copy the instruction yourself</summary><Field label="Instruction for your assistant"><textarea className="assistant-instruction" readOnly value={instruction} onFocus={event => event.target.select()} /></Field></details>

@@ -1,7 +1,7 @@
 /* This cache contains public application files only. Farm API responses and
    original documents always go directly to the server. */
-const CACHE = 'funkyfarm-public-shell-v7';
-const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/funkyfarmers-logo.png', '/assets/caceres-pnoa-2026.jpg', '/data/spain-sigpac-caceres.geojson', '/data/spain-sigpac-caceres.NOTICE.txt'];
+const CACHE = 'funkyfarm-public-shell-v8';
+const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/assets/funkyfarm-logo.png', '/assets/caceres-pnoa-2026.jpg', '/data/spain-sigpac-caceres.geojson', '/data/spain-sigpac-caceres.NOTICE.txt'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -33,7 +33,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       try { return await fetch(request); }
       catch {
-        return await caches.match('/') ?? await caches.match('/offline.html') ?? new Response('Reconnect to open Funkyfarmers.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+        return await caches.match('/') ?? await caches.match('/offline.html') ?? new Response('Reconnect to open Funkyfarm.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
       }
     })());
     return;

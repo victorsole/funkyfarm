@@ -279,7 +279,7 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   const attachment = page.getByRole('region', { name: 'Attach a photo or document', exact: true });
   // A valid, local human-supplied PNG exercises attachment transport and pins,
   // not automatic image reading, geolocation or evidence of actual farm work.
-  const photoBytes = readFileSync(new URL('../../apps/web/public/assets/funkyfarmers-logo.png', import.meta.url));
+  const photoBytes = readFileSync(new URL('../../apps/web/public/assets/funkyfarm-logo.png', import.meta.url));
   await attachment.locator('input[type="file"]').first().setInputFiles({ name: 'browser-original-photo.png', mimeType: 'image/png', buffer: photoBytes });
   await expect(attachment.getByRole('img', { name: 'Selected photo: browser-original-photo.png', exact: true })).toBeVisible();
   await expect(attachment.getByRole('checkbox', { name: 'Read the text for me, for checking only', exact: true })).not.toBeChecked();

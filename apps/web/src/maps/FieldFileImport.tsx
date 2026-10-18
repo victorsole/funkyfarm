@@ -34,7 +34,7 @@ function SuppliedOutline({ geometry, name }: { geometry: Geometry; name: string 
   const cosine = Math.max(0.001, Math.cos(latitude * Math.PI / 180));
   const scale = Math.min(320 / Math.max((east - west) * cosine, 0.000001), 170 / Math.max(north - south, 0.000001));
   const paths = polygons.map(polygon => polygon.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${180 + (point[0] - longitude) * cosine * scale} ${105 - (point[1] - latitude) * scale}`).join(' ') + ' Z').join(' '));
-  return <figure style={{ margin: '1rem 0' }}><svg viewBox="0 0 360 210" role="img" aria-labelledby={id} style={{ display: 'block', width: '100%', maxHeight: 240, background: '#eef1e9', border: '1px solid #c9d0c0', borderRadius: 10 }}><title id={id}>Outline supplied in the file for {name}</title>{paths.map((path, index) => <path key={index} d={path} fill="#86a77e" fillOpacity=".55" fillRule="evenodd" stroke="#344c3b" strokeWidth="2" vectorEffect="non-scaling-stroke" />)}</svg><figcaption className="muted">Saved file outline</figcaption></figure>;
+  return <figure style={{ margin: '1rem 0' }}><svg viewBox="0 0 360 210" role="img" aria-labelledby={id} style={{ display: 'block', width: '100%', maxHeight: 240, background: 'var(--farm-soft)', border: '1px solid var(--line)', borderRadius: 14 }}><title id={id}>Outline supplied in the file for {name}</title>{paths.map((path, index) => <path key={index} d={path} style={{ fill: 'var(--farm)', stroke: 'var(--farm-text)' }} fillOpacity=".3" fillRule="evenodd" strokeWidth="2" vectorEffect="non-scaling-stroke" />)}</svg><figcaption className="muted">Saved file outline</figcaption></figure>;
 }
 
 function GeometrySummary({ value }: { value: PreviewRow['geometry_summary'] }) {

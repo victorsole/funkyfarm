@@ -38,7 +38,7 @@ function database() {
         db.createObjectStore('drafts', { keyPath: ['scope', 'name'] });
       };
       request.onerror = () => { connection = undefined; reject(new Error('The browser could not open private draft storage. Keep this form open until you save it.')); };
-      request.onblocked = () => { connection = undefined; reject(new Error('Another open tab is blocking private draft storage. Close older FunkyFarm tabs and try again.')); };
+      request.onblocked = () => { connection = undefined; reject(new Error('Another open tab is blocking private draft storage. Close older Funkyfarm tabs and try again.')); };
       request.onsuccess = () => {
         const db = request.result;
         db.onversionchange = () => { db.close(); connection = undefined; };

@@ -86,7 +86,7 @@ function FarmGuide({ farm }: { farm: RecordItem }) {
   return <details onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>How do I update the official field register?</summary>
     {open && <>
-      <p>Check the exact task before leaving your farm folio. This guide does not change an official register, send an application or establish a deadline.</p>
+      <p>Check the exact task before leaving Funkyfarm. This guide does not change an official register, send an application or establish a deadline.</p>
       {error ? <Notice kind="error">{error}<div className="actions"><Button variant="secondary" onClick={() => setAttempt(value => value + 1)}>Try opening the guide again</Button></div></Notice>
         : !guide ? <p role="status">Opening the instructions for this farm…</p>
         : <>

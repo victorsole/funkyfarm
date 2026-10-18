@@ -1,14 +1,14 @@
 .demo-workspace { display: grid; gap: 24px; }
 .demo-workspace .page-header { margin-bottom: 0; }
-.demo-label { justify-self: start; margin: -10px 0 0; padding: 5px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: .75rem; }
+.demo-label { justify-self: start; margin: -10px 0 0; padding: 4px 12px; border: 0; border-radius: 999px; color: var(--sun-ink); font-size: .8rem; background: var(--sun); font-weight: 700; }
 .demo-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .demo-overview h2, .demo-farm-card h2 { margin-top: 0; }
 .demo-overview .button { flex-shrink: 0; }
 .demo-farm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.demo-farm-card { display: flex; flex-direction: column; align-items: flex-start; padding: 25px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; transition: border-color 180ms ease, box-shadow 180ms ease; }
-.demo-farm-card:hover { border-color: var(--forest); }
-.demo-scenario-number { display: block; margin-bottom: 14px; color: var(--muted); font-size: .72rem; font-weight: 650; }
-.demo-farm-card h2 { font-size: 1.24rem; line-height: 1.35; }
+.demo-farm-card { display: flex; flex-direction: column; align-items: flex-start; padding: 25px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; transition: border-color 180ms ease, box-shadow 180ms ease; border-top: 5px solid var(--farm); }
+.demo-farm-card:hover { border-color: var(--farm); }
+.demo-scenario-number { display: block; margin-bottom: 12px; color: var(--muted); font: 600 .75rem/1.4 var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.demo-farm-card h2 { font-size: 1.3rem; line-height: 1.35; }
 .demo-farm-card p { font-size: .84rem; line-height: 1.6; }
 .demo-farm-card .button { margin-top: auto; }
 .demo-scenario-detail { display: grid; gap: 20px; }
@@ -22,7 +22,7 @@
 .demo-new-run { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid var(--line); }
 .demo-new-run p { width: 100%; margin: 0; font-size: .85rem; color: var(--muted); }
 .demo-workspace a { overflow-wrap: anywhere; }
-.demo-workspace a:focus-visible { outline: 2px solid var(--forest); outline-offset: 4px; }
+.demo-workspace a:focus-visible { outline: 2px solid var(--farm); outline-offset: 4px; }
 @media (max-width: 760px) { .demo-farm-grid { grid-template-columns: 1fr; } .demo-overview { flex-direction: column; } .demo-farm-card { padding: 20px; } }
 @media (max-width: 520px) { .demo-scenario-detail .button { max-width: 100%; white-space: normal; } .demo-new-run { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .demo-farm-card { transition: none; } }

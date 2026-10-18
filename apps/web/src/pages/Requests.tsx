@@ -132,7 +132,7 @@ function RequestForm({ initial, draftKey, farms, busy, submitLabel, onSave }: {
   if (!privateDraft.ready) return <p role="status">Opening your private draft…</p>;
   return <form onSubmit={submit} className="stack">
     {privateDraft.error && <Notice kind="error">{privateDraft.error}</Notice>}
-    <p className="muted" role="status">{privateDraft.error ? 'Device draft storage failed. Keep this form open until you save it to the farm folio.' : privateDraft.saving ? 'Saving draft on this device…' : 'Draft retained privately on this device until saved to the farm folio.'}</p>
+    <p className="muted" role="status">{privateDraft.error ? 'Device draft storage failed. Keep this form open until you save it to your farm records.' : privateDraft.saving ? 'Saving draft on this device…' : 'Draft retained privately on this device until saved to your farm records.'}</p>
     <div className="form-grid">
       <Field label="Request title"><input required value={draft.title} onChange={event => change('title', event.target.value)} placeholder="Annual farm records request" /></Field>
       <Field label="Recipient"><input required value={draft.recipient} onChange={event => change('recipient', event.target.value)} placeholder="Authority or adviser named in the request" /></Field>

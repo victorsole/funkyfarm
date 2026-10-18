@@ -89,11 +89,11 @@ function CompareOutlines({ scenario }: { scenario: Example['scenario'] }) {
   const scale = Math.min(520 / Math.max((east - west) * cosine, 0.000001), 260 / Math.max(north - south, 0.000001));
   const path = (part: number[][][]) => part.map(ring => ring.map((point, index) => `${index ? 'L' : 'M'}${300 + (point[0] - longitude) * cosine * scale} ${150 - (point[1] - latitude) * scale}`).join(' ') + ' Z').join(' ');
   return <figure style={{ margin: '1rem 0' }}>
-    <svg viewBox="0 0 600 300" role="img" aria-labelledby={`${id}-title ${id}-description`} style={{ display: 'block', width: '100%', maxHeight: 360, background: '#edf0e7', border: '1px solid #bec7b5', borderRadius: 10 }}>
+    <svg viewBox="0 0 600 300" role="img" aria-labelledby={`${id}-title ${id}-description`} style={{ display: 'block', width: '100%', maxHeight: 360, background: 'var(--farm-soft)', border: '1px solid var(--line)', borderRadius: 14 }}>
       <title id={`${id}-title`}>Sample claim and supplied reference outlines</title><desc id={`${id}-description`}>The solid green outline is {scenario.reference_label}. The dashed blue outline is {scenario.claimed_label}. These are sample shapes, not satellite imagery or an official field map.</desc>
-      {reference.map((part, index) => <path key={`reference-${index}`} d={path(part)} fill="#688b68" fillOpacity=".32" fillRule="evenodd" stroke="#36583b" strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
-      {claimed.map((part, index) => <path key={`claimed-${index}`} d={path(part)} fill="#1746a2" fillOpacity=".12" fillRule="evenodd" stroke="#1746a2" strokeWidth="3" strokeDasharray="9 5" vectorEffect="non-scaling-stroke" />)}
-      <text x="12" y="284" fill="#433e3c" fontSize="13">Sample field plan</text>
+      {reference.map((part, index) => <path key={`reference-${index}`} d={path(part)} style={{ fill: 'var(--farm)', stroke: 'var(--farm-text)' }} fillOpacity=".3" fillRule="evenodd" strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
+      {claimed.map((part, index) => <path key={`claimed-${index}`} d={path(part)} style={{ fill: 'var(--eu)', stroke: 'var(--eu)' }} fillOpacity=".12" fillRule="evenodd" strokeWidth="3" strokeDasharray="9 5" vectorEffect="non-scaling-stroke" />)}
+      <text x="12" y="284" style={{ fill: 'var(--muted)' }} fontSize="13">Sample field plan</text>
     </svg>
     <figcaption><p><strong>Dashed blue:</strong> {label(scenario.claimed_label)}<br /><strong>Solid green:</strong> {label(scenario.reference_label)} · {scenario.reference_year}</p><p className="muted">Compare the shapes; they do not establish ownership or eligible area.</p></figcaption>
   </figure>;

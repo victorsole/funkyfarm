@@ -8,7 +8,7 @@ export function PublicDemoPage() {
   const reference = getSpanishDemoSnapshot({ id: 'es-caceres-sigpac-2026-10-17', reference: '10:50:0:0:13:29:1' });
   const entry = (step: 'fields' | 'import' | 'checks') => session ? `/app/demo?step=${step}` : '/login?next=%2Fapp%2Fdemo';
   return <main className="public-demo">
-    <header><Link to="/" aria-label="Funkyfarmers home"><img src="/assets/funkyfarmers-logo.png" width="1397" height="1126" alt="Funkyfarmers" /></Link><span>Demo</span></header>
+    <header><Link to="/" aria-label="Funkyfarm home"><img className="funkyfarm-logo" src="/assets/funkyfarm-logo.png" width="640" height="571" alt="Funkyfarm" /></Link><span>Demo</span></header>
     <section className="public-demo-intro">
       <p className="eyebrow">Your fields. Your records. Less retyping.</p>
       <h1>Farm paperwork, one clear step at a time.</h1>
@@ -25,6 +25,6 @@ export function PublicDemoPage() {
       {reference && <><dl className="public-demo-figures"><div><dt>Reference area</dt><dd>{reference.field.area_ha} ha</dd></div><div><dt>Pasture coefficient</dt><dd>{reference.field.csp_percent}%</dd></div><div><dt>Calculated area</dt><dd>{(reference.field.area_ha * reference.field.csp_percent / 100).toFixed(5)} ha</dd></div></dl><p className="muted">The calculation is not an official maximum or eligibility decision. It does not tell you to draw a smaller boundary.</p><figure className="public-demo-photo"><img src={reference.image.path} width={reference.image.width} height={reference.image.height} alt="Public PNOA aerial photo used for the Cáceres parcel example" loading="lazy"/><figcaption>{reference.image.attribution} · {reference.image.capture_date ? `Capture: ${reference.image.capture_date}` : 'Capture date not provided'}. <a href={reference.image.license_url} target="_blank" rel="noopener noreferrer">Image licence</a></figcaption></figure></>}
     </section>
     <details><summary>Sources and how the demo works</summary><p>Public references, with a staged private claim—not a real holding or proof of ownership. Changes here do not update SIGPAC or send an application.</p>{reference && <p><a href={reference.field.attributes_url} target="_blank" rel="noopener noreferrer">Official parcel details</a> · {reference.source.attribution} · <a href={reference.source.license_url} target="_blank" rel="noopener noreferrer">Parcel data licence</a></p>}<p><a href="https://doe.juntaex.es/otrosFormatos/html.php?anio=2026&doe=230o&xml=2026060302" target="_blank" rel="noreferrer">Extremadura SIGPAC rules, 2026</a> · <a href="https://www.juntaex.es/w/5698" target="_blank" rel="noreferrer">Official SIGPAC correction service</a></p></details>
-    <footer><p>FunkyFarm · Less bureaucracy. More farming.</p><Link to={session ? '/app/home' : '/login'}>Open the farm workspace</Link></footer>
+    <footer><p><b>Funkyfarm</b> · Fields Uploaded, Notified, Kept Yearly</p><Link to={session ? '/app/home' : '/login'}>Open the farm workspace</Link></footer>
   </main>;
 }

@@ -1,5 +1,6 @@
 import { Component, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ChevronRight, ClipboardList, House, Lock, Monitor, Moon, NotebookPen, Sparkles, Sprout, Sun, Wrench, type LucideIcon } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { useSession } from './auth';
 import { Button, Loading, Notice } from './components';
@@ -31,6 +32,7 @@ import { CommunityPage, CommunityComposePage, CommunityThreadPage, PrivateCommun
 import { FundingPage } from './pages/FundingPage';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
+import { readTheme, saveTheme, type ThemeChoice } from './theme';
 import './pages/administration.css';
 import './brand.css';
 
@@ -43,26 +45,31 @@ const primary = [
 ];
 
 function BrandMark({ className = '' }: { className?: string }) {
-  return <img className={`funkyfarmers-logo ${className}`} width="1397" height="1126" src="/assets/funkyfarmers-logo.png" alt="Funkyfarmers" />;
+  return <img className={`funkyfarm-logo ${className}`} width="640" height="571" src="/assets/funkyfarm-logo.png" alt="Funkyfarm" />;
 }
 
 const visibleName = (value: string | undefined, fallback: string) => (value || '').replace(/^\s*FICTIONAL(?:[\s:—–_-]+|$)/i, '') || fallback;
 
+const navIcons: Record<string, LucideIcon> = { home: House, farm: Sprout, requests: ClipboardList, work: NotebookPen, documents: Wrench };
 function NavIcon({ name }: { name: string }) {
-  const paths: Record<string, string> = {
-    home: 'M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7',
-    work: 'M13 3 4 14h7l-1 7 10-12h-7l0-6Z',
-    requests: 'M4 4h16v16H4V4Zm4 5h8M8 13h8M8 17h4',
-    documents: 'M7 3h8l5 5v13H7V3Zm8 0v6h5M4 7v14',
-    farm: 'M12 21V9m0 7C6 16 3 12 3 7c6 0 9 3 9 9Zm0-5c6 0 9-3 9-8-6 0-9 3-9 8Z',
-    reports: 'M5 3h14v18H5V3Zm4 11 2 2 4-5M9 7h6',
-  };
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.documents}/></svg>;
+  const Icon = navIcons[name] ?? Wrench;
+  return <Icon aria-hidden="true"/>;
 }
 
 function Chevron({ className = '' }: { className?: string }) {
-  return <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 3 5 5-5 5"/></svg>;
+  return <ChevronRight className={className} aria-hidden="true"/>;
 }
+
+const themeOptions: { value: ThemeChoice; label: string; icon: LucideIcon }[] = [
+  { value: 'system', label: 'Auto', icon: Monitor }, { value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon },
+];
+function ThemeSwitch() {
+  const [choice, setChoice] = useState<ThemeChoice>(readTheme);
+  return <fieldset className="theme-choice"><legend>Appearance</legend><div className="theme-options">{themeOptions.map(({ value, label, icon: Icon }) =>
+    <label key={value}><input type="radio" name="theme-choice" value={value} checked={choice === value} onChange={() => { saveTheme(value); setChoice(value); }}/><Icon aria-hidden="true"/>{label}</label>)}</div></fieldset>;
+}
+
+const funkyWords = [['F', 'Fields'], ['U', 'Uploaded'], ['N', 'Notified'], ['K', 'Kept'], ['Y', 'Yearly']];
 
 function useConnection() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -116,7 +123,7 @@ function Shell() {
   useEffect(() => {
     const page = caseSection ? 'Paperwork' : (primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
       ?? farmTools.find(tool => location.pathname.startsWith(`/app/${tool.path}`))?.title ?? 'Workspace');
-    document.title = `${page} · Funkyfarmers`;
+    document.title = `${page} · Funkyfarm`;
     if (location.hash) {
       let fragment = location.hash.slice(1);
       try { fragment = decodeURIComponent(fragment); } catch { /* Keep malformed fragments harmless. */ }
@@ -135,20 +142,21 @@ function Shell() {
   return <div className="workspace-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
-      <Link to="/app/home" className="brand" aria-label="Funkyfarmers home"><BrandMark /></Link>
+      <Link to="/app/home" className="brand" aria-label="Funkyfarm home"><BrandMark /></Link>
       <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{visibleName(workspace.name, 'Farm workspace')} · {workspace.role}</option>)}</select> : <strong>{visibleName(session?.workspace.name, 'Farm workspace')}</strong>}</div>
       <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${item.label ? t(item.label as TranslationKey) : item.name}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{item.label ? t(item.label as TranslationKey) : item.name}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
-      <div className="sidebar-bottom"><span className="private-label"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="6" width="9" height="7" rx="1"/><path d="M3.5 6V3.5a2.5 2.5 0 0 1 5 0V6"/></svg> Private farm records</span></div>
+      <div className="sidebar-bottom"><span className="private-label"><Lock aria-hidden="true"/> Private farm records</span></div>
     </aside>
     <div className="workspace-body">
       <header className="workspace-topbar">
-        <Link className="hackathon-demo-link" to="/app/demo">Hackathon demo</Link>
+        <Link className="hackathon-demo-link" to="/app/demo"><Sparkles aria-hidden="true"/>Hackathon demo</Link>
         {!online && <div className="connection-status" role="status"><span className="connection-dot is-offline"/>Offline</div>}
         <details className="account-menu">
           <summary><span className="avatar" aria-hidden="true">{visibleName(session?.user.display_name, 'Farmer').slice(0, 1).toUpperCase()}</span><span className="account-name">{visibleName(session?.user.display_name, 'Farmer')}<small>{session?.workspace.role}</small></span><Chevron className="account-chevron"/></summary>
           <div className="account-dropdown">
             <p className="muted">{session?.user.email}</p>
             <Link to="/app/settings" onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>Account and settings</Link>
+            <ThemeSwitch/>
             <p className="account-privacy">Signing out removes this account’s private form drafts from this browser.</p>
             <Button variant="ghost" loading={signingOut} onClick={() => void signOut()}><Text id="auth.signOut"/></Button>
           </div>
@@ -160,7 +168,7 @@ function Shell() {
         {logoutError && <Notice kind="error">{logoutError}</Notice>}
         <div className="page-enter" key={JSON.stringify([session?.user.id, session?.workspace.id, session?.workspace.role, session?.workspace.farm_ids, session?.workspace.permissions, location.pathname])}><PageBoundary><Outlet /></PageBoundary></div>
       </main>
-      <footer className="workspace-footer"><span>Funkyfarmers · The farm folio</span><Link to="/app/help">Help with the paperwork</Link><Link to="/app/assistant/connect">Connect an AI assistant</Link></footer>
+      <footer className="workspace-footer"><span className="footer-brand"><b>Funkyfarm</b> · Fields Uploaded, Notified, Kept Yearly</span><Link to="/app/help">Help with the paperwork</Link><Link to="/app/assistant/connect">Connect an AI assistant</Link></footer>
     </div>
   </div>;
 }
@@ -175,7 +183,7 @@ function AuthPage() {
   const nextQuery = demoNext ? '?next=%2Fapp%2Fdemo' : '';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · Funkyfarmers`; }, [registering]);
+  useEffect(() => { setError(null); document.title = `${registering ? 'Create an account' : 'Welcome back'} · Funkyfarm`; }, [registering]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -191,8 +199,8 @@ function AuthPage() {
   return <div className="auth-layout">
     <section className="auth-story">
       <Link className="brand" to="/demo"><BrandMark/></Link>
-      <div className="auth-story-content"><p className="eyebrow">The farm folio</p><h1>Good records.<br/>Room to grow.</h1><p>Keep farm work, field details and paperwork together, ready when you need them.</p>
-        <div className="folio-illustration" aria-hidden="true"><div className="folio-back"/><div className="folio-sheet"><div className="sheet-heading"><BrandMark/><span>THE FARM<br/>FOLIO / 01</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-box"><span>Farm work. Fields. Paperwork.</span></div><div className="sheet-line"/><div className="sheet-line short"/><div className="sheet-signature">Ready when you need it.</div></div><div className="folio-stamp">KEPT<br/>TOGETHER</div></div>
+      <div className="auth-story-content"><p className="eyebrow">Funkyfarm</p><h1>Good records.<br/>Room to grow.</h1><p>Keep farm work, field details and paperwork together, ready when you need them.</p>
+        <ul className="funky-acronym">{funkyWords.map(([letter, word]) => <li key={letter}><b aria-hidden="true">{letter}</b><span>{word}</span></li>)}</ul>
       </div><p className="auth-footnote">Your farm records, kept together.</p>
     </section>
     <main className="auth-main"><div className="auth-form-wrap">
@@ -204,7 +212,7 @@ function AuthPage() {
         <label className="field"><span className="field-label"><Text id="auth.password"/></span><input type="password" name="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 12 : 1} maxLength={256} aria-describedby={registering ? 'password-help' : undefined}/>{registering && <small className="muted" id="password-help">Use at least 12 characters.</small>}</label>
         <Button type="submit" loading={busy}><Text id={registering ? 'auth.createAccount' : 'auth.signIn'}/><Chevron/></Button>
       </form>
-      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to Funkyfarmers?'} <Link to={`${registering ? '/login' : '/register'}${nextQuery}`}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
+      <p className="auth-switch">{registering ? 'Already have an account?' : 'New to Funkyfarm?'} <Link to={`${registering ? '/login' : '/register'}${nextQuery}`}><Text id={registering ? 'auth.signIn' : 'auth.createAccount'}/></Link></p><p className="auth-privacy">Your farm records are private. You choose when to share a report or invite someone to help.</p>
     </div></main>
   </div>;
 }

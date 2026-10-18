@@ -1,8 +1,8 @@
 /* Shared layouts for help, questions and guided farm checks. */
-.administration-tools { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 13px 5.1%; border-bottom: 1px solid var(--line); background: #edf1e5; align-items: center; }
-.administration-tools > span { font-size: .58rem; text-transform: uppercase; letter-spacing: .11em; color: var(--muted); margin-right: 3px; }
-.administration-tools a { display: inline-flex; align-items: center; min-height: 32px; font-size: .7rem; color: #1746a2; text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; transition: border-color .18s, color .18s; }
-.administration-tools a:hover, .administration-tools a[aria-current='page'] { color: var(--forest); border-bottom-color: var(--forest); }
+.administration-tools { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 13px 5.1%; border-bottom: 1px solid var(--line); background: var(--farm-soft); align-items: center; }
+.administration-tools > span { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 3px; font-family: var(--mono); font-weight: 600; }
+.administration-tools a { display: inline-flex; align-items: center; min-height: 32px; font-size: .85rem; color: var(--eu); text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; transition: border-color .18s, color .18s; font-weight: 700; }
+.administration-tools a:hover, .administration-tools a[aria-current='page'] { color: var(--farm-text); border-bottom-color: var(--farm); }
 .admin-section { margin-bottom: 24px; }
 .admin-section > p { max-width: 760px; font-size: .87rem; }
 .admin-section > h3 { margin-top: 29px; }
@@ -10,13 +10,13 @@
 .admin-section .section-heading > h3 { flex: 1; min-width: 180px; }
 .admin-section .section-heading > .badge { white-space: normal; max-width: 100%; }
 .admin-choice-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 26px; }
-.admin-choice { border: 1px solid #c6d2b7; border-radius: 7px; padding: 22px; text-align: left; color: var(--forest); background: var(--paper); font: inherit; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.admin-choice { border: 1px solid var(--line); border-radius: 16px; padding: 22px; text-align: left; color: var(--ink); background: var(--surface); font: inherit; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 button.admin-choice { transition: background .18s, border-color .18s, transform .18s; }
-button.admin-choice:hover { border-color: #1746a2; transform: translateY(-1px); }
-.admin-choice.is-selected { background: #eff7d5; border-color: var(--forest); box-shadow: inset 3px 0 var(--forest); }
-.admin-choice strong { font: 400 1.55rem/1.2 var(--serif); letter-spacing: -.025em; }
+button.admin-choice:hover { border-color: var(--eu); transform: translateY(-1px); }
+.admin-choice.is-selected { background: var(--farm-soft); border-color: var(--farm); box-shadow: inset 5px 0 var(--farm); }
+.admin-choice strong { font: 800 1.45rem/1.2 var(--display); letter-spacing: -.015em; }
 .admin-choice > span { font-size: .77rem; line-height: 1.6; color: var(--muted); }
-.admin-help-first { border-top: 3px solid var(--forest); }
+.admin-help-first { border-top: 5px solid var(--farm); }
 .admin-help-first .admin-choice-row { margin-top: 24px; }
 .admin-footnote { color: var(--muted); font-size: .73rem; line-height: 1.75; margin-top: 18px; }
 .admin-task-list { list-style: none; padding: 0; margin: 22px 0; }
@@ -26,17 +26,17 @@ button.admin-choice:hover { border-color: #1746a2; transform: translateY(-1px); 
 .admin-task-list > li > span:not(.badge), .admin-task-list > li > p { font-size: .8rem; color: var(--muted); margin-bottom: 7px; }
 .admin-task-list .badge { margin-right: 7px; }
 .admin-subsection { border-top: 1px solid var(--line); margin-top: 26px; padding-top: 24px; }
-details.admin-subsection > summary { color: var(--forest); font-size: .82rem; margin-bottom: 20px; }
-.admin-thread { border-top: 2px solid #adbf94; padding-top: 26px; margin-top: 30px; animation: admin-open .25s ease-out; }
+details.admin-subsection > summary { color: var(--farm-text); font-size: .82rem; margin-bottom: 20px; }
+.admin-thread { border-top: 2px solid var(--line-strong); padding-top: 26px; margin-top: 30px; animation: admin-open .25s ease-out; }
 .admin-thread > .button:last-child { margin-top: 18px; }
-.admin-reply { padding: 17px 20px; border-left: 2px solid #b7cba0; background: #f0f4e5; margin: 18px 0; font-size: .83rem; }
+.admin-reply { padding: 17px 20px; border-left: 4px solid var(--farm); background: var(--farm-soft); margin: 18px 0; font-size: .83rem; border-radius: 12px; }
 .admin-reply p:last-child { margin-bottom: 0; }
 .admin-thread .stack { margin-top: 25px; }
 .admin-check { border-top: 1px solid var(--line); padding-top: 25px; margin-top: 25px; }
 .admin-check > p { font-size: .81rem; }
 .admin-check > .check-row { margin-top: 22px; }
 .admin-check > details { margin: 18px 0; font-size: .83rem; }
-.admin-check > details > summary { font-size: .79rem; color: var(--forest); }
+.admin-check > details > summary { font-size: .79rem; color: var(--farm-text); }
 .admin-check > details[open] > summary { margin-bottom: 18px; }
 .admin-step-list { padding-left: 22px; font-size: .83rem; }
 .admin-step-list > li { padding-left: 7px; margin: 18px 0; }

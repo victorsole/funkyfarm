@@ -49,14 +49,14 @@ export function FieldMap({ geometry, point, label = 'Your supplied field outline
   const scale = Math.min(520 / width, 230 / height);
   const x = (lon: number) => 300 + (lon - centerLon) * cosine * scale;
   const y = (lat: number) => 155 - (lat - centerLat) * scale;
-  return <figure style={{ margin: 0 }}><svg viewBox="0 0 600 310" role="img" aria-labelledby={`${titleId} ${captionId}`} style={{ display: 'block', width: '100%', maxHeight: 350, borderRadius: 14, background: '#eef1e9', border: '1px solid #c9d0c0' }}>
+  return <figure style={{ margin: 0 }}><svg viewBox="0 0 600 310" role="img" aria-labelledby={`${titleId} ${captionId}`} style={{ display: 'block', width: '100%', maxHeight: 350, borderRadius: 14, background: 'var(--farm-soft)', border: '1px solid var(--line)' }}>
     <title id={titleId}>{label}</title><desc id={captionId}>{positions.length ? 'Outline drawn only from supplied coordinates. No background map or official parcel boundary is implied.' : 'Supplied location point only. No field boundary or area has been established.'}</desc>
-    {[60,120,180,240,300,360,420,480,540].map(v => <path key={v} d={`M${v} 0V310`} stroke="#dfe4d8" strokeWidth="1" />)}
-    {[45,100,155,210,265].map(v => <path key={v} d={`M0 ${v}H600`} stroke="#dfe4d8" strokeWidth="1" />)}
-    {parts.map((part, i) => <path key={i} d={part.map(ring => ring.map((p,j) => `${j ? 'L' : 'M'}${x(p[0])} ${y(p[1])}`).join(' ') + 'Z').join(' ')} fill="#86a77e" fillOpacity=".55" fillRule="evenodd" stroke="#344c3b" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />)}
-    {!positions.length && <><circle cx="300" cy="155" r="14" fill="#344c3b" /><circle cx="300" cy="155" r="4" fill="white" /></>}
-    <text x="570" y="32" textAnchor="middle" fontSize="14" fill="#344c3b">N</text><path d="M570 43V66M565 49L570 43L575 49" stroke="#344c3b" fill="none" />
-    <text x="20" y="290" fontSize="12" fill="#43513f">{centerLat.toFixed(5)}°, {centerLon.toFixed(5)}°</text>
+    {[60,120,180,240,300,360,420,480,540].map(v => <path key={v} d={`M${v} 0V310`} style={{ stroke: 'var(--line)' }} strokeWidth="1" />)}
+    {[45,100,155,210,265].map(v => <path key={v} d={`M0 ${v}H600`} style={{ stroke: 'var(--line)' }} strokeWidth="1" />)}
+    {parts.map((part, i) => <path key={i} d={part.map(ring => ring.map((p,j) => `${j ? 'L' : 'M'}${x(p[0])} ${y(p[1])}`).join(' ') + 'Z').join(' ')} style={{ fill: 'var(--farm)', stroke: 'var(--farm-text)' }} fillOpacity=".3" fillRule="evenodd" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />)}
+    {!positions.length && <><circle cx="300" cy="155" r="14" style={{ fill: 'var(--farm-text)' }} /><circle cx="300" cy="155" r="4" style={{ fill: 'var(--surface)' }} /></>}
+    <text x="570" y="32" textAnchor="middle" fontSize="14" style={{ fill: 'var(--ink)' }}>N</text><path d="M570 43V66M565 49L570 43L575 49" style={{ stroke: 'var(--ink)' }} fill="none" />
+    <text x="20" y="290" fontSize="12" style={{ fill: 'var(--muted)' }}>{centerLat.toFixed(5)}°, {centerLon.toFixed(5)}°</text>
   </svg><figcaption className="muted" style={{ marginTop: 8, fontSize: '.85rem' }}>{positions.length ? 'Saved outline' : 'Location only · area unknown'}</figcaption></figure>;
 }
 

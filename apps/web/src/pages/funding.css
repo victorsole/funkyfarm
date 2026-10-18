@@ -1,6 +1,6 @@
 .funding-page { display: grid; gap: 1.5rem; }
 .funding-programme h3 { margin-top: 1.6rem; }
-.funding-call { padding: 1rem 1.2rem; border-inline-start: .3rem solid var(--forest); background: var(--lime-soft); border-radius: .5rem; }
+.funding-call { padding: 1rem 1.2rem; border-inline-start: 5px solid var(--farm); background: var(--farm-soft); border-radius: 14px; }
 .funding-call p:last-child { margin-bottom: 0; }
 .funding-steps { display: grid; gap: 1rem; padding-inline-start: 1.4rem; }
 .funding-steps p { margin: .35rem 0 0; }

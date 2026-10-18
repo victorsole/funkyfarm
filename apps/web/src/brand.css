@@ -1,14 +1,18 @@
-.funkyfarmers-logo { display: block; max-width: 100%; width: 190px; height: auto; object-fit: contain; }
-.sidebar .brand { width: 100%; max-width: 194px; }
-.sidebar .brand > img.funkyfarmers-logo { width: 190px; height: auto; }
+.funkyfarm-logo { display: block; max-width: 100%; width: 170px; height: auto; object-fit: contain; }
+.sidebar .brand { width: 100%; max-width: 180px; margin-inline: auto; }
+.sidebar .brand > img.funkyfarm-logo { width: 170px; height: auto; }
 .sidebar .workspace-label { margin-top: 22px; }
-.auth-story .brand { width: 260px; max-width: 100%; }
-.auth-story .brand > img.funkyfarmers-logo { width: 260px; height: auto; }
-.sheet-heading > img.funkyfarmers-logo { width: 75px; height: auto; }
-.boot-screen > img.funkyfarmers-logo { width: 210px; height: auto; }
-.hackathon-demo-link { color: var(--blue); font-size: .76rem; font-weight: 650; white-space: nowrap; text-underline-offset: 4px; }
+.auth-story .brand { width: 220px; max-width: 100%; }
+.auth-story .brand > img.funkyfarm-logo { width: 220px; height: auto; }
+.boot-screen > img.funkyfarm-logo { width: 200px; height: auto; }
+/* The logo's dark lettering needs a light plate on dark backgrounds, as in the tour. */
+:root[data-theme='dark'] .funkyfarm-logo { padding: 10px 12px; border-radius: 18px; background: #f3f6f0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .funkyfarm-logo { padding: 10px 12px; border-radius: 18px; background: #f3f6f0; } }
+.hackathon-demo-link { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 6px 14px; border-radius: 999px; background: var(--sun); color: var(--sun-ink); font-size: .85rem; font-weight: 700; white-space: nowrap; text-decoration: none; }
+.hackathon-demo-link:hover { background: color-mix(in srgb, var(--sun) 85%, var(--ink)); color: var(--sun-ink); }
+.hackathon-demo-link svg { width: 16px; height: 16px; }
 .farm-demo-entry { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
-.farm-demo-entry strong { color: var(--forest); }
+.farm-demo-entry strong { color: var(--farm-text); }
 .tools-index { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
 .tools-index section { margin: 0; }
 .tools-index h2 { font-size: 1.5rem; }
@@ -19,8 +23,8 @@
 .tools-index li span { color: var(--muted); font-size: .8rem; line-height: 1.5; }
 @media (max-width: 600px) { .tools-index { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {
-  .sidebar .brand { width: 44%; max-width: 170px; }
-  .sidebar .brand > img.funkyfarmers-logo { width: 170px; height: auto; }
+  .sidebar .brand { width: auto; max-width: 96px; margin-inline: 0; }
+  .sidebar .brand > img.funkyfarm-logo { width: 96px; height: auto; }
   .sidebar .workspace-label { margin-top: 0; }
   .sidebar .primary-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }

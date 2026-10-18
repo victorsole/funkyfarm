@@ -1,15 +1,17 @@
 {
   "id": "/",
-  "name": "Funkyfarmers",
-  "short_name": "Funkyfarmers",
-  "description": "Farm work, fields and paperwork, kept together.",
+  "name": "Funkyfarm",
+  "short_name": "Funkyfarm",
+  "description": "Fields Uploaded, Notified, Kept Yearly. Farm work, fields and paperwork, kept together.",
   "start_url": "/app/home",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f6f5ed",
-  "theme_color": "#064b35",
+  "background_color": "#f3f6f0",
+  "theme_color": "#2c7a43",
   "icons": [
-    { "src": "/assets/funkyfarmers-logo.png", "sizes": "1397x1126", "type": "image/png", "purpose": "any" }
+    { "src": "/assets/funkyfarm-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/funkyfarm-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/funkyfarm-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     { "name": "Record work", "url": "/app/record-work" },

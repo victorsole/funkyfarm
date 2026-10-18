@@ -115,7 +115,7 @@ export function ConnectionPaperwork({ farm, connection, ensureConnection, workfl
   }
   async function download(format: string, path: string) {
     const blob = await api.download(path); const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
-    anchor.href = url; anchor.download = `FunkyFarm-records.${format}`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    anchor.href = url; anchor.download = `Funkyfarm-records.${format}`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return <>

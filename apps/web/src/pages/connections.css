@@ -4,30 +4,30 @@
 .connections-page .check-row { margin: 24px 0; align-items: flex-start; }
 .connection-picker > .field { max-width: 520px; }
 .connection-task-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.connection-task { display: grid; align-content: start; gap: 10px; min-height: 130px; padding: 22px; text-align: left; font: inherit; color: var(--forest); border: 1px solid var(--line); border-radius: 16px; background: var(--paper, #fffefa); cursor: pointer; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.connection-task { display: grid; align-content: start; gap: 10px; min-height: 130px; padding: 22px; text-align: left; font: inherit; color: var(--farm-text); border: 1px solid var(--line); border-radius: 16px; background: var(--surface); cursor: pointer; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .connection-task strong { font-size: 1rem; line-height: 1.35; }
 .connection-task span { color: var(--muted); font-size: .86rem; line-height: 1.5; }
-.connection-task:hover:not(:disabled), .connection-task.is-selected { background: var(--lime-soft); border-color: var(--forest); }
-.connection-task.is-selected { box-shadow: inset 0 0 0 1px var(--forest); }
-.connection-task:focus-visible { outline: 3px solid var(--blue, #133ca6); outline-offset: 3px; }
+.connection-task:hover:not(:disabled), .connection-task.is-selected { background: var(--farm-soft); border-color: var(--farm); }
+.connection-task.is-selected { box-shadow: inset 0 0 0 1px var(--farm); }
+.connection-task:focus-visible { outline: 3px solid var(--eu); outline-offset: 3px; }
 .connection-task:disabled { opacity: .6; cursor: default; }
 .connection-route-choice { display: flex; gap: 20px; flex-wrap: wrap; }
 .connection-route-choice .field { flex: 1 1 280px; }
 .connections-page .connection-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 .connection-route-summary > p { max-width: 760px; }
-.connection-route-details { margin-top: 20px; padding: 22px; border-radius: 14px; background: var(--lime-soft); }
+.connection-route-details { margin-top: 20px; padding: 22px; border-radius: 14px; background: var(--farm-soft); }
 .connection-route-details h3 { margin-top: 18px; }
 .connection-route-details h3:first-child { margin-top: 0; }
 .connection-sources { font-size: .85rem; padding-left: 20px; line-height: 1.6; overflow-wrap: anywhere; }
 .connection-inventory { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 20px; }
-.connection-inventory article { margin: 20px 0; padding-left: 18px; border-left: 3px solid var(--lime, #b6dc33); }
+.connection-inventory article { margin: 20px 0; padding-left: 18px; border-left: 3px solid var(--sun); }
 .connection-history-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
 .connection-history-list, .connection-preview-rows { list-style: none; padding: 0; }
 .connection-history-list > li, .connection-preview-rows > li { display: flex; justify-content: space-between; gap: 16px; align-items: center; border-top: 1px solid var(--line); padding: 16px 0; }
 .connection-history-list small { display: block; color: var(--muted); line-height: 1.5; font-size: .8rem; margin-top: 5px; }
 .connection-history-list a, .connection-history-list button { flex-shrink: 0; }
 .connection-link-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.connection-link-grid > a { padding: 18px 20px; background: var(--lime-soft); border: 1px solid var(--line); border-radius: 14px; font-weight: 600; line-height: 1.45; }
+.connection-link-grid > a { padding: 18px 20px; background: var(--farm-soft); border: 1px solid var(--line); border-radius: 14px; font-weight: 600; line-height: 1.45; }
 .connection-copy-fields { margin-top: 24px; }
 .connection-value-list { list-style-position: inside; padding: 0; }
 .connection-value-list > li { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 0; border-top: 1px solid var(--line); }
@@ -35,16 +35,16 @@
 .connection-value-list small { color: var(--muted); }
 .connection-value-list button { flex-shrink: 0; }
 .connection-form-label { display: block; font-size: .82rem; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
-.connection-copy-value { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--forest); font-size: 1.12rem; margin-block: 14px 10px; }
+.connection-copy-value { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--farm-text); font-size: 1.12rem; margin-block: 14px 10px; }
 .connection-next-steps { padding-left: 24px; margin-top: 28px; }
 .connection-next-steps li { padding-left: 8px; margin-bottom: 14px; line-height: 1.6; }
 .connection-map-action { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-block: 20px; }
 .connection-map-action p { max-width: 640px; font-size: .9rem; color: var(--muted); }
 .connection-map-action button { flex-shrink: 0; }
 .connection-candidate-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-block: 20px; }
-.connection-candidate { display: flex; gap: 14px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); background: var(--paper, #fffefa); border-radius: 12px; cursor: pointer; }
-.connection-candidate:has(input:checked) { background: var(--lime-soft); border-color: var(--forest); }
-.connection-candidate input { flex: 0 0 auto; margin-top: 4px; accent-color: var(--forest); }
+.connection-candidate { display: flex; gap: 14px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; cursor: pointer; }
+.connection-candidate:has(input:checked) { background: var(--farm-soft); border-color: var(--farm); }
+.connection-candidate input { flex: 0 0 auto; margin-top: 4px; accent-color: var(--farm); }
 .connection-candidate strong { display: block; font-size: .92rem; line-height: 1.4; }
 .connection-candidate small { display: block; font-size: .78rem; color: var(--muted); line-height: 1.55; margin-top: 6px; overflow-wrap: anywhere; }
 .connection-result, .connection-saved-reads { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }

@@ -1,12 +1,12 @@
-.assistant-help-start { border-top: 3px solid var(--forest); }
+.assistant-help-start { border-top: 3px solid var(--farm); }
 .assistant-help-start > p { max-width: 66ch; }
 .assistant-help-start .actions { margin-block: 1.25rem; }
 .assistant-help-details { margin-top: 1.25rem; }
 .assistant-help-details > summary { cursor: pointer; padding-block: .6rem; font-weight: 600; }
 .assistant-help-details > .field { margin-top: 1rem; }
 .assistant-instruction { min-height: 15rem; line-height: 1.65; resize: vertical; }
-.assistant-copy-status { color: var(--forest); }
-.assistant-help-permission { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border, #c6d2b7); }
+.assistant-copy-status { color: var(--farm-text); }
+.assistant-help-permission { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .assistant-help-permission p { max-width: 66ch; }
 .assistant-help-local { scroll-margin-top: 2rem; }
 @media (max-width: 600px) {

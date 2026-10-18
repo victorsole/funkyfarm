@@ -1,17 +1,17 @@
 .satellite-page .sat-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-.satellite-page .sat-preview { width: 100%; max-width: 440px; max-height: 440px; object-fit: contain; image-rendering: pixelated; background: var(--sage); border-radius: 8px; }
+.satellite-page .sat-preview { width: 100%; max-width: 440px; max-height: 440px; object-fit: contain; image-rendering: pixelated; background: var(--farm-soft); border-radius: 14px; }
 .satellite-page .sat-image { margin: 0; }
 .satellite-page .sat-image figcaption { margin-top: 12px; color: var(--muted); font-size: .9rem; line-height: 1.5; }
-.satellite-page .sat-image-placeholder { min-height: 200px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--sage); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 12px; }
+.satellite-page .sat-image-placeholder { min-height: 200px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--farm-soft); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 12px; }
 .satellite-page .sat-image-placeholder h4, .satellite-page .sat-image-placeholder p { margin: 0; }
-.satellite-page .sat-image-placeholder h4 { color: var(--forest); font-size: 1.1rem; }
+.satellite-page .sat-image-placeholder h4 { color: var(--farm-text); font-size: 1.1rem; }
 .satellite-page .sat-image-placeholder p { line-height: 1.55; }
-.satellite-page .sat-image-opening { border-color: var(--forest); }
+.satellite-page .sat-image-opening { border-color: var(--farm); }
 .satellite-page .sat-preview-loading { visibility: hidden; height: 0; }
-.satellite-page .sat-image-error { color: var(--danger, #a02c25); }
+.satellite-page .sat-image-error { color: var(--alert-text); }
 .satellite-page .sat-scene { border-top: 1px solid var(--line); padding: 24px 0; }
 .satellite-page .sat-history { display: flex; flex-wrap: wrap; gap: 8px; }
-.satellite-page .sat-stat { font-size: 2rem; font-variant-numeric: tabular-nums; color: var(--forest); }
+.satellite-page .sat-stat { font-size: 2rem; font-variant-numeric: tabular-nums; color: var(--ink); font-family: var(--display); font-weight: 800; }
 .satellite-page .sat-table { overflow: auto; }
 .satellite-page table { width: 100%; border-collapse: collapse; }
 .satellite-page th, .satellite-page td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }

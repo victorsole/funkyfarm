@@ -4,8 +4,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const fixture = JSON.parse(process.env.FUNKYFARM_BROWSER_FIXTURES || '{}');
-const logoPath = '/assets/funkyfarmers-logo.png';
-const logoHash = '5d6dfd5f04195567b0de6c0bc7e4b6d7f9a1f6ed333b84a7c6f5c29d6a8d7b6b';
+const logoPath = '/assets/funkyfarm-logo.png';
+const logoHash = '6631b3c303b987678e545c0db4aed22fa6c12fcf75204e1ad50f37c54be88ac3';
 const sigpacBytes = readFileSync(new URL('../../shared/spain-sigpac-demo.json', import.meta.url));
 const sigpac = JSON.parse(sigpacBytes.toString('utf8'));
 const official = sigpac.fields.find(field => field.reference === sigpac.main_reference);
@@ -26,8 +26,8 @@ async function read(page, path, workspaceId) {
 async function displayedLogo(image) {
   await expect(image).toBeVisible();
   await expect(image).toHaveAttribute('src', logoPath);
-  await expect(image).toHaveJSProperty('naturalWidth', 1397);
-  await expect(image).toHaveJSProperty('naturalHeight', 1126);
+  await expect(image).toHaveJSProperty('naturalWidth', 640);
+  await expect(image).toHaveJSProperty('naturalHeight', 571);
 }
 async function importActualReceipt(page, farmId, workspaceId) {
   const returnURL = page.url();
@@ -130,7 +130,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   });
   await page.goto('/demo');
   await expect(page.getByRole('heading', { name: 'Farm paperwork, one clear step at a time.', exact: true })).toBeVisible();
-  await displayedLogo(page.getByRole('img', { name: 'Funkyfarmers', exact: true }));
+  await displayedLogo(page.getByRole('img', { name: 'Funkyfarm', exact: true }));
   const asset = await page.request.get(logoPath); expect(asset.ok()).toBeTruthy();
   const png = await asset.body(); expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   expect(createHash('sha256').update(png).digest('hex')).toBe(logoHash);
@@ -147,7 +147,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await page.getByLabel('Password', { exact: true }).fill(fixture.accounts.owner.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/app\/demo$/);
-  await displayedLogo(page.getByRole('complementary').getByRole('img', { name: 'Funkyfarmers', exact: true }));
+  await displayedLogo(page.getByRole('complementary').getByRole('img', { name: 'Funkyfarm', exact: true }));
   const originalFarm = await read(page, `/farms/${fixture.farm.id}`, fixture.accounts.owner.workspace_id);
   const start = page.getByRole('button', { name: 'Start demo', exact: true });
   await expect(start).toBeEnabled(); expect(starts).toHaveLength(0);

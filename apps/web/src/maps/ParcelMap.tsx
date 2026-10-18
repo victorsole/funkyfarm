@@ -59,6 +59,12 @@ function contextOutlinesOf(props: ParcelMapProps) {
   return props.contextOutlines.filter(item => item && typeof item.id === 'string' && !!item.id.trim()
     && counts.get(item.id) === 1 && typeof item.label === 'string' && isDisplayableFieldGeometry(item.geometry));
 }
+// Overlays sit on map tiles, not on the page theme, so they read the fixed --map-* tokens
+// from styles.css; legends use the same tokens.
+const mapFallbacks = { farm: '#2c7a43', outline: '#c26a12', gap: '#c0392b', eu: '#2347a6', ink: '#14201a' };
+function mapColor(name: keyof typeof mapFallbacks) {
+  return getComputedStyle(document.documentElement).getPropertyValue(`--map-${name}`).trim() || mapFallbacks[name];
+}
 function latLng(position: number[]): L.LatLngTuple { return [position[1], position[0]]; }
 function position(value: L.LatLng): number[] {
   const wrapped = value.wrap();
@@ -336,8 +342,8 @@ export function ParcelMap(props: ParcelMapProps) {
       movedByUser.current = true;
       deviceLocation.current?.clearLayers();
       if (deviceLocation.current) {
-        L.circle([latitude, longitude], { radius: accuracy, color: '#315779', weight: 1, fillOpacity: .08, interactive: false }).addTo(deviceLocation.current);
-        L.circleMarker([latitude, longitude], { radius: 6, color: '#315779', fillOpacity: .9, interactive: false }).addTo(deviceLocation.current);
+        L.circle([latitude, longitude], { radius: accuracy, color: mapColor('eu'), weight: 1, fillOpacity: .08, interactive: false }).addTo(deviceLocation.current);
+        L.circleMarker([latitude, longitude], { radius: 6, color: mapColor('eu'), fillOpacity: .9, interactive: false }).addTo(deviceLocation.current);
       }
       const area = L.latLng(latitude, longitude).toBounds(Math.max(20, accuracy) * 2);
       map.current.fitBounds(area, { padding: [36, 36], maxZoom: 17, animate: false });
@@ -490,9 +496,9 @@ export function ParcelMap(props: ParcelMapProps) {
       const shape = partsOf(geometry).filter(polygon => polygon.length && polygon.every(edge => edge.length >= 3 && edge.every(validPosition)));
       if (!shape.length) return null;
       return L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), {
-        color: reference ? '#945a16' : '#264c36', weight: reference ? 2 : 3,
-        dashArray: reference ? '7 5' : undefined, fillColor: reference ? '#e0cba5' : '#91b589',
-        fillOpacity: reference ? .12 : .35, fillRule: 'evenodd', interactive: false,
+        color: reference ? mapColor('outline') : mapColor('farm'), weight: reference ? 2 : 3,
+        dashArray: reference ? '7 5' : undefined, fillColor: reference ? mapColor('outline') : mapColor('farm'),
+        fillOpacity: reference ? .12 : .25, fillRule: 'evenodd', interactive: false,
       }).addTo(layers);
     }
     // Private farm context stays below the selected outline and has no edit or
@@ -502,7 +508,7 @@ export function ParcelMap(props: ParcelMapProps) {
       label.textContent = /^D\d{2}\b/.exec(context.label)?.[0] ?? context.label;
       label.title = context.label; label.setAttribute('aria-label', context.label);
       L.polygon(partsOf(context.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
-        color: '#557d98', weight: 2, dashArray: '5 5', fillColor: '#91b6cb', fillOpacity: .1,
+        color: mapColor('eu'), weight: 2, dashArray: '5 5', fillColor: mapColor('eu'), fillOpacity: .08,
         fillRule: 'evenodd', interactive: false, bubblingMouseEvents: false,
       }).bindTooltip(label, { permanent: true, direction: 'center', className: 'parcel-map-context-label', opacity: 1 }).addTo(layers);
     }
@@ -512,44 +518,44 @@ export function ParcelMap(props: ParcelMapProps) {
       const shape = partsOf(candidate.geometry).filter(polygon => polygon.length && polygon.every(edge => edge.length >= 3 && edge.every(validPosition)));
       if (!shape.length) continue;
       // A read-only candidate must not swallow clicks intended for drawing.
-      const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: '#466e98', weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false, interactive: !props.readOnly && props.mode === 'edit' && !drawingHole }).addTo(layers);
+      const candidateLayer = L.polygon(shape.map(polygon => polygon.map(edge => edge.map(latLng))), { color: mapColor('eu'), weight: 2, dashArray: '4 5', fillOpacity: .08, bubblingMouseEvents: false, interactive: !props.readOnly && props.mode === 'edit' && !drawingHole }).addTo(layers);
       candidateLayer.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); latest.current.onReferenceSelect?.(candidate.id); });
     }
     if (snapshot && isDisplayableFieldGeometry(snapshot.field.geometry)) {
       if (props.reference && JSON.stringify(props.reference) !== JSON.stringify(snapshot.field.geometry)) addShape(props.reference, true);
       L.polygon(partsOf(snapshot.field.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
-        color: '#194d36', weight: 4, fillColor: '#487f55', fillOpacity: .08, fillRule: 'evenodd', interactive: false,
+        color: mapColor('farm'), weight: 4, fillColor: mapColor('farm'), fillOpacity: .08, fillRule: 'evenodd', interactive: false,
       }).addTo(layers);
       if (isDisplayableFieldGeometry(props.geometry)) {
         outline.current = L.polygon(partsOf(props.geometry).map(polygon => polygon.map(edge => edge.map(latLng))), {
-          color: '#c87524', weight: 3, dashArray: '8 5', fillColor: '#e4aa61', fillOpacity: .07, fillRule: 'evenodd', interactive: false,
+          color: mapColor('outline'), weight: 3, dashArray: '8 5', fillColor: mapColor('outline'), fillOpacity: .07, fillRule: 'evenodd', interactive: false,
         }).addTo(layers);
         const signature = (edge: number[][]) => edge.slice(0, -1).map(point => `${point[0]},${point[1]}`).sort().join(';');
         const privateHoles = new Set(partsOf(props.geometry).flatMap(polygon => polygon.slice(1)).map(signature));
         for (const hole of partsOf(snapshot.field.geometry).flatMap(polygon => polygon.slice(1))) {
           if (privateHoles.has(signature(hole))) continue;
-          L.polygon(hole.map(latLng), { color: '#a73f32', weight: 3, fillColor: '#c9614e', fillOpacity: .3, interactive: false }).addTo(layers);
+          L.polygon(hole.map(latLng), { color: mapColor('gap'), weight: 3, fillColor: mapColor('gap'), fillOpacity: .3, interactive: false }).addTo(layers);
         }
       }
     } else {
       addShape(props.reference, true);
       outline.current = addShape(props.geometry, false);
     }
-    if (props.point && validPosition([props.point.longitude, props.point.latitude])) L.circleMarker([props.point.latitude, props.point.longitude], { radius: 5, color: '#294c38', fillOpacity: 1, interactive: false }).addTo(layers);
+    if (props.point && validPosition([props.point.longitude, props.point.latitude])) L.circleMarker([props.point.latitude, props.point.longitude], { radius: 5, color: mapColor('ink'), fillOpacity: 1, interactive: false }).addTo(layers);
     if ((props.mode === 'draw' || props.mode === 'edit') && props.sketch.length) {
-      const color = props.mode === 'edit' ? '#984b35' : '#21543b';
+      const color = props.mode === 'edit' ? mapColor('gap') : mapColor('farm');
       L.polyline(props.sketch.filter(validPosition).map(latLng), { color, weight: 3, dashArray: props.mode === 'edit' ? '4 4' : undefined, interactive: false }).addTo(layers);
       for (const p of props.sketch.filter(validPosition)) L.circleMarker(latLng(p), { radius: 4, color, fillOpacity: 1, interactive: false }).addTo(layers);
     }
     if (props.splitLine.length) {
-      L.polyline(props.splitLine.filter(validPosition).map(latLng), { color: '#a13f27', weight: 3, dashArray: '7 4', interactive: false }).addTo(layers);
-      for (const p of props.splitLine.filter(validPosition)) L.circleMarker(latLng(p), { radius: 5, color: '#a13f27', fillOpacity: 1, interactive: false }).addTo(layers);
+      L.polyline(props.splitLine.filter(validPosition).map(latLng), { color: mapColor('gap'), weight: 3, dashArray: '7 4', interactive: false }).addTo(layers);
+      for (const p of props.splitLine.filter(validPosition)) L.circleMarker(latLng(p), { radius: 5, color: mapColor('gap'), fillOpacity: 1, interactive: false }).addTo(layers);
     }
     if (props.mode !== 'edit' || props.readOnly) return;
     const polygon = partsOf(props.geometry)[selectedPart] ?? [];
     if (!drawingHole) polygon.slice(1).forEach((hole, index) => {
       if (!hole.every(validPosition)) return;
-      const area = L.polyline(hole.map(latLng), { color: '#984b35', weight: index + 1 === ringIndex ? 5 : 3, bubblingMouseEvents: false }).addTo(layers);
+      const area = L.polyline(hole.map(latLng), { color: mapColor('gap'), weight: index + 1 === ringIndex ? 5 : 3, bubblingMouseEvents: false }).addTo(layers);
       area.on('click', (event: L.LeafletMouseEvent) => { L.DomEvent.stopPropagation(event.originalEvent); if (!latest.current.disabled) { setSelectedRing(index + 1); focusedCorner.current = null; setConfirmation(null); } });
     });
     if (drawingHole) return;
