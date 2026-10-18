@@ -62,6 +62,13 @@ def create_app():
             forwarded = httpx.Request(request.method, local, headers=request.headers,
                                       stream=request.stream, extensions=request.extensions)
             return actual_transport(transport, forwarded)
+        if request.url.host == "sigpac-hubcloud.es":
+            if request.url.scheme != "https" or request.method != "GET" or not request.url.path.startswith(("/mvt/", "/servicioconsultassigpac/query/recinfoparc/", "/ogcapi/collections/elementos_paisaje_")):
+                raise RuntimeError("Only the reviewed SIGPAC public reads may use the fixture.")
+            local = httpx.URL(endpoint).copy_with(path="/sigpac" + request.url.path, query=request.url.query)
+            forwarded = httpx.Request(request.method, local, headers=request.headers,
+                                      stream=request.stream, extensions=request.extensions)
+            return actual_transport(transport, forwarded)
         if request.url.host not in {"127.0.0.1", "localhost"}:
             raise RuntimeError("Acceptance HTTP must stay at an authored local provider.")
         return actual_transport(transport, request)

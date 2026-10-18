@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { isEOXTile, backgroundTile } from './map-fixtures.mjs';
+import { isEOXTile, isOSMTile, backgroundTile } from './map-fixtures.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
@@ -125,7 +125,7 @@ test('hackathon demo separates a Spanish pasture claim from the physical parcel 
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
     if (['localhost', '127.0.0.1'].includes(url.hostname)) return route.continue();
-    if (isEOXTile(url)) return backgroundTile(route);
+    if (isEOXTile(url) || isOSMTile(url)) return backgroundTile(route);
     external.push(`${url.origin}${url.pathname}`); return route.abort('blockedbyclient');
   });
   await page.goto('/demo');

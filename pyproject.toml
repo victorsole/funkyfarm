@@ -27,6 +27,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "pytest-timeout>=2.3,<3"]
+# Optional local voice typing (Whisper on CPU); enable with FUNKYFARM_WHISPER_ENABLED=true.
+speech = ["faster-whisper>=1.1,<2", "av>=11,<16"]
 
 [project.scripts]
 funkyfarm-migrate = "funkyfarm.migrate:main"

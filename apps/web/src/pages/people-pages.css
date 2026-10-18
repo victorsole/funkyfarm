@@ -4,7 +4,7 @@
 .admin-private-people li > span { color: var(--muted); font-size: .76rem; }
 .adviser-follow-up { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
 .adviser-follow-up > h3 { margin-top: 20px; }
-.community-page { max-width: 1000px; margin-inline: auto; }
+.community-page { max-width: 1000px; }
 .community-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .community-nav a { padding: 10px 16px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: .88rem; font-weight: 650; transition: color .16s, background .16s; }
 .community-nav a:hover { color: var(--farm-text); background: var(--farm-soft); }

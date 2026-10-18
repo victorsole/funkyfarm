@@ -15,3 +15,7 @@ Retrieved 17 October 2026. The retrieval date is not an image capture date or a 
 The GeoJSON selects five complete public recintos and joins official attributes by their seven-part SIGPAC references. Coordinates and holes are unchanged; source links and retrieval metadata were added. Attribute WKT declares EPSG:4258, while the selected GeoJSON geometry was explicitly returned as OGC:CRS84. The manifest retains source and image checksums.
 
 Public references and background images do not establish ownership, membership of one farm, actual declarations, eligible area or payment. Any private demo claim or drawing is separate from these official source records. No official submission or acceptance is represented. Image capture date and incidence-code meanings are not inferred.
+
+spain-sigpac-caceres-area.geojson
+
+Whole SIGPAC recintos around the same five references (bbox -6.4900,39.4880,-6.4450,39.5120), read on 18 October 2026 from FEGA's documented SIGPAC vector-tile service (https://sigpac-hubcloud.es/html/mvt/descServicio.html), current campaign at retrieval. Geometry was converted from EPSG:3857 to longitude/latitude and rounded to 7 decimals; only reference, land use (uso_sigpac), slope, altitude, irrigation coefficient, incidences and region were kept. Recintos SIGPAC © Fondo Español de Garantía Agraria (FEGA), CC BY 4.0. The same limits apply: no ownership, actual crop, eligible area or payment is established.

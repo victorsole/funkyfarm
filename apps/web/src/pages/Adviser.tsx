@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AdviserOverview } from './Dashboards';
 import { api, errorMessage } from '../api';
 import { useSession } from '../auth';
 import { Button, Field, Notice, PageHeader } from '../components';
@@ -211,7 +212,9 @@ export function AdviserPage() {
   }, [scope, offset]);
   useEffect(() => {
     const farmId = params.get('farm');
-    if (farmId && session && /^[0-9a-f-]{36}$/i.test(farmId)) setSelection({ workspaceId: session.workspace.id, farmId });
+    // A map or inbox link may name the client workspace; the server checks the adviser's access.
+    const workspaceId = params.get('workspace');
+    if (farmId && session && /^[0-9a-f-]{36}$/i.test(farmId)) setSelection({ workspaceId: workspaceId && /^[0-9a-f-]{36}$/i.test(workspaceId) ? workspaceId : session.workspace.id, farmId });
   }, [params, scope]);
   useEffect(() => {
     if (!panel) return;
@@ -238,6 +241,7 @@ export function AdviserPage() {
   }, [selection, farms.items, params, canReview, scope]);
   return <>
     <PageHeader title="Adviser desk" description="Choose a farm, see what is missing and help with its next task." />
+    <AdviserOverview/>
     {error && <Notice kind="error">{error}<Button variant="ghost" onClick={() => void load()}>Retry</Button></Notice>}{accepted && <Notice kind="success">{accepted}</Notice>}
     <section className="panel"><div className="section-heading"><h2>Farms on your desk</h2><span className="badge">{overview?.total ?? '…'} workspaces</span></div>
       <Field label="Search farms or clients"><input type="search" maxLength={160} value={search} onChange={event => setSearch(event.target.value)} placeholder="Farm name, country or region" /></Field>

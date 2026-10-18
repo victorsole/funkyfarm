@@ -8,6 +8,7 @@ import type { Page, RecordItem } from '../types';
 import { usePrivateDraft } from '../offline';
 import { FieldMap, FieldBoundaryWorkspace } from './FieldsMap';
 import { FundingGuide } from './FundingGuide';
+import { FarmerOverview } from './Dashboards';
 import './farm-work.css';
 
 // Uncontrolled short forms retain entered values without storing account credentials.
@@ -108,6 +109,7 @@ export function HomePage() {
   return <>
     <PageHeader title={`Home at ${sampleName(String(home.farm.data.name))}`} description="Choose a task, or pick up where you left off." action={<Button variant="secondary" onClick={()=>setReload(value=>value+1)}>Refresh saved tasks</Button>}/>
     {(home.farms?.length||0)>1&&<Field label="Farm"><select value={farmId||home.farm.id} onChange={event=>setFarmId(event.target.value)}>{home.farms?.map(farm=><option key={farm.id} value={farm.id}>{sampleName(String(farm.data.name))}</option>)}</select></Field>}
+    <FarmerOverview key={`${home.farm.id}:${home.farm.revision}`} farm={home.farm} deadlines={deadlines.length} missing={missing}/>
     <HomeTasks farmId={home.farm.id}/>
     <p className="farm-demo-entry"><strong>Hackathon demo</strong><span>Follow a Spanish farm from field checks to a correction folder.</span><Link to="/app/demo">Open the guided demo</Link></p>
     {!!home.task_preview?.overdue_total && <Notice kind="warning">{home.task_preview.overdue_total} saved {home.task_preview.overdue_total === 1 ? 'task is' : 'tasks are'} overdue. <Link to={`/app/tasks?farm_id=${home.farm.id}`}>Read the tasks and dates</Link></Notice>}

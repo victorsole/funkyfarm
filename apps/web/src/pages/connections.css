@@ -2,7 +2,7 @@
 .connections-page > .notice { margin-bottom: 24px; }
 .connections-page .field { margin-bottom: 20px; }
 .connections-page .check-row { margin: 24px 0; align-items: flex-start; }
-.connection-picker > .field { max-width: 520px; }
+.connection-picker > .field { max-width: 480px; }
 .connection-task-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .connection-task { display: grid; align-content: start; gap: 10px; min-height: 130px; padding: 22px; text-align: left; font: inherit; color: var(--farm-text); border: 1px solid var(--line); border-radius: 16px; background: var(--surface); cursor: pointer; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .connection-task strong { font-size: 1rem; line-height: 1.35; }

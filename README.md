@@ -39,6 +39,12 @@ Open `http://127.0.0.1:5189`. The API runs on port `8139`.
 
 For a populated local jury account, run `.venv/Scripts/python.exe scripts/seed_jury.py --create-local-jury` while the API is running. It creates or resumes seven sample farms and private adviser conversations. Sign-in details and the demo link stay in `runtime/jury/local-credentials.json`; do not publish that file.
 
+## Maps and voice
+
+**SIGPAC parcels (Spain).** Maps show official SIGPAC recintos coloured by land use over OpenStreetMap. The API reads them from FEGA's open data (vector tiles, parcel facts and landscape elements at `sigpac-hubcloud.es`, CC BY 4.0) through `/api/v1/sigpac/*`, keeps only reviewed attributes and caches tiles for a day under `FUNKYFARM_STORAGE_ROOT/public-cache/sigpac`. The declared-crop layer is never read, because it carries the aid file number that links a holding's parcels. The signed-out demo page uses the saved snapshot `apps/web/public/data/spain-sigpac-caceres-area.geojson`.
+
+**Voice typing (optional).** Install the extra with `pip install -e '.[speech]'` and set `FUNKYFARM_WHISPER_ENABLED=true`. Whisper (`faster-whisper`, MIT) runs on the CPU with the `small` model by default (`FUNKYFARM_WHISPER_MODEL`, about 470 MB, downloaded on first use to `FUNKYFARM_WHISPER_MODEL_DIR`). Audio is transcribed in memory and discarded; the person checks the text before saving. It detects 23 of the 24 EU languages; Irish is not supported by Whisper. Without the setting, the microphone buttons stay hidden.
+
 Software licensed under [AGPL-3.0-or-later](LICENSE).
 
 The current logo was supplied by the project owner and is used unchanged. Notices for earlier third-party artwork remain with those assets.

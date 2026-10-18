@@ -13,3 +13,5 @@
 .adviser-next li > div { display: grid; gap: 5px; }
 .adviser-date { font-size: .85rem; color: var(--muted); }
 @media (max-width: 760px) { .adviser-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .adviser-next li { align-items: start; flex-direction: column; gap: 8px; } }
+.adviser-client .record-list > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 4px; }
+.adviser-client .record-list > li p { margin: 2px 0 0; color: var(--muted); font-size: .88rem; }

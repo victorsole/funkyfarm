@@ -20,13 +20,16 @@ function endpoint(path: string): string {
   return path.startsWith(`${PREFIX}/`) ? path : `${PREFIX}${path}`;
 }
 
-type MutationOptions = { idempotencyKey?: string; signal?: AbortSignal };
+type MutationOptions = { idempotencyKey?: string; signal?: AbortSignal; workspaceId?: string };
 
 async function request(path: string, method = 'GET', body?: unknown, options?: MutationOptions): Promise<Response> {
   const headers = new Headers({ Accept: 'application/json' });
-  if (workspaceId) headers.set('X-Workspace-ID', workspaceId);
-  const upload = body instanceof FormData;
-  if (body !== undefined && !upload) headers.set('Content-Type', 'application/json');
+  // A per-request workspace lets an adviser read one client workspace; the server checks membership.
+  const scope = options?.workspaceId ?? workspaceId;
+  if (scope) headers.set('X-Workspace-ID', scope);
+  const upload = body instanceof FormData || body instanceof Blob;
+  if (body instanceof Blob) headers.set('Content-Type', body.type || 'application/octet-stream');
+  else if (body !== undefined && !upload) headers.set('Content-Type', 'application/json');
   if (method !== 'GET' && csrfToken) headers.set('X-CSRF-Token', csrfToken);
   if (options?.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey);
   let response: Response;
@@ -67,9 +70,12 @@ async function json<T>(path: string, method = 'GET', body?: unknown, options?: M
 
 export const api = {
   get: <T>(path: string) => json<T>(path),
+  getIn: <T>(workspace: string, path: string) => json<T>(path, 'GET', undefined, { workspaceId: workspace }),
+  postIn: <T>(workspace: string, path: string, body?: unknown, options?: MutationOptions) => json<T>(path, 'POST', body, { ...options, workspaceId: workspace }),
   post: <T>(path: string, body?: unknown, options?: MutationOptions) => json<T>(path, 'POST', body, options),
   patch: <T>(path: string, body: unknown, options?: MutationOptions) => json<T>(path, 'PATCH', body, options),
   upload: <T>(path: string, body: FormData) => json<T>(path, 'POST', body),
+  sendBlob: <T>(path: string, body: Blob) => json<T>(path, 'POST', body),
   download: async (path: string): Promise<Blob> => (await request(path)).blob(),
   downloadResponse: (path: string, options?: { signal?: AbortSignal }): Promise<Response> => request(path, 'GET', undefined, options),
 };

@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, ClipboardList, House, Lock, Monitor, Moon, NotebookPen, Sparkles, Sprout, Sun, Wrench, type LucideIcon } from 'lucide-react';
+import { ChevronRight, ClipboardList, House, Inbox, LayoutDashboard, Lock, Map as MapIcon, Monitor, Moon, NotebookPen, Sparkles, Sprout, Sun, Wrench, type LucideIcon } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { useSession } from './auth';
 import { Button, Loading, Notice } from './components';
@@ -33,6 +33,8 @@ import { FundingPage } from './pages/FundingPage';
 import { AssistantConnect } from './pages/AssistantConnect';
 import { mountWebMCP } from './webmcp';
 import { readTheme, saveTheme, type ThemeChoice } from './theme';
+import { DashboardTabs, dashboardFor, roleLabel } from './dashboard';
+import { AdviserInboxPage, AdviserMapPage, FarmerMapPage, MyAdviserPage } from './pages/Dashboards';
 import './pages/administration.css';
 import './brand.css';
 
@@ -43,6 +45,13 @@ const primary = [
   { path: 'record-work', name: 'Notebook', detail: 'Work, purchases and sales', icon: 'work', label: undefined },
   { path: 'tools', name: 'Tools', detail: 'All farm tools', icon: 'documents', label: undefined },
 ];
+// Advisers (including civil servants at farmer-help offices) work across the farms that granted them access.
+const adviserNav = [
+  { path: 'adviser', name: 'Overview', detail: 'Farms and findings', icon: 'dashboard', label: undefined, end: true },
+  { path: 'adviser/map', name: 'Map', detail: 'All farms on my desk', icon: 'map', label: undefined, end: false },
+  { path: 'adviser/inbox', name: 'Inbox', detail: 'Farmers’ questions', icon: 'inbox', label: undefined, end: false },
+  { path: 'tools', name: 'Tools', detail: 'All farm tools', icon: 'documents', label: undefined, end: false },
+];
 
 function BrandMark({ className = '' }: { className?: string }) {
   return <img className={`funkyfarm-logo ${className}`} width="640" height="571" src="/assets/funkyfarm-logo.png" alt="Funkyfarm" />;
@@ -50,7 +59,7 @@ function BrandMark({ className = '' }: { className?: string }) {
 
 const visibleName = (value: string | undefined, fallback: string) => (value || '').replace(/^\s*FICTIONAL(?:[\s:—–_-]+|$)/i, '') || fallback;
 
-const navIcons: Record<string, LucideIcon> = { home: House, farm: Sprout, requests: ClipboardList, work: NotebookPen, documents: Wrench };
+const navIcons: Record<string, LucideIcon> = { home: House, farm: Sprout, requests: ClipboardList, work: NotebookPen, documents: Wrench, dashboard: LayoutDashboard, map: MapIcon, inbox: Inbox };
 function NavIcon({ name }: { name: string }) {
   const Icon = navIcons[name] ?? Wrench;
   return <Icon aria-hidden="true"/>;
@@ -119,9 +128,33 @@ function Shell() {
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const caseSection = location.pathname === '/app/cases' || location.pathname.startsWith('/app/cases/');
+  // Two roles: Farmer and Adviser. Inside a client's workspace the Adviser dashboard is fixed; a person
+  // who also farms chooses which dashboard to use (remembered in this browser only). Choosing Farmer from a
+  // client's workspace returns to the person's own workspace, last used first.
+  const hasAdviserAccess = workspaces.some(workspace => workspace.role === 'adviser');
+  const ownWorkspaces = workspaces.filter(workspace => workspace.role !== 'adviser');
+  useEffect(() => {
+    if (session && session.workspace.role !== 'adviser') try { localStorage.setItem('funkyfarm.farmer-workspace', session.workspace.id); } catch { /* Optional browser storage. */ }
+  }, [session?.workspace.id, session?.workspace.role]);
+  const [preferred, setPreferred] = useState<'farmer' | 'adviser' | null>(() => { try { const stored = localStorage.getItem('funkyfarm.dashboard'); return stored === 'farmer' || stored === 'adviser' ? stored : null; } catch { return null; } });
+  const mode: 'farmer' | 'adviser' = session?.workspace.role === 'adviser' ? 'adviser' : hasAdviserAccess ? preferred ?? 'adviser' : 'farmer';
+  const navigateTo = useNavigate();
+  async function chooseDashboard(next: 'farmer' | 'adviser') {
+    setPreferred(next);
+    try { localStorage.setItem('funkyfarm.dashboard', next); } catch { /* Optional browser storage. */ }
+    document.querySelector('.account-menu')?.removeAttribute('open');
+    if (next === 'farmer' && session?.workspace.role === 'adviser') {
+      let last: string | null = null;
+      try { last = localStorage.getItem('funkyfarm.farmer-workspace'); } catch { /* Optional browser storage. */ }
+      const own = ownWorkspaces.find(workspace => workspace.id === last) ?? ownWorkspaces[0];
+      if (own) await switchWorkspace(own.id).catch(() => undefined);
+    }
+    navigateTo(next === 'adviser' ? '/app/adviser' : '/app/home');
+  }
+  const tabs = dashboardFor(location.pathname, mode);
   useEffect(() => mountWebMCP(), [session?.user.id, session?.workspace.id]);
   useEffect(() => {
-    const page = caseSection ? 'Paperwork' : (primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
+    const page = caseSection ? 'Paperwork' : (location.pathname === '/app/map' ? 'My map' : location.pathname === '/app/my-adviser' ? 'My adviser' : location.pathname.startsWith('/app/adviser') ? `Adviser ${[...adviserNav].reverse().find(item => location.pathname.startsWith(`/app/${item.path}`))?.name.toLowerCase() ?? 'desk'}` : primary.find(item => location.pathname.startsWith(`/app/${item.path}`))?.name
       ?? farmTools.find(tool => location.pathname.startsWith(`/app/${tool.path}`))?.title ?? 'Workspace');
     document.title = `${page} · Funkyfarm`;
     if (location.hash) {
@@ -143,8 +176,8 @@ function Shell() {
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
       <Link to="/app/home" className="brand" aria-label="Funkyfarm home"><BrandMark /></Link>
-      <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{visibleName(workspace.name, 'Farm workspace')} · {workspace.role}</option>)}</select> : <strong>{visibleName(session?.workspace.name, 'Farm workspace')}</strong>}</div>
-      <nav className="primary-nav" aria-label="Main navigation">{primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${item.label ? t(item.label as TranslationKey) : item.name}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{item.label ? t(item.label as TranslationKey) : item.name}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
+      <div className="workspace-label"><label className="eyebrow" htmlFor="workspace-choice">Your workspace</label>{workspaces.length > 1 ? <select id="workspace-choice" aria-label="Switch workspace" value={session?.workspace.id} onChange={event => { void switchWorkspace(event.target.value).catch(() => undefined); }}>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{visibleName(workspace.name, 'Farm workspace')} · {roleLabel(workspace.role)}</option>)}</select> : <strong>{visibleName(session?.workspace.name, 'Farm workspace')}</strong>}</div>
+      <nav className="primary-nav" aria-label="Main navigation">{mode === 'adviser' ? adviserNav.map(item => <NavLink key={item.path} end={item.end} to={`/app/${item.path}`} className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{item.name}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>) : primary.map(item => <NavLink key={item.path} to={`/app/${item.path}`} aria-label={caseSection && item.path === 'paperwork' ? `${item.label ? t(item.label as TranslationKey) : item.name}, current section` : undefined} className={({ isActive }) => `nav-link${isActive || caseSection && item.path === 'paperwork' ? ' is-active' : ''}`}><NavIcon name={item.icon}/><span>{item.label ? t(item.label as TranslationKey) : item.name}<small>{item.detail}</small></span><Chevron className="nav-indicator"/></NavLink>)}</nav>
       <div className="sidebar-bottom"><span className="private-label"><Lock aria-hidden="true"/> Private farm records</span></div>
     </aside>
     <div className="workspace-body">
@@ -152,10 +185,11 @@ function Shell() {
         <Link className="hackathon-demo-link" to="/app/demo"><Sparkles aria-hidden="true"/>Hackathon demo</Link>
         {!online && <div className="connection-status" role="status"><span className="connection-dot is-offline"/>Offline</div>}
         <details className="account-menu">
-          <summary><span className="avatar" aria-hidden="true">{visibleName(session?.user.display_name, 'Farmer').slice(0, 1).toUpperCase()}</span><span className="account-name">{visibleName(session?.user.display_name, 'Farmer')}<small>{session?.workspace.role}</small></span><Chevron className="account-chevron"/></summary>
+          <summary><span className="avatar" aria-hidden="true">{visibleName(session?.user.display_name, 'Farmer').slice(0, 1).toUpperCase()}</span><span className="account-name">{visibleName(session?.user.display_name, 'Farmer')}<small>{roleLabel(mode === 'adviser' ? 'adviser' : session?.workspace.role)}</small></span><Chevron className="account-chevron"/></summary>
           <div className="account-dropdown">
             <p className="muted">{session?.user.email}</p>
             <Link to="/app/settings" onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>Account and settings</Link>
+            {hasAdviserAccess && ownWorkspaces.length > 0 && <fieldset className="theme-choice"><legend>Dashboard</legend><div className="theme-options is-two">{(['farmer', 'adviser'] as const).map(option => <label key={option}><input type="radio" name="dashboard-choice" value={option} checked={mode === option} onChange={() => void chooseDashboard(option)}/>{option === 'farmer' ? <Sprout aria-hidden="true"/> : <LayoutDashboard aria-hidden="true"/>}{roleLabel(option)}</label>)}</div></fieldset>}
             <ThemeSwitch/>
             <p className="account-privacy">Signing out removes this account’s private form drafts from this browser.</p>
             <Button variant="ghost" loading={signingOut} onClick={() => void signOut()}><Text id="auth.signOut"/></Button>
@@ -166,6 +200,7 @@ function Shell() {
         {!online && <Notice kind="warning">You are offline. Forms with private drafts can keep your changes on this device. Check their save message before leaving. Saving farm records and loading new files need a connection.</Notice>}
         {sessionError && <Notice kind="error">{sessionError}</Notice>}
         {logoutError && <Notice kind="error">{logoutError}</Notice>}
+        {tabs && <DashboardTabs role={mode} tabs={tabs}/>}
         <div className="page-enter" key={JSON.stringify([session?.user.id, session?.workspace.id, session?.workspace.role, session?.workspace.farm_ids, session?.workspace.permissions, location.pathname])}><PageBoundary><Outlet /></PageBoundary></div>
       </main>
       <footer className="workspace-footer"><span className="footer-brand"><b>Funkyfarm</b> · Fields Uploaded, Notified, Kept Yearly</span><Link to="/app/help">Help with the paperwork</Link><Link to="/app/assistant/connect">Connect an AI assistant</Link></footer>
@@ -261,6 +296,10 @@ export default function App() {
       <Route path="reports/:id" element={<ReportDetailPage/>}/>
       <Route path="imports" element={<ImportsPage/>}/>
       <Route path="adviser" element={<AdviserPage/>}/>
+      <Route path="adviser/map" element={<AdviserMapPage/>}/>
+      <Route path="adviser/inbox" element={<AdviserInboxPage/>}/>
+      <Route path="map" element={<FarmerMapPage/>}/>
+      <Route path="my-adviser" element={<MyAdviserPage/>}/>
       <Route path="satellite" element={<SatellitePage/>}/>
       <Route path="connections" element={<Connections/>}/>
       <Route path="help" element={<HelpPage/>}/>

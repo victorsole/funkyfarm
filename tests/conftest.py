@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import hashlib
 import os
 from pathlib import Path
@@ -56,6 +57,8 @@ def authored_stac():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             public_calls.append({"path": self.path, "headers": dict(self.headers)})
+            if self.path.startswith("/sigpac/"):
+                return self.sigpac()
             crop_outline = {"type": "Polygon", "coordinates": [[[5, 52], [5.002, 52], [5.002, 52.001], [5, 52.001], [5, 52]]]}
             ditch_outline = {"type": "Polygon", "coordinates": [[[5.0021, 52], [5.0022, 52], [5.0022, 52.001], [5.0021, 52.001], [5.0021, 52]]]}
             features = [
@@ -70,6 +73,42 @@ def authored_stac():
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+
+        def sigpac(self):
+            # Authored FEGA transport: the five retained Cáceres recintos, their published facts
+            # and one pond. Proves the connector contract, not live SIGPAC availability.
+            demo = json.loads((PROJECT / "shared" / "spain-sigpac-demo.json").read_text(encoding="utf-8"))
+
+            def mercator(point):
+                return [math.radians(point[0]) * 6378137.0, math.log(math.tan(math.pi / 4 + math.radians(point[1]) / 2)) * 6378137.0]
+
+            def parts(reference):
+                return dict(zip(("provincia", "municipio", "agregado", "zona", "poligono", "parcela", "recinto"), (int(v) for v in reference.split(":"))))
+            path = self.path.split("?")[0]
+            if path.startswith("/sigpac/mvt/"):
+                payload = {"type": "FeatureCollection", "features": [
+                    {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[mercator(p) for p in ring] for ring in field["geometry"]["coordinates"]]},
+                     "properties": {**parts(field["reference"]), "uso_sigpac": field["use_code"], "pendiente_media": 3.0, "altitud": 390,
+                                    "coef_regadio": None, "incidencias": field["incidences"], "region": 15}} for field in demo["fields"]]}
+            elif path.startswith("/sigpac/servicioconsultassigpac/query/recinfoparc/"):
+                wanted = path.rsplit("/", 1)[-1].removesuffix(".json")
+                payload = [{**{k: str(v) for k, v in parts(field["reference"]).items()}, "superficie": str(field["area_ha"]), "admisibilidad": str(field["csp_percent"]),
+                            "uso_sigpac": field["use_code"], "incidencias": str(field["incidences"]), "region": "15", "secret_field": "never kept"}
+                           for field in demo["fields"] if field["reference"].split(":")[5] == wanted]
+            elif path.startswith("/sigpac/ogcapi/collections/elementos_paisaje_area/items"):
+                payload = {"type": "FeatureCollection", "links": [], "features": [
+                    {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[-6.4705, 39.4985], [-6.4703, 39.4985], [-6.4703, 39.4987], [-6.4705, 39.4987], [-6.4705, 39.4985]]]},
+                     "properties": {"dn_pk": 1, "provincia": 10, "municipio": 50, "tipo_elemento": "CH"}}]}
+            elif path.startswith("/sigpac/ogcapi/collections/"):
+                payload = {"type": "FeatureCollection", "links": [], "features": []}
+            else:
+                self.send_response(404); self.end_headers(); return
+            body = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_POST(self):
             calls.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
@@ -326,6 +365,7 @@ def service_url(tmp_path_factory, browser_origin, authored_stac, authored_regula
         "FUNKYFARM_TEST_REGULATORY_SOURCE": json.dumps(authored_regulatory["source"]),
         "FUNKYFARM_TEST_REGULATORY_URL": authored_regulatory["url"],
         "FUNKYFARM_REGULATORY_MONITOR_ENABLED": "false",
+        "FUNKYFARM_WHISPER_ENABLED": "false",
         "FUNKYFARM_OAUTH_ALLOW_LOCAL_HTTP": "true",
         "FUNKYFARM_PUBLIC_URL": f"http://127.0.0.1:{port}",
         "FUNKYFARM_WEB_URL": browser_origin,

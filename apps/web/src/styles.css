@@ -88,7 +88,7 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 ::selection { background: var(--sun); color: var(--sun-ink); }
 :focus-visible { outline: 3px solid var(--eu); outline-offset: 3px; }
-main:focus { outline: none; }
+main:focus, [tabindex='-1']:focus { outline: none; }
 h1, h2, h3, h4, p { margin-top: 0; }
 h1, h2, h3, h4 { font-family: var(--display); color: var(--ink); overflow-wrap: anywhere; text-wrap: balance; }
 h1 { font-size: clamp(2rem, 3.6vw, 3rem); font-weight: 800; line-height: 1.08; letter-spacing: -.02em; margin-bottom: 14px; }
@@ -98,7 +98,8 @@ h4 { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
 p { line-height: 1.65; }
 small { line-height: 1.5; }
 svg { flex-shrink: 0; }
-svg.lucide { width: 1.15em; height: 1.15em; }
+/* Default icon size with zero specificity, so any component's own size wins whatever the CSS order. */
+:where(svg.lucide) { width: 1.15em; height: 1.15em; }
 code, pre { font-family: var(--mono); font-size: .85em; }
 pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 18px; background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
@@ -144,6 +145,14 @@ legend { font-family: var(--display); font-weight: 700; color: var(--ink); paddi
 .who-decides svg { width: 15px; height: 15px; color: var(--k, var(--gov)); }
 .who-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
 .who-agency { --k: var(--gov); } .who-eu { --k: var(--eu); } .who-office { --k: var(--help); } .who-farmer { --k: var(--farm); }
+.voice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.voice-button svg { width: 18px; height: 18px; color: var(--farm); }
+.voice-button.is-recording { border-color: var(--alert); color: var(--alert-text); animation: voice-pulse 1.2s ease-in-out infinite; }
+.voice-button.is-recording svg { color: var(--alert); }
+.voice-spin { animation: spin .8s linear infinite; }
+.voice-error { color: var(--alert-text); font-size: .88rem; }
+.voice small { font-size: .8rem; }
+@keyframes voice-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--alert) 25%, transparent); } }
 .step-number { display: inline-grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--ink); color: var(--bg); font: 600 .85rem/1 var(--mono); }
 
 /* Workspace frame */
@@ -198,9 +207,22 @@ legend { font-family: var(--display); font-weight: 700; color: var(--ink); paddi
 .theme-choice { display: grid; gap: 8px; margin: 14px 0 4px; padding: 0; border: 0; }
 .theme-choice legend { font-family: var(--mono); font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0; margin-bottom: 8px; }
 .theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 999px; background: var(--sunk); }
-.theme-options label { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 4px 6px; border-radius: 999px; font-size: .78rem; font-weight: 700; cursor: pointer; color: var(--muted); }
-.theme-options label svg { width: 14px; height: 14px; }
-.theme-options input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+/* One pill switch for either/or choices across the app (map colours, map background). */
+.segmented { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.segmented legend { float: left; margin-right: 4px; padding: 0; font-family: var(--mono); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.segmented-options { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 22px; background: var(--sunk); }
+/* Pill labels hold a radio, so they must outrank the top-aligned checkbox-row rule below. */
+.segmented-options > label:has(> input[type='radio']) { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; line-height: 1; padding: 6px 16px; border-radius: 999px; color: var(--muted); font-size: .9rem; font-weight: 700; cursor: pointer; }
+.segmented-options label svg { display: block; flex: none; width: 16px; height: 16px; }
+.segmented-options input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segmented-options label:has(input:checked) { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 14%, transparent); }
+.segmented-options label:has(input:focus-visible) { outline: 3px solid var(--eu); outline-offset: 1px; }
+.theme-options.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.theme-options > label:has(> input[type='radio']) { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; line-height: 1; padding: 4px 6px; border-radius: 999px; font-size: .78rem; font-weight: 700; cursor: pointer; color: var(--muted); }
+.theme-options label svg { display: block; flex: none; width: 15px; height: 15px; }
+.theme-options label { position: relative; }
+/* The radio covers its whole pill: one click target for pointer, keyboard and assistive tools. */
+.theme-options input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .theme-options label:has(input:checked) { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 14%, transparent); }
 .theme-options label:has(input:focus-visible) { outline: 3px solid var(--eu); outline-offset: 1px; }
 .main-content { width: 100%; max-width: 1440px; padding: 40px 5.1% 70px; margin: 0 auto; flex: 1; }
@@ -254,6 +276,12 @@ legend { font-family: var(--display); font-weight: 700; color: var(--ink); paddi
 .form-grid > .full-width, .span-all { grid-column: 1 / -1; }
 .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .actions + .notice { margin-top: 20px; }
+/* Breathing room where a form or filter is followed by its actions or results. */
+.form-grid + .actions, .farm-start-choices + .actions, .stack + .actions { margin-top: 22px; }
+.record-list:not(:first-child) { margin-top: 16px; }
+.field + .dash-section, .field + section, .dash-picker + section { margin-top: 20px; }
+/* One width for a standalone farm or workspace picker, wherever it appears. */
+.page-enter > .field, .page-enter > * > .field:first-child:has(> select), .easy-farm-form > .field, .dash-picker > .field { width: 100%; max-width: 480px; }
 .field { display: flex; flex-direction: column; gap: 8px; font-size: .95rem; min-width: 0; }
 .field-label { font-size: .9rem; font-weight: 700; line-height: 1.5; }
 .field small { font-size: .82rem; }
