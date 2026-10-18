@@ -24,7 +24,27 @@
 .hackathon-demo-claim dt { color: var(--muted); font-size: .78rem; }
 .hackathon-demo-claim dd { margin: 6px 0 0; font-size: clamp(1.2rem, 2.2vw, 1.8rem); font-weight: 800; font-family: var(--display); }
 .hackathon-demo-actions { display: flex; flex-wrap: wrap; gap: 12px 24px; }
-.hackathon-demo-easy { justify-self: start; font-weight: 600; }
+/* Other ways to continue: two equal option cards; the whole card is the link (stretched ::after). */
+.hackathon-demo-more { display: grid; gap: 12px; padding-top: 4px; }
+.hackathon-demo-more > h3 { margin: 0; }
+.hackathon-demo-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.hackathon-demo-option { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); align-content: start; gap: 4px 14px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); transition: border-color 160ms ease, transform 160ms ease; }
+.hackathon-demo-option:has(.hackathon-demo-option-link:hover) { border-color: var(--ink); transform: translateY(-2px); }
+.hackathon-demo-option:has(.hackathon-demo-option-link:focus-visible) { outline: 3px solid var(--eu); outline-offset: 2px; }
+.hackathon-demo-option-icon { grid-row: span 3; width: 40px; height: 40px; padding: 9px; border-radius: 12px; background: var(--farm-soft); color: var(--farm); }
+.hackathon-demo-option.is-dispute .hackathon-demo-option-icon { background: var(--gov-soft, var(--sunk)); color: var(--gov); }
+.hackathon-demo-option h4 { margin: 0; font-size: 1.02rem; }
+.hackathon-demo-option p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.hackathon-demo-option-link { display: block; margin-top: 8px; font-weight: 700; line-height: 1.4; text-decoration: none; color: var(--ink); }
+.hackathon-demo-option-link svg { display: inline-block; width: 16px; height: 16px; margin-left: 6px; vertical-align: -3px; transition: transform 160ms ease; }
+.hackathon-demo-option-link:hover svg { transform: translateX(3px); }
+.hackathon-demo-option-link::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.hackathon-demo-option-link:focus-visible { outline: none; }
+/* Chapter footer: the step to the next chapter sits apart from the chapter's own actions. */
+.hackathon-demo-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.hackathon-demo-next > span { color: var(--muted); font-size: .9rem; }
+.hackathon-demo-next .button { display: inline-flex; align-items: center; gap: 8px; }
+.hackathon-demo-next .button svg { width: 17px; height: 17px; }
 .hackathon-demo-check-jobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .hackathon-demo-check-jobs > section { display: grid; align-content: start; gap: 12px; }
 .hackathon-demo-check-jobs h3, .hackathon-demo-check-jobs p { margin: 0; }
@@ -35,5 +55,5 @@
 .hackathon-demo-bottom { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 @keyframes hackathon-demo-open { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 700px) { .hackathon-demo-steps { grid-template-columns: 1fr; } .hackathon-demo-steps button { border-right: 0; border-bottom: 1px solid var(--line); } .hackathon-demo-steps button:last-child { border-bottom: 0; } }
-@media (max-width: 520px) { .hackathon-demo-claim { padding: 16px; } .hackathon-demo-claim dl, .hackathon-demo-check-jobs { grid-template-columns: 1fr; } .hackathon-demo-claim dl { gap: 14px; } .hackathon-demo-bottom { align-items: flex-start; flex-direction: column; } }
-@media (prefers-reduced-motion: reduce) { .hackathon-demo-current { animation: none; } .hackathon-demo-steps button { transition: none; } }
+@media (max-width: 520px) { .hackathon-demo-next .button { width: 100%; justify-content: center; } .hackathon-demo-option { padding: 16px; } .hackathon-demo-claim { padding: 16px; } .hackathon-demo-claim dl, .hackathon-demo-check-jobs { grid-template-columns: 1fr; } .hackathon-demo-claim dl { gap: 14px; } .hackathon-demo-bottom { align-items: flex-start; flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .hackathon-demo-current { animation: none; } .hackathon-demo-steps button, .hackathon-demo-option, .hackathon-demo-option-link svg { transition: none; } .hackathon-demo-option:has(.hackathon-demo-option-link:hover) { transform: none; } }

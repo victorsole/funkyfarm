@@ -917,7 +917,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await workspace.getByRole('button', { name: 'Adjust a field', exact: true }).click();
   await expect(workspace.getByLabel('Which field?', { exact: true })).toHaveValue(originalField.id);
   await expect(workspace.getByRole('button', { name: /^Corner \d+; longitude / })).toHaveCount(4);
-  await expect(workspace.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(workspace.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(workspace.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
   await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(0);
   await expect(workspace.getByText('The chosen background is enabled. Its imagery date may be unknown.', { exact: true })).toBeVisible();
@@ -1120,7 +1120,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await page.getByLabel('Farm', { exact: true }).selectOption(farm.id);
   await page.getByLabel('Field', { exact: true }).selectOption(fields[0].id);
   await expect(page.getByRole('group', { name: 'Field boundary map', exact: true })).toHaveClass(/leaflet-container/);
-  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   await page.getByLabel('From', { exact: true }).fill('2025-05-01');
@@ -1148,7 +1148,7 @@ test('Dutch arable farmer compares historical LPIS evidence, exports a draft and
   await page.goto(`/app/connections?farm_id=${farm.id}&task=fields`);
   await expect(page.getByRole('button', { name: 'Bring in records', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('group', { name: 'Field boundary map', exact: true })).toHaveClass(/leaflet-container/);
-  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect.poll(() => tiles.calls.filter(call => new URL(call.url).hostname === 'service.pdok.nl').length).toBeGreaterThan(tileRequestsBeforeConnections);
   await expect(page.getByRole('button', { name: /^Corner \d+;/ })).toHaveCount(0);
   const connectionReadResponse = page.waitForResponse(response => /\/api\/v1\/connections\/[^/]+\/read$/.test(response.url()) && response.request().method() === 'POST');

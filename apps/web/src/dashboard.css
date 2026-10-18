@@ -46,3 +46,4 @@ a.dash-stat:hover { border-color: var(--line-strong); border-top-color: var(--k)
   .dash-findings li { grid-template-columns: 22px minmax(0, 1fr); }
   .dash-finding-go { grid-column: 1 / -1; justify-self: start; }
 }
+.dash-section-gap { margin-top: 28px; }

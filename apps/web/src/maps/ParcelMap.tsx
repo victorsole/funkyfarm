@@ -3,7 +3,7 @@ import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button, Field, Notice } from '../components';
 import type { FieldGeometry, FieldPoint } from '../pages/FieldsMap';
-import { defaultMapSource, mapSources, type MapSource } from './sources';
+import { mapSources, type MapSource } from './sources';
 import { getSpanishDemoSnapshot, type SpanishDemoSelection } from './spanishDemo';
 import { communityReference, dutchReference } from './outlineReferences';
 import './parcel-map.css';
@@ -173,7 +173,8 @@ export function ParcelMap(props: ParcelMapProps) {
   const communitySource = communityReference(props.communityReference);
   const dutchSource = dutchReference(props.dutchReference);
   const snapshotBinding = snapshot ? `${snapshot.id}:${snapshot.field.reference}:${snapshot.image.sha256}` : '';
-  const automaticSourceId = snapshot ? '' : defaultMapSource(props.country, props.region, positionsOf(props))?.id ?? '';
+  // Every Funkyfarm map opens on the same OpenStreetMap street map; aerial photos stay one choice away.
+  const automaticSourceId = snapshot ? '' : positionsOf(props).length ? 'osm' : '';
   const instructionId = useId();
   const compact = props.readOnly && props.compact;
   const parts = partsOf(props.geometry);
@@ -645,7 +646,7 @@ export function ParcelMap(props: ParcelMapProps) {
     {!snapshot && !compact && <details className="parcel-map-background-options" open><summary>Background map</summary>
     <div className="parcel-map-background"><Field label="Background map"><select value={sourceId} onChange={event => { backgroundChosenByUser.current = true; if (!event.target.value) hideBackground(); else { setSourceId(event.target.value); setMapError(''); } }}><option value="">No background map</option>{sources.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
       <label className="parcel-map-consent"><input type="checkbox" checked={backgroundAllowed && !!source} onChange={event => { backgroundChosenByUser.current = true; if (!event.target.checked) hideBackground(); else { setSourceId(sourceId && source ? sourceId : sources[0]?.id ?? ''); setBackgroundAllowed(true); setBackgroundAttempt(value => value + 1); } }}/>Show background map</label>
-      <p>Local aerial photos open where available, otherwise a dated satellite mosaic. You can turn the background off or choose a street map. The provider sees the map area and your IP address, not your farm records.</p>
+      <p>The street map opens first, as on every Funkyfarm map. Choose aerial photos or a satellite mosaic to compare outlines, or turn the background off. The provider sees the map area and your IP address, not your farm records.</p>
       {source && <p>Map from {source.provider}. <a href={source.sourceUrl} target="_blank" rel="noreferrer">About this map</a> · <a href={source.licenseUrl} target="_blank" rel="noreferrer">Licence and attribution</a>. Photos may have been taken in different years. They do not confirm a current crop, official boundary or claim.</p>}
       {source?.imageryNote && <p>{source.imageryNote}</p>}
       {backgroundAllowed && source && <p role="status">{backgroundStatus === 'loading' ? 'Loading the chosen background…' : backgroundStatus === 'failed' ? props.readOnly ? 'Background unavailable; the supplied outline remains on the neutral map.' : 'Background unavailable; editing remains available on the neutral map.' : outsideCoverage ? 'This view is outside the documented background coverage. Pan back into its coverage or choose another map.' : 'The chosen background is enabled. Its imagery date may be unknown.'}</p>}

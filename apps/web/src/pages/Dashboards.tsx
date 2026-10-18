@@ -14,6 +14,7 @@ import type { FieldStatus } from '../maps/landUse';
 import type { RecordItem } from '../types';
 import type { FieldGeometry } from './FieldsMap';
 import { VoiceButton } from '../voice';
+import { InfoTip, WhoDecidesForFarm } from '../authorities';
 
 type Parcel = { id: string; name: string; crop?: string | null; geometry?: FieldGeometry | null; external_id?: string | null; approximate_area_ha?: number | null };
 type Issue = { id: string; field_id: string | null; field_name: string; severity: 'error' | 'warning'; title: string; explanation: string; who_decides?: string; action_href?: string };
@@ -42,7 +43,7 @@ function fieldsOnMap(farm: RecordItem, parcels: Parcel[], issues: Issue[], href:
   return parcels.filter(parcel => parcel.geometry).map(parcel => {
     const own = issues.filter(issue => issue.field_id === parcel.id);
     const status = levelOf(own);
-    return { id: `${farm.id}:${parcel.id}`, group: farm.id, reference: parcel.external_id ?? null, label: `${sampleName(farm.data.name)} · ${parcel.name}`, geometry: parcel.geometry!, status, href,
+    return { id: `${farm.id}:${parcel.id}`, group: farm.id, reference: parcel.external_id ?? null, crop: parcel.crop ?? null, label: `${sampleName(farm.data.name)} · ${parcel.name}`, geometry: parcel.geometry!, status, href,
       detail: [parcel.crop, statusText[status]].filter(Boolean).join(' · ') };
   });
 }
@@ -77,9 +78,10 @@ export function FarmerOverview({ farm, deadlines, missing }: { farm: RecordItem;
       { label: 'Dates', value: deadlines, detail: 'deadlines and dated tasks', href: '/app/tasks', tone: 'gov' },
       { label: 'My adviser', value: questions ? open.length : '…', detail: answered ? `${answered} answered` : 'open questions', href: `/app/my-adviser?farm_id=${farm.id}`, tone: 'help' },
     ]}/>
-    <h2>Findings <small className="muted">{findings.length ? `${findings.length} to look at` : ''}</small></h2>
+    <h2>Findings <InfoTip label="a finding">Something in your saved records that does not match, or is missing. Open it to see what to check. It is not an official decision.</InfoTip> <small className="muted">{findings.length ? `${findings.length} to look at` : ''}</small></h2>
     <Findings loading={check === undefined} items={findings.slice(0, 8)} empty={check === undefined ? 'Checking your fields…' : check === null ? 'The field check could not run here. Open it from the tile above.' : 'No open findings on your fields.'}/>
     {findings.length > 8 && <p><Link to={checkHref}>See all {findings.length} findings</Link></p>}
+    <WhoDecidesForFarm country={farm.data.country} region={farm.data.region}/>
   </section>;
 }
 
@@ -185,6 +187,7 @@ export function MyAdviserPage() {
         </article>)}
       </section>
     </>}
+    {chosen && <div className="dash-section-gap"><WhoDecidesForFarm country={chosen.data.country} region={chosen.data.region}/></div>}
   </>;
 }
 
@@ -285,7 +288,7 @@ export function AdviserMapPage() {
       <section className="dash-section"><h2>Farms</h2>
         <ul className="dash-findings">{ordered.map(row => { const level = levelOf(row.issues ?? []); return <li key={row.farm.id} className={`is-${level}`}>
           {(() => { const Icon = level === 'conflict' ? CircleAlert : level === 'gap' ? TriangleAlert : CircleCheck; return <Icon className="dash-finding-icon" aria-hidden="true"/>; })()}
-          <div className="dash-finding-text"><span className="dash-finding-level">{row.issues ? statusText[level] : 'checking'}</span><strong>{sampleName(row.farm.data.name)}</strong><span>{String(row.farm.data.country ?? '')} · {row.workspace.name} · {(row.issues ?? []).length} findings</span></div>
+          <div className="dash-finding-text"><span className="dash-finding-level">{row.issues ? statusText[level] : 'checking'}</span><strong>{sampleName(row.farm.data.name)}</strong><span>{String(row.farm.data.country ?? '')} · {row.workspace.name} · {(row.issues ?? []).length} findings</span><WhoDecidesForFarm compact country={row.farm.data.country} region={row.farm.data.region}/></div>
           <div className="actions"><Button variant="secondary" onClick={() => setFocus(row.farm.id)}>Show on map</Button><Link className="dash-finding-go" to={farmFile(row)}>Open farm file</Link></div>
         </li>; })}</ul>
       </section>

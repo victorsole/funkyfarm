@@ -14,7 +14,7 @@
 .farm-demo-entry { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
 .farm-demo-entry strong { color: var(--farm-text); }
 .tools-index { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
-.tools-index section { margin: 0; }
+.tools-index > section, .tools-index > .panel + .panel { margin: 0; }
 .tools-index h2 { font-size: 1.5rem; }
 .tools-index ul { list-style: none; margin: 0; padding: 0; }
 .tools-index li + li { border-top: 1px solid var(--line); }

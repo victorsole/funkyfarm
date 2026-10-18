@@ -133,7 +133,7 @@ function QuestionSteps({ bundle, scope, refresh }: { bundle: Bundle; scope: stri
   const proposalBinding = JSON.stringify([scope, farm.id, farm.revision, storedProposals]);
   const currentProposal = (fieldId: string) => proposalChecks.binding === proposalBinding && proposalChecks.current[fieldId] === true;
   const mayReview = session?.workspace.role === 'owner' || session?.workspace.permissions?.includes('review') === true;
-  const mapFields: MapField[] = fields.filter(hasValidOutline).map(field => ({ id: field.id, group: field.id, reference: field.external_id ?? null, label: field.name, geometry: field.geometry!, detail: field.crop ?? undefined }));
+  const mapFields: MapField[] = fields.filter(hasValidOutline).map(field => ({ id: field.id, group: field.id, reference: field.external_id ?? null, label: field.name, geometry: field.geometry!, detail: field.crop ?? undefined, crop: field.crop ?? null }));
   const totalArea = fields.reduce((sum, field) => sum + (field.approximate_area_ha ?? 0), 0);
   const cropOptions = [...new Set(fields.map(field => field.crop).filter((crop): crop is string => !!crop))];
   const supportModules = country.modules.filter(module => module.workflow_id === 'cap');

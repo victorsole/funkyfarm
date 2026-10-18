@@ -39,7 +39,7 @@ async function inspectReadOnlyMap(page) {
   await expect(page.getByRole('button', { name: /^(Draw excluded area|Close boundary|Save for comparison|Use my location)$/ })).toHaveCount(0);
   await expect(page.getByText('Background map', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
-  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('nl-pdok-aerial');
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(page.locator('.parcel-map-credit').filter({ hasText: 'Historical BRP outlines · 2025' })).toBeVisible();
 }
 async function isolated(page) {
@@ -246,7 +246,7 @@ test('focused farmer corrects individual answers, reads deadline limits and prep
   const safety = await isolated(page); await signIn(page);
   const example = await startExample(page); const farm = farmFor(example, 'cz-mock-amendment-window');
   await page.goto(`/app/fields/${farm.id}/check`);
-  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('eox-satellite-2016');
+  await expect(page.getByLabel('Background map', { exact: true })).toHaveValue('osm');
   await expect(page.getByRole('checkbox', { name: 'Show background map', exact: true })).toBeChecked();
   await expect(page.locator('.leaflet-control-attribution')).toContainText('Contains modified Copernicus Sentinel data 2016 & 2017');
   await expect(page.getByText('This satellite mosaic combines 2016–2017 images.', { exact: false })).toBeVisible();

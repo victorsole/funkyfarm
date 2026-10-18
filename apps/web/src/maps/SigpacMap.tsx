@@ -1,3 +1,4 @@
+import { InfoTip } from '../authorities';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import * as L from 'leaflet';
@@ -6,7 +7,7 @@ import { Layers, MapPin } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../api';
 import { Button, Notice, WhoDecides } from '../components';
 import type { FieldGeometry } from '../pages/FieldsMap';
-import { brpGroup, landUseGroup, landUseGroups, statusStyles, usoNames, type FieldStatus, type LandUseGroup } from './landUse';
+import { cropGroup, brpGroup, landUseGroup, landUseGroups, statusStyles, usoNames, type FieldStatus, type LandUseGroup } from './landUse';
 import { mapSources, type MapSource } from './sources';
 import './sigpac-map.css';
 
@@ -21,7 +22,7 @@ type Recinto = { type: 'Feature'; id: string; geometry: FieldGeometry; propertie
 type RecintoCollection = { type: 'FeatureCollection'; features: Recinto[]; source?: { attribution?: string; retrieved_at?: string; license?: string; documentation?: string }; notice?: string };
 type Facts = { reference: string | null; superficie: number | null; admisibilidad: number | null; uso_sigpac: string | null; incidencias: string | null; pendiente_media: number | null; altitud: number | null; recinto: number };
 
-export type MapField = { id: string; label: string; geometry: FieldGeometry; status?: FieldStatus; href?: string; detail?: string; group?: string; reference?: string | null };
+export type MapField = { id: string; label: string; geometry: FieldGeometry; status?: FieldStatus; href?: string; detail?: string; group?: string; reference?: string | null; crop?: string | null };
 type Props = {
   title: string;
   fields?: MapField[];
@@ -233,18 +234,20 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
     if (!layer) return;
     layer.clearLayers();
     for (const field of fields) {
-      const tint = colourBy === 'status' && field.status ? statusStyles[field.status].color : '#14201A';
+      // Without an official register in view, the field takes its own crop's land-use colour.
+      const own = colourBy === 'landuse' && !register ? cropGroup(field.crop) : null;
+      const tint = colourBy === 'status' && field.status ? statusStyles[field.status].color : own ? own.color : '#14201A';
       // Over an official parcel, a click shows that parcel's facts (the card links back to the field).
       const clickable = colourBy === 'status' || !official || !field.reference;
       const polygon = L.polygon(latLngs(field.geometry), {
-        pane: 'farm-fields', color: tint, weight: 3, opacity: 1, dashArray: colourBy === 'status' ? undefined : '6 4',
-        fillColor: tint, fillOpacity: colourBy === 'status' ? .35 : .04, bubblingMouseEvents: false, interactive: clickable,
+        pane: 'farm-fields', color: tint, weight: 3, opacity: 1, dashArray: colourBy === 'status' || own ? undefined : '6 4',
+        fillColor: tint, fillOpacity: colourBy === 'status' ? .35 : own ? own.fill : .04, bubblingMouseEvents: false, interactive: clickable,
       });
       polygon.bindTooltip(field.detail ? `${field.label} · ${field.detail}` : field.label, { sticky: true, direction: 'top', className: 'sigpac-tooltip' });
       polygon.on('click', () => onFieldSelect?.(field));
       polygon.addTo(layer);
     }
-  }, [JSON.stringify(fields.map(field => [field.id, field.status, field.label, field.reference])), colourBy, official]);
+  }, [JSON.stringify(fields.map(field => [field.id, field.status, field.label, field.reference, field.crop])), colourBy, official, register?.name]);
 
   // Zoomed out, each farm shows as one pin in its status colour, so small fields stay findable.
   useEffect(() => {
@@ -318,10 +321,13 @@ export function SigpacMap({ title, fields = [], colourBy = 'landuse', staticData
       {fields.length > 0 && <button type="button" className="sigpac-stat" onClick={() => fieldBounds && map.current?.fitBounds(fieldBounds, { padding: [12, 12], maxZoom: 16 })}><MapPin aria-hidden="true"/><b>{fields.length}</b> {colourBy === 'status' ? 'farm fields' : 'of your fields'}</button>}
       <span className="sigpac-campaign">{staticData ? 'Saved public example' : active === 'sigpac' ? 'Current SIGPAC campaign' : active === 'brp' ? 'BRP, latest published year' : 'Official parcels: Spain and the Netherlands'}</span>
     </div>
-    {colourBy === 'status' && <div className="sigpac-legend" role="group" aria-label="Farm status colours"><span className="sigpac-legend-label">Farm status</span>
+    {colourBy === 'status' && <div className="sigpac-legend" role="group" aria-label="Farm status colours"><span className="sigpac-legend-label">Farm status <InfoTip label="farm status">Red: something needs action. Amber: information is missing. Green: nothing open.</InfoTip></span>
       {(Object.keys(statusStyles) as FieldStatus[]).map(level => <span key={level} className="sigpac-chip is-status" style={{ '--chip': statusStyles[level].color } as CSSProperties}><i aria-hidden="true"/>{statusStyles[level].label}</span>)}
     </div>}
-    {(register || staticData) && <div className="sigpac-legend" role="group" aria-label="Show or hide land uses"><span className="sigpac-legend-label">Land use</span>
+    {colourBy === 'landuse' && !register && !staticData && fields.some(field => cropGroup(field.crop)) && <div className="sigpac-legend" role="group" aria-label="Your crop colours"><span className="sigpac-legend-label">Your crops <InfoTip label="your crops">No official parcel register is connected here yet, so your own fields are coloured by the crop you saved.</InfoTip></span>
+      {[...new Map(fields.map(field => cropGroup(field.crop)).filter(Boolean).map(group => [group!.id, group!])).values()].map(group => <span key={group.id} className="sigpac-chip is-status" style={{ '--chip': group.color } as CSSProperties}><i aria-hidden="true"/>{group.label}<span>{fields.filter(field => cropGroup(field.crop)?.id === group.id).length}</span></span>)}
+    </div>}
+    {(register || staticData) && <div className="sigpac-legend" role="group" aria-label="Show or hide land uses"><span className="sigpac-legend-label">Land use <InfoTip label="land use">Each colour is how the official register classes the land, for example vineyard or pasture. Tap a colour to hide or show it. Click a shape to read its official details.</InfoTip></span>
       {landUseGroups.map(group => <button key={group.id} type="button" className="sigpac-chip" aria-pressed={!hidden.has(group.id)} onClick={() => toggle(group.id)} style={{ '--chip': group.color } as CSSProperties}>
         <i aria-hidden="true"/>{group.label}<span>{counts.get(group.id) ?? 0}</span></button>)}
     </div>}

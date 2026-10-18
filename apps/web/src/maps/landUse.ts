@@ -58,3 +58,20 @@ export function brpGroup(category: string | null | undefined, crop: string | nul
   if (kind === 'bouwland' || kind === 'braakland') return group('arable');
   return unknownGroup;
 }
+
+// A farmer's own crop name (any of the example languages) to the same colour groups, for countries
+// whose official register is not connected yet. Accents are stripped on both sides before matching.
+const bare = (value: string | null | undefined) => (value ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+export function cropGroup(crop: string | null | undefined): LandUseGroup | null {
+  const name = bare(crop);
+  const group = (id: string) => landUseGroups.find(item => item.id === id)!;
+  if (!name) return null;
+  if (/vine|grape|vin[ea]|vid\b|wijn|druif|reva|vinic/.test(name)) return group('vineyard');
+  if (/oliv/.test(name)) return group('olive');
+  if (/orchard|apple|pear|cherr|plum|fruit|frut|ovoc|jablk|boomgaard/.test(name)) return group('fruit');
+  if (/vegetable|greenhouse|tomat|pepper|lettuce|hortal|zelenin|sklenik|groente|kas\b/.test(name)) return group('vegetables');
+  if (/grass|meadow|pastur|hay|clover|pasto|prado|louka|pastvin|trav|luka|grasland|weide/.test(name)) return group('pasture');
+  if (/forest|wood|\bbos\b|\bles\b|monte/.test(name)) return group('forest');
+  if (/wheat|barley|maize|corn|rye|oat|rape|sunflower|cereal|beet|potato|trigo|cebada|maiz|girasol|psenic|jecmen|kukuric|repk|jacmen|tarwe|gerst|mais|aardappel|biet/.test(name)) return group('arable');
+  return null;
+}

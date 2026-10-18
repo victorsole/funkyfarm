@@ -511,3 +511,8 @@ details:is(.panel, .card, .paper-section) { padding: 18px 24px; box-shadow: var(
   body, .panel, .paper, .card { background: white; }
   .panel, .paper, .card { break-inside: avoid; box-shadow: none; }
 }
+/* Forms: the submit row stands apart from the last field; a pager centres its count between the buttons. */
+.form-submit { display: grid; justify-items: start; gap: 8px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.form-submit > p { margin: 0; }
+.actions.pager { align-items: center; margin-block: 16px; }
+.button.button-start { justify-self: start; align-self: flex-start; }
